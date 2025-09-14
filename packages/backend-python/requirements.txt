@@ -1,0 +1,9 @@
+fastapi
+uvicorn[standard]
+chromadb-client
+openai
+langchain
+beautifulsoup4
+pydantic
+pydantic-settings
+markdown-it-py

@@ -1,0 +1,25 @@
+[project]
+name = "cabin-backend"
+version = "1.0.0"
+description = "The Python-based RAG backend for Cabin, implementing the Parent Document Retriever strategy."
+authors = [{ name = "Gemini", email = "gemini@google.com" }]
+dependencies = [
+    "fastapi",
+    "uvicorn[standard]",
+    "chromadb-client",
+    "openai",
+    "langchain",
+    "beautifulsoup4",
+    "pydantic",
+    "pydantic-settings",
+    "markdown-it-py",
+]
+
+[project.scripts]
+start = "uvicorn cabin_backend.main:app --host 0.0.0.0 --port 8788 --reload --app-dir src/"
+
+[tool.pdm]
+
+[build-system]
+requires = ["pdm-pep517>=1.0.0"]
+build-backend = "pdm.pep517.api"
