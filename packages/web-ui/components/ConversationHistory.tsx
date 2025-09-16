@@ -1,7 +1,13 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { MessageSquare, Pin, Trash2, Search } from 'lucide-react'
+
+interface ConversationMessage {
+  id: string
+  role: 'user' | 'assistant'
+  content: string
+}
 
 interface Conversation {
   id: string
@@ -10,6 +16,7 @@ interface Conversation {
   timestamp: Date
   isPinned: boolean
   messageCount: number
+  messages: ConversationMessage[]
 }
 
 interface ConversationHistoryProps {
@@ -19,6 +26,7 @@ interface ConversationHistoryProps {
   onPinConversation: (id: string) => void
   onDeleteConversation: (id: string) => void
   onNewConversation: () => void
+  onDeleteAllConversations: () => void
 }
 
 export default function ConversationHistory({
@@ -27,7 +35,8 @@ export default function ConversationHistory({
   onSelectConversation,
   onPinConversation,
   onDeleteConversation,
-  onNewConversation
+  onNewConversation,
+  onDeleteAllConversations
 }: ConversationHistoryProps) {
   const [searchTerm, setSearchTerm] = useState('')
 
@@ -39,9 +48,15 @@ export default function ConversationHistory({
   const pinnedConversations = filteredConversations.filter(conv => conv.isPinned)
   const unpinnedConversations = filteredConversations.filter(conv => !conv.isPinned)
 
+  useEffect(() => {
+    if (!activeConversationId) return
+    const element = document.getElementById(`conversation-${activeConversationId}`)
+    element?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+  }, [activeConversationId, filteredConversations.length])
+
   return (
     <div
-      className="w-80 border-r flex flex-col"
+      className="w-80 border-r flex flex-col h-full"
       style={{
         background: 'var(--bg-secondary)',
         borderColor: 'var(--border-faint)'
@@ -56,6 +71,17 @@ export default function ConversationHistory({
           className="btn-primary w-full mb-4"
         >
           New Conversation
+        </button>
+
+        <button
+          onClick={onDeleteAllConversations}
+          className="w-full mb-4 text-sm font-medium text-left px-3 py-2 rounded-lg transition-colors"
+          style={{
+            background: 'var(--bg-tertiary)',
+            color: 'var(--error)'
+          }}
+        >
+          Delete All Conversations
         </button>
 
         <div className="relative">
@@ -130,6 +156,7 @@ interface ConversationItemProps {
 function ConversationItem({ conversation, isActive, onSelect, onPin, onDelete }: ConversationItemProps) {
   return (
     <div
+      id={`conversation-${conversation.id}`}
       className="p-3 mb-2 rounded-lg cursor-pointer transition-colors"
       style={{
         background: isActive ? 'var(--bg-tertiary)' : 'transparent',

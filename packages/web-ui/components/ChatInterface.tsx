@@ -1,16 +1,16 @@
 'use client'
 
-import { useState } from 'react'
-import { Send } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Download, FileJson, Loader2, Send } from 'lucide-react'
 import { SmartResponse } from './SmartResponse'
 
 interface Citation {
-  id: string;
-  page_title: string;
-  space_name?: string;
-  source_url?: string;
-  page_section?: string;
-  last_modified?: string;
+  id: string
+  page_title: string
+  space_name?: string
+  source_url?: string
+  page_section?: string
+  last_modified?: string
 }
 
 interface Message {
@@ -21,27 +21,134 @@ interface Message {
   timestamp: Date
 }
 
-export default function ChatInterface() {
-  const [messages, setMessages] = useState<Message[]>([])
-  const [input, setInput] = useState('')
-  const [isLoading, setIsLoading] = useState(false)
+interface Conversation {
+  id: string
+  title: string
+  lastMessage: string
+  timestamp: Date
+  isPinned: boolean
+  messageCount: number
+  messages: Message[]
+}
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!input.trim() || isLoading) return
+interface ChatInterfaceProps {
+  conversation: Conversation | null
+  onMessagesChange: (updater: (messages: Message[]) => Message[]) => void
+  onDownloadConversation: (format: 'json' | 'markdown') => void
+  onConversationTitleChange: (title: string) => void
+}
+
+const CHAT_ENDPOINT = 'http://localhost:8788/api/chat'
+const CHAT_STREAM_ENDPOINT = 'http://localhost:8788/api/chat/stream'
+
+export default function ChatInterface({
+  conversation,
+  onMessagesChange,
+  onDownloadConversation,
+  onConversationTitleChange
+}: ChatInterfaceProps) {
+  const [input, setInput] = useState('')
+  const [isProcessing, setIsProcessing] = useState(false)
+  const messagesEndRef = useRef<HTMLDivElement | null>(null)
+  const abortControllerRef = useRef<AbortController | null>(null)
+  const lastAssistantIdRef = useRef<string | null>(null)
+
+  const messages = conversation?.messages ?? []
+
+  useEffect(() => {
+    setInput('')
+    setIsProcessing(false)
+    lastAssistantIdRef.current = null
+    abortControllerRef.current?.abort()
+    abortControllerRef.current = null
+  }, [conversation?.id])
+
+  useEffect(() => {
+    if (!conversation) return
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [conversation?.messages, conversation?.id])
+
+  const updateAssistantMessage = useCallback(
+    (assistantId: string, updater: (message: Message) => Message) => {
+      onMessagesChange(prevMessages =>
+        prevMessages.map(message => (message.id === assistantId ? updater(message) : message))
+      )
+    },
+    [onMessagesChange]
+  )
+
+  const streamResponse = useCallback(
+    async (prompt: string, assistantId: string): Promise<string> => {
+      const controller = new AbortController()
+      abortControllerRef.current = controller
+      const response = await fetch(CHAT_STREAM_ENDPOINT, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ message: prompt }),
+        signal: controller.signal
+      })
+
+      if (!response.ok || !response.body) {
+        throw new Error('Streaming not available')
+      }
+
+      const reader = response.body.getReader()
+      const decoder = new TextDecoder()
+      let aggregated = ''
+
+      while (true) {
+        const { value, done } = await reader.read()
+        if (done) break
+        aggregated += decoder.decode(value, { stream: true })
+        const currentText = aggregated
+        updateAssistantMessage(assistantId, message => ({
+          ...message,
+          content: currentText
+        }))
+      }
+
+      abortControllerRef.current = null
+      return aggregated
+    },
+    [updateAssistantMessage]
+  )
+
+  const requestFullResponse = useCallback(async (prompt: string) => {
+    const controller = new AbortController()
+    abortControllerRef.current = controller
+    const response = await fetch(CHAT_ENDPOINT, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ message: prompt }),
+      signal: controller.signal
+    })
+
+    if (!response.ok) {
+      throw new Error('Network response was not ok')
+    }
+
+    abortControllerRef.current = null
+    return response.json()
+  }, [])
+
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault()
+    if (!conversation) return
+    const question = input.trim()
+    if (!question || isProcessing) return
 
     const userMessage: Message = {
       id: Date.now().toString(),
       role: 'user',
-      content: input,
+      content: question,
       timestamp: new Date()
     }
 
-    setMessages(prev => [...prev, userMessage])
-    setInput('')
-    setIsLoading(true)
-
-    const assistantMessageId = (Date.now() + 1).toString()
+    const assistantMessageId = `${Date.now()}-assistant`
     const assistantMessage: Message = {
       id: assistantMessageId,
       role: 'assistant',
@@ -49,55 +156,126 @@ export default function ChatInterface() {
       timestamp: new Date()
     }
 
-    setMessages(prev => [...prev, assistantMessage])
+    lastAssistantIdRef.current = assistantMessageId
+    onMessagesChange(prev => [...prev, userMessage, assistantMessage])
+
+    if (conversation.title === 'New Conversation') {
+      const truncated = question.length > 60 ? `${question.slice(0, 57)}...` : question
+      onConversationTitleChange(truncated)
+    }
+
+    setInput('')
+    setIsProcessing(true)
+    
+
+    let streamedText = ''
+    let streamingFailed = false
 
     try {
-      const response = await fetch('http://localhost:8788/api/chat', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ message: input })
-      })
-
-      if (!response.ok) throw new Error('Network response was not ok')
-
-      const data = await response.json()
-
-      // Update the assistant message with the complete response and citations
-      setMessages(prev => prev.map(msg =>
-        msg.id === assistantMessageId
-          ? {
-              ...msg,
-              content: data.response || 'No response received',
-              citations: data.citations || []
-            }
-          : msg
-      ))
+      streamedText = await streamResponse(question, assistantMessageId)
     } catch (error) {
-      console.error('Streaming error:', error)
-      setMessages(prev => prev.map(msg =>
-        msg.id === assistantMessageId
-          ? { ...msg, content: 'Sorry, I encountered an error processing your request.' }
-          : msg
-      ))
+      streamingFailed = true
+      if ((error as Error).name === 'AbortError') {
+        return
+      }
+      console.warn('Streaming unavailable, falling back to standard response:', error)
+    }
+
+    try {
+      const fullResponse = await requestFullResponse(question)
+      updateAssistantMessage(assistantMessageId, message => ({
+        ...message,
+        content: fullResponse.response || streamedText || 'No response received',
+        citations: fullResponse.citations || [],
+        timestamp: new Date()
+      }))
+    } catch (error) {
+      if ((error as Error).name === 'AbortError') {
+        return
+      }
+      console.error('Failed to fetch complete response:', error)
+      if (streamedText && !streamingFailed) {
+        updateAssistantMessage(assistantMessageId, message => ({
+          ...message,
+          content: streamedText,
+          timestamp: new Date()
+        }))
+      } else {
+        updateAssistantMessage(assistantMessageId, message => ({
+          ...message,
+          content: 'Sorry, I encountered an error processing your request.',
+          timestamp: new Date()
+        }))
+      }
     } finally {
-      setIsLoading(false)
+      setIsProcessing(false)
+      abortControllerRef.current = null
+      lastAssistantIdRef.current = null
     }
   }
 
+  useEffect(() => {
+    return () => {
+      abortControllerRef.current?.abort()
+    }
+  }, [])
+
+  const streamingPlaceholderVisible = useMemo(() => {
+    if (!isProcessing) return false
+    if (!lastAssistantIdRef.current) return false
+    const assistantMessage = messages.find(msg => msg.id === lastAssistantIdRef.current)
+    return !assistantMessage?.content
+  }, [isProcessing, messages])
+
+  if (!conversation) {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center" style={{ background: 'var(--bg-primary)' }}>
+        <p className="text-lg" style={{ color: 'var(--text-secondary)' }}>
+          Select a conversation or start a new one to begin chatting.
+        </p>
+      </div>
+    )
+  }
+
   return (
-    <div className="flex-1 flex flex-col" style={{background: 'var(--bg-primary)'}}>
+    <div className="flex-1 flex flex-col overflow-hidden" style={{ background: 'var(--bg-primary)' }}>
+      <div className="flex items-center justify-end gap-2 px-8 pt-6">
+        <button
+          onClick={() => onDownloadConversation('markdown')}
+          disabled={messages.length === 0}
+          className="flex items-center gap-2 px-3 py-2 text-sm rounded-md border transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          style={{
+            borderColor: 'var(--border-faint)',
+            color: 'var(--text-secondary)'
+          }}
+        >
+          <Download size={16} />
+          Markdown
+        </button>
+        <button
+          onClick={() => onDownloadConversation('json')}
+          disabled={messages.length === 0}
+          className="flex items-center gap-2 px-3 py-2 text-sm rounded-md border transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          style={{
+            borderColor: 'var(--border-faint)',
+            color: 'var(--text-secondary)'
+          }}
+        >
+          <FileJson size={16} />
+          JSON
+        </button>
+      </div>
+
       <div className="flex-1 overflow-y-auto px-8 py-6">
         {messages.length === 0 && (
           <div className="text-center mt-16 max-w-2xl mx-auto">
-            <h1 className="text-2xl font-bold mb-4" style={{color: 'var(--text-primary)'}}>
+            <h1 className="text-2xl font-bold mb-4" style={{ color: 'var(--text-primary)' }}>
               RAG Documentation Assistant
             </h1>
-            <p className="text-lg mb-2" style={{color: 'var(--text-secondary)'}}>
+            <p className="text-lg mb-2" style={{ color: 'var(--text-secondary)' }}>
               Ask me anything about your documentation.
             </p>
-            <p className="text-sm" style={{color: 'var(--text-muted)'}}>
+            <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
               I'll search through your indexed content to provide relevant answers.
             </p>
           </div>
@@ -106,10 +284,9 @@ export default function ChatInterface() {
         <div className="max-w-4xl mx-auto space-y-8">
           {messages.map((message, index) => (
             <div key={message.id} className="space-y-4">
-              {/* User query */}
               {message.role === 'user' && (
                 <div className="user-query-section">
-                  <h2 className="text-xl font-semibold mb-3" style={{color: 'var(--text-primary)'}}>
+                  <h2 className="text-xl font-semibold mb-3" style={{ color: 'var(--text-primary)' }}>
                     Query
                   </h2>
                   <div
@@ -125,10 +302,9 @@ export default function ChatInterface() {
                 </div>
               )}
 
-              {/* Assistant response */}
               {message.role === 'assistant' && (
                 <div className="assistant-response-section">
-                  <h2 className="text-xl font-semibold mb-3" style={{color: 'var(--text-primary)'}}>
+                  <h2 className="text-xl font-semibold mb-3" style={{ color: 'var(--text-primary)' }}>
                     Answer
                   </h2>
                   <SmartResponse
@@ -136,7 +312,7 @@ export default function ChatInterface() {
                     query={messages[index - 1]?.content || ''}
                     citations={message.citations || []}
                   />
-                  <div className="text-xs mt-3" style={{color: 'var(--text-muted)'}}>
+                  <div className="text-xs mt-3" style={{ color: 'var(--text-muted)' }}>
                     Answered at {message.timestamp.toLocaleTimeString()}
                   </div>
                 </div>
@@ -144,33 +320,29 @@ export default function ChatInterface() {
             </div>
           ))}
 
-          {isLoading && (
+          {streamingPlaceholderVisible && (
             <div className="assistant-response-section">
-              <h2 className="text-xl font-semibold mb-3" style={{color: 'var(--text-primary)'}}>
+              <h2 className="text-xl font-semibold mb-3" style={{ color: 'var(--text-primary)' }}>
                 Answer
               </h2>
               <div
                 className="p-8 rounded-lg border text-center"
                 style={{
                   background: 'var(--bg-secondary)',
-                  borderColor: 'var(--border-faint)',
+                  borderColor: 'var(--border-faint)'
                 }}
               >
-                <div className="flex justify-center items-center space-x-2">
-                  <div className="w-2 h-2 rounded-full animate-bounce" style={{background: 'var(--accent)'}}></div>
-                  <div className="w-2 h-2 rounded-full animate-bounce" style={{background: 'var(--accent)', animationDelay: '0.1s'}}></div>
-                  <div className="w-2 h-2 rounded-full animate-bounce" style={{background: 'var(--accent)', animationDelay: '0.2s'}}></div>
-                </div>
-                <p className="mt-3 text-sm" style={{color: 'var(--text-secondary)'}}>
-                  Searching documentation and generating response...
+                <Loader2 className="mx-auto animate-spin" style={{ color: 'var(--accent)' }} />
+                <p className="mt-3 text-sm" style={{ color: 'var(--text-secondary)' }}>
+                  Generating response...
                 </p>
               </div>
             </div>
           )}
         </div>
+        <div ref={messagesEndRef} />
       </div>
 
-      {/* Input area */}
       <div
         className="border-t px-8 py-6"
         style={{
@@ -183,14 +355,14 @@ export default function ChatInterface() {
             <input
               type="text"
               value={input}
-              onChange={(e) => setInput(e.target.value)}
+              onChange={(event) => setInput(event.target.value)}
               placeholder="Ask about your documentation..."
               className="flex-1 input-base"
-              disabled={isLoading}
+              disabled={isProcessing}
             />
             <button
               type="submit"
-              disabled={!input.trim() || isLoading}
+              disabled={!input.trim() || isProcessing}
               className="px-6 py-3 rounded-lg font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               style={{
                 background: 'var(--accent)',
