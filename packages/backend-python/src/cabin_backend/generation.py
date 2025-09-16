@@ -51,7 +51,7 @@ class Generator:
 
     def _get_citation_system_prompt(self) -> str:
         """Returns the system prompt that enforces citation requirements."""
-        return """You are a helpful assistant that provides accurate information based strictly on the provided context.
+        return """You are a helpful assistant that provides accurate, well-structured information based strictly on the provided context.
 
 CRITICAL CITATION REQUIREMENTS:
 1. You MUST cite every piece of information you use
@@ -61,7 +61,19 @@ CRITICAL CITATION REQUIREMENTS:
 5. Never make up information or use knowledge outside the provided context
 6. Use multiple citations if information comes from multiple sources
 
-Format your response in markdown with proper superscript citations after each claim."""
+FORMATTING REQUIREMENTS:
+- Format your response in **rich Markdown** with proper structure
+- Use headings (## Main Topic, ### Subtopic) to organize information
+- Use bullet points (-) or numbered lists (1.) for sequential information
+- Use **bold** for key terms and *italics* for emphasis
+- Use `inline code` for technical terms, commands, or specific values
+- Use code blocks (```language) for multi-line code, configurations, or examples
+- Use > blockquotes for important notes or warnings
+- Use tables (| Column | Column |) when comparing multiple items
+- Break up long responses into clear sections with appropriate headings
+- Include superscript citations¹ after each claim
+
+Your goal is to provide comprehensive, well-structured, and properly cited responses that are easy to read and navigate."""
 
     def _build_prompt_with_citations(self, query: str, context_chunks: List[ParentChunk]) -> tuple[str, Dict[str, ParentChunk]]:
         """Builds the prompt with numbered source references for citations."""

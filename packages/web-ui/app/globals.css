@@ -44,7 +44,7 @@
   --leading-loose: 1.75;
 
   /* Surfaces */
-  --bg-primary: #0c0c0f;
+  --bg-primary: #16161b;
   --bg-secondary: #141419;
   --bg-tertiary: #1a1a20;
   --bg-quaternary: #22222a;
@@ -135,7 +135,6 @@ body {
   margin-top: var(--space-4);
   border-radius: var(--radius-lg);
   overflow: hidden;
-  box-shadow: var(--shadow-md);
   background: var(--bg-secondary);
   border: 1px solid var(--border-faint);
 }

@@ -1,8 +1,8 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Download, FileJson, Loader2, Send } from 'lucide-react'
-import { SmartResponse } from './SmartResponse'
+import { Download, FileJson, Loader2, Send, StopCircle } from 'lucide-react'
+import SmartResponse from './SmartResponse'
 
 interface Citation {
   id: string
@@ -135,8 +135,14 @@ export default function ChatInterface({
     return response.json()
   }, [])
 
-  const handleSubmit = async (event: React.FormEvent) => {
-    event.preventDefault()
+  const handleStopGeneration = useCallback(() => {
+    abortControllerRef.current?.abort()
+    abortControllerRef.current = null
+    setIsProcessing(false)
+    lastAssistantIdRef.current = null
+  }, [])
+
+  const sendMessage = useCallback(async () => {
     if (!conversation) return
     const question = input.trim()
     if (!question || isProcessing) return
@@ -212,6 +218,27 @@ export default function ChatInterface({
       abortControllerRef.current = null
       lastAssistantIdRef.current = null
     }
+  }, [
+    conversation,
+    input,
+    isProcessing,
+    onConversationTitleChange,
+    onMessagesChange,
+    requestFullResponse,
+    streamResponse,
+    updateAssistantMessage
+  ])
+
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault()
+    await sendMessage()
+  }
+
+  const handleComposerKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault()
+      void sendMessage()
+    }
   }
 
   useEffect(() => {
@@ -227,26 +254,40 @@ export default function ChatInterface({
     return !assistantMessage?.content
   }, [isProcessing, messages])
 
+  const hasMessages = messages.length > 0
+  const canStop = isProcessing && Boolean(abortControllerRef.current)
+
   if (!conversation) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center" style={{ background: 'var(--bg-primary)' }}>
-        <p className="text-lg" style={{ color: 'var(--text-secondary)' }}>
-          Select a conversation or start a new one to begin chatting.
-        </p>
+      <div
+        className="flex-1 flex items-center justify-center px-6"
+        style={{ background: 'var(--bg-primary)' }}
+      >
+        <div className="max-w-md text-center space-y-3">
+          <h1 className="text-2xl font-semibold" style={{ color: 'var(--text-primary)' }}>
+            Select a conversation
+          </h1>
+          <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+            Choose a chat from the sidebar or start a new one to begin asking questions.
+          </p>
+        </div>
       </div>
     )
   }
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden" style={{ background: 'var(--bg-primary)' }}>
-      <div className="flex items-center justify-end gap-2 px-8 pt-6">
+    <div className="flex-1 flex flex-col overflow-hidden relative" style={{ background: 'var(--bg-primary)' }}>
+      {/* Floating export buttons */}
+      <div className="absolute top-4 right-8 z-10 flex items-center gap-2">
         <button
           onClick={() => onDownloadConversation('markdown')}
-          disabled={messages.length === 0}
-          className="flex items-center gap-2 px-3 py-2 text-sm rounded-md border transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          disabled={!hasMessages}
+          className="flex items-center gap-2 px-3 py-2 text-sm rounded-lg border transition-colors disabled:opacity-40 disabled:cursor-not-allowed shadow-lg"
           style={{
-            borderColor: 'var(--border-faint)',
-            color: 'var(--text-secondary)'
+            background: 'var(--bg-secondary)',
+            borderColor: 'var(--border-light)',
+            color: 'var(--text-primary)',
+            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)'
           }}
         >
           <Download size={16} />
@@ -254,11 +295,13 @@ export default function ChatInterface({
         </button>
         <button
           onClick={() => onDownloadConversation('json')}
-          disabled={messages.length === 0}
-          className="flex items-center gap-2 px-3 py-2 text-sm rounded-md border transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          disabled={!hasMessages}
+          className="flex items-center gap-2 px-3 py-2 text-sm rounded-lg border transition-colors disabled:opacity-40 disabled:cursor-not-allowed shadow-lg"
           style={{
-            borderColor: 'var(--border-faint)',
-            color: 'var(--text-secondary)'
+            background: 'var(--bg-secondary)',
+            borderColor: 'var(--border-light)',
+            color: 'var(--text-primary)',
+            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)'
           }}
         >
           <FileJson size={16} />
@@ -266,113 +309,134 @@ export default function ChatInterface({
         </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-8 py-6">
-        {messages.length === 0 && (
-          <div className="text-center mt-16 max-w-2xl mx-auto">
-            <h1 className="text-2xl font-bold mb-4" style={{ color: 'var(--text-primary)' }}>
-              RAG Documentation Assistant
-            </h1>
-            <p className="text-lg mb-2" style={{ color: 'var(--text-secondary)' }}>
-              Ask me anything about your documentation.
-            </p>
-            <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
-              I'll search through your indexed content to provide relevant answers.
-            </p>
-          </div>
-        )}
-
-        <div className="max-w-4xl mx-auto space-y-8">
-          {messages.map((message, index) => (
-            <div key={message.id} className="space-y-4">
-              {message.role === 'user' && (
-                <div className="user-query-section">
-                  <h2 className="text-xl font-semibold mb-3" style={{ color: 'var(--text-primary)' }}>
-                    Query
-                  </h2>
-                  <div
-                    className="p-4 rounded-lg border"
-                    style={{
-                      background: 'var(--bg-secondary)',
-                      borderColor: 'var(--border-light)',
-                      color: 'var(--text-primary)'
-                    }}
-                  >
-                    {message.content}
-                  </div>
-                </div>
-              )}
-
-              {message.role === 'assistant' && (
-                <div className="assistant-response-section">
-                  <h2 className="text-xl font-semibold mb-3" style={{ color: 'var(--text-primary)' }}>
-                    Answer
-                  </h2>
-                  <SmartResponse
-                    answer={message.content}
-                    query={messages[index - 1]?.content || ''}
-                    citations={message.citations || []}
-                  />
-                  <div className="text-xs mt-3" style={{ color: 'var(--text-muted)' }}>
-                    Answered at {message.timestamp.toLocaleTimeString()}
-                  </div>
-                </div>
-              )}
-            </div>
-          ))}
-
-          {streamingPlaceholderVisible && (
-            <div className="assistant-response-section">
-              <h2 className="text-xl font-semibold mb-3" style={{ color: 'var(--text-primary)' }}>
-                Answer
-              </h2>
-              <div
-                className="p-8 rounded-lg border text-center"
-                style={{
-                  background: 'var(--bg-secondary)',
-                  borderColor: 'var(--border-faint)'
-                }}
-              >
-                <Loader2 className="mx-auto animate-spin" style={{ color: 'var(--accent)' }} />
-                <p className="mt-3 text-sm" style={{ color: 'var(--text-secondary)' }}>
-                  Generating response...
+      <div className="flex-1 overflow-hidden relative">
+        <div className="h-full overflow-y-auto pr-6 sm:pr-10 pt-6 pb-44" style={{ scrollbarGutter: 'stable' }}>
+          <div className="mx-auto w-full max-w-4xl space-y-5">
+            {!hasMessages && (
+              <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
+                <h3 className="text-lg font-medium" style={{ color: 'var(--text-primary)' }}>
+                  Cabin Assistant is ready
+                </h3>
+                <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+                  Ask a question or share an update whenever you're ready to begin.
                 </p>
               </div>
-            </div>
-          )}
-        </div>
-        <div ref={messagesEndRef} />
-      </div>
+            )}
 
-      <div
-        className="border-t px-8 py-6"
-        style={{
-          background: 'var(--bg-secondary)',
-          borderColor: 'var(--border-faint)'
-        }}
-      >
-        <form onSubmit={handleSubmit} className="max-w-4xl mx-auto">
-          <div className="flex space-x-3">
-            <input
-              type="text"
-              value={input}
-              onChange={(event) => setInput(event.target.value)}
-              placeholder="Ask about your documentation..."
-              className="flex-1 input-base"
-              disabled={isProcessing}
-            />
-            <button
-              type="submit"
-              disabled={!input.trim() || isProcessing}
-              className="px-6 py-3 rounded-lg font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-              style={{
-                background: 'var(--accent)',
-                color: 'white'
-              }}
-            >
-              <Send size={20} />
-            </button>
+            {messages.map((message, index) => {
+              const isUser = message.role === 'user'
+              return (
+                <div key={message.id} className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
+                  <div className={isUser ? 'max-w-xl space-y-2' : 'w-full space-y-2'}>
+                    <div className={isUser ? "py-2 px-3 rounded-lg border" : "py-2"} style={isUser ? { borderColor: 'var(--border-light)' } : {}}>
+                      {isUser ? (
+                        <p className="whitespace-pre-wrap text-base leading-relaxed" style={{ color: 'var(--text-primary)' }}>
+                          {message.content}
+                        </p>
+                      ) : (
+                        <SmartResponse
+                          answer={message.content}
+                          query={messages[index - 1]?.content || ''}
+                          citations={message.citations || []}
+                        />
+                      )}
+                    </div>
+                    <div
+                      className={`text-xs flex items-center gap-2 ${isUser ? 'justify-end' : 'justify-start'}`}
+                      style={{ color: 'var(--text-muted)' }}
+                    >
+                      <span>{isUser ? 'You' : 'Cabin Assistant'}</span>
+                      <span>•</span>
+                      <span>{message.timestamp.toLocaleTimeString()}</span>
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+
+            {streamingPlaceholderVisible && (
+              <div className="flex justify-start">
+                <div className="w-full">
+                  <div
+                    className="rounded-xl border px-4 py-5 text-center"
+                    style={{
+                      background: 'var(--bg-secondary)',
+                      borderColor: 'var(--border-faint)'
+                    }}
+                  >
+                    <Loader2 className="mx-auto animate-spin" style={{ color: 'var(--accent)' }} />
+                    <p className="mt-3 text-sm" style={{ color: 'var(--text-secondary)' }}>
+                      Generating response...
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div ref={messagesEndRef} />
           </div>
-        </form>
+        </div>
+
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 pb-6 pr-[calc(1.5rem+8px)] sm:pr-[calc(2.5rem+8px)]">
+          <div className="mx-auto w-full max-w-6xl px-6 sm:px-10">
+            <div className="w-full">
+              <form onSubmit={handleSubmit} className="pointer-events-auto">
+              <div
+                className="border rounded-2xl px-4 py-2.5 sm:px-5 sm:py-3 shadow-lg"
+                style={{
+                  background: 'var(--bg-secondary)',
+                  borderColor: 'var(--border-light)',
+                  boxShadow: '0 18px 42px rgba(15, 23, 42, 0.16)'
+                }}
+              >
+                <textarea
+                  rows={2}
+                  value={input}
+                  onChange={(event) => setInput(event.target.value)}
+                  onKeyDown={handleComposerKeyDown}
+                  placeholder="Ask about your documentation..."
+                  className="w-full resize-none bg-transparent text-base leading-relaxed focus:outline-none"
+                  style={{ color: 'var(--text-primary)' }}
+                  disabled={isProcessing && !canStop}
+                />
+                <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
+                  <div className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                    Press Enter to send · Shift + Enter for a new line
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {canStop && (
+                      <button
+                        type="button"
+                        onClick={handleStopGeneration}
+                        className="flex items-center gap-2 px-3 py-1.5 text-xs sm:text-sm rounded-full border transition-colors"
+                        style={{
+                          borderColor: 'var(--border-light)',
+                          color: 'var(--text-secondary)'
+                        }}
+                      >
+                        <StopCircle size={16} />
+                        Stop
+                      </button>
+                    )}
+                    <button
+                      type="submit"
+                      disabled={!input.trim() || isProcessing}
+                      className="flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-full transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                      style={{
+                        background: 'var(--accent)',
+                        color: 'white'
+                      }}
+                    >
+                      <Send size={18} />
+                      Send
+                    </button>
+                  </div>
+                </div>
+              </div>
+              </form>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   )

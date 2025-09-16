@@ -279,50 +279,50 @@ export default function Home() {
   )
 
   return (
-    <main className="h-screen flex overflow-hidden" style={{ background: 'var(--bg-primary)' }}>
-      <ConversationHistory
-        conversations={conversations}
-        activeConversationId={activeConversationId}
-        onSelectConversation={setActiveConversationId}
-        onPinConversation={handlePinConversation}
-        onDeleteConversation={handleDeleteConversation}
-        onNewConversation={handleNewConversation}
-        onDeleteAllConversations={handleDeleteAllConversations}
-      />
-      <div className="flex-1 flex flex-col overflow-hidden">
-        <header
-          className="border-b p-4 flex items-center justify-between"
-          style={{
-            background: 'var(--bg-secondary)',
-            borderColor: 'var(--border-faint)'
-          }}
-        >
-          <h1 className="text-xl font-semibold" style={{ color: 'var(--text-primary)' }}>
-            RAG Documentation Assistant
-          </h1>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setIsIndexingOpen(true)}
-              className="header-button p-2 rounded-lg transition-colors"
-              style={{
-                color: 'var(--text-secondary)'
-              }}
-              title="Confluence Indexing"
-            >
-              <Database size={20} />
-            </button>
-            <button
-              onClick={() => setIsSettingsOpen(true)}
-              className="header-button p-2 rounded-lg transition-colors"
-              style={{
-                color: 'var(--text-secondary)'
-              }}
-              title="Settings"
-            >
-              <Settings size={20} />
-            </button>
-          </div>
-        </header>
+    <main className="h-screen flex flex-col overflow-hidden" style={{ background: 'var(--bg-primary)' }}>
+      <header
+        className="border-b p-4 flex items-center justify-between flex-shrink-0"
+        style={{
+          background: 'var(--bg-secondary)',
+          borderColor: 'var(--border-faint)'
+        }}
+      >
+        <h1 className="text-xl font-semibold" style={{ color: 'var(--text-primary)' }}>
+          Cabin
+        </h1>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setIsIndexingOpen(true)}
+            className="header-button p-2 rounded-lg transition-colors"
+            style={{
+              color: 'var(--text-secondary)'
+            }}
+            title="Confluence Indexing"
+          >
+            <Database size={20} />
+          </button>
+          <button
+            onClick={() => setIsSettingsOpen(true)}
+            className="header-button p-2 rounded-lg transition-colors"
+            style={{
+              color: 'var(--text-secondary)'
+            }}
+            title="Settings"
+          >
+            <Settings size={20} />
+          </button>
+        </div>
+      </header>
+      <div className="flex-1 flex overflow-hidden">
+        <ConversationHistory
+          conversations={conversations}
+          activeConversationId={activeConversationId}
+          onSelectConversation={setActiveConversationId}
+          onPinConversation={handlePinConversation}
+          onDeleteConversation={handleDeleteConversation}
+          onNewConversation={handleNewConversation}
+          onDeleteAllConversations={handleDeleteAllConversations}
+        />
         <ChatInterface
           conversation={activeConversation}
           onMessagesChange={setActiveConversationMessages}

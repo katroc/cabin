@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'RAG Documentation Assistant',
+  title: 'Cabin',
   description: 'Intelligent Confluence documentation assistant',
 }
 

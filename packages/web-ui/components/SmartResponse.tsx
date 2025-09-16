@@ -29,7 +29,7 @@ interface ResponseSection {
   icon?: string;
 }
 
-export const SmartResponse: React.FC<SmartResponseProps> = ({
+const SmartResponse: React.FC<SmartResponseProps> = ({
   answer,
   query,
   citations = [],
@@ -367,3 +367,5 @@ export const SmartResponse: React.FC<SmartResponseProps> = ({
     </div>
   );
 };
+
+export default SmartResponse;
