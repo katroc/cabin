@@ -23,6 +23,27 @@ class Settings(BaseSettings):
     child_chunk_size: int = Field(400, description="The target size for child chunks in characters")
     child_chunk_overlap: int = Field(50, description="The overlap between child chunks in characters")
     top_k: int = Field(5, description="The number of similar child chunks to retrieve")
+    lexical_overlap_weight: float = Field(
+        0.3,
+        ge=0.0,
+        le=1.0,
+        description="Weight applied to lexical relevance when ranking retrieved chunks",
+    )
+    min_lexical_score: float = Field(
+        0.1,
+        ge=0.0,
+        le=1.0,
+        description="Minimum normalized lexical score required to keep a chunk in the result set",
+    )
+    stopwords_language: str = Field(
+        "en",
+        description="ISO 639-1/2 language code for stopword removal during lexical scoring. Leave blank to disable.",
+    )
+    min_token_length: int = Field(
+        3,
+        ge=1,
+        description="Minimum token length (in characters) considered during lexical scoring",
+    )
 
     class Config:
         env_file = ".env"

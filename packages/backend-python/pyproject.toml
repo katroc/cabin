@@ -13,6 +13,9 @@ dependencies = [
     "pydantic",
     "pydantic-settings",
     "markdown-it-py",
+    "rank-bm25",
+    "stopwordsiso",
+    "setuptools",
 ]
 
 [project.scripts]

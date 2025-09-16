@@ -8,6 +8,9 @@ class DocumentMetadata(BaseModel):
     source_url: Optional[str] = None
     headings: Optional[List[str]] = Field(default_factory=list)
     last_modified: Optional[str] = None
+    document_id: Optional[str] = None
+    parent_chunk_id: Optional[str] = None
+    chunk_id: Optional[str] = None
     chunk_type: Optional[str] = None
 
 class ParentChunk(BaseModel):

@@ -8,3 +8,6 @@ pydantic
 pydantic-settings
 markdown-it-py
 aiohttp
+rank-bm25
+stopwordsiso
+setuptools
