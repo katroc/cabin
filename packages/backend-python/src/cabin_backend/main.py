@@ -2,10 +2,16 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.responses import StreamingResponse
 
-from .models import IngestRequest, ChatRequest, ChatResponse
+from .models import (
+    IngestRequest, ChatRequest, ChatResponse,
+    DataSourceIndexRequest, DataSourceDiscoveryRequest, DataSourceTestRequest,
+    DataSourceIndexResponse, DataSourceProgressResponse, DataSourceInfoResponse
+)
 from .chunker import SemanticChunker
 from .vector_store import VectorStore
 from .generation import Generator
+from .data_sources.manager import DataSourceManager
+from .data_sources.confluence import ConfluenceDataSource  # Import to register
 
 # --- App Initialization ---
 app = FastAPI(
@@ -28,6 +34,7 @@ try:
     chunker_service = SemanticChunker()
     vector_store_service = VectorStore()
     generator_service = Generator()
+    data_source_manager = DataSourceManager(chunker_service, vector_store_service)
 except Exception as e:
     # If services fail to initialize (e.g., can't connect to ChromaDB),
     # log the error and prevent the app from starting gracefully.
@@ -37,13 +44,44 @@ except Exception as e:
     chunker_service = None
     vector_store_service = None
     generator_service = None
+    data_source_manager = None
 
 # --- Health Check ---
 @app.get("/health")
 def health_check():
-    if not all([chunker_service, vector_store_service, generator_service]):
+    if not all([chunker_service, vector_store_service, generator_service, data_source_manager]):
         raise HTTPException(status_code=503, detail="Services are not available.")
-    return {"status": "ok"}
+
+    # Check individual service health
+    service_status = {}
+
+    # Check vector store connectivity
+    if vector_store_service:
+        service_status["vector_store"] = vector_store_service.health_check()
+    else:
+        service_status["vector_store"] = False
+
+    # Check if all critical services are healthy
+    all_healthy = all([
+        chunker_service is not None,
+        vector_store_service is not None,
+        generator_service is not None,
+        data_source_manager is not None,
+        service_status.get("vector_store", False)
+    ])
+
+    if not all_healthy:
+        return {
+            "status": "degraded",
+            "services": service_status,
+            "message": "Some services are not healthy"
+        }, 503
+
+    return {
+        "status": "ok",
+        "services": service_status,
+        "message": "All services are healthy"
+    }
 
 # --- API Endpoints ---
 
@@ -104,3 +142,172 @@ def chat_stream(request: ChatRequest):
         # The client will see a dropped connection.
         # Proper handling would involve a more complex setup.
         return StreamingResponse("Error processing request.", media_type="text/plain", status_code=500)
+
+# --- Data Source API Endpoints ---
+
+@app.get("/api/data-sources")
+def get_data_sources() -> DataSourceInfoResponse:
+    """Get information about available data source types."""
+    if not data_source_manager:
+        raise HTTPException(status_code=503, detail="Data source manager not available.")
+
+    try:
+        sources = data_source_manager.get_available_sources()
+        return DataSourceInfoResponse(available_sources=sources)
+    except Exception as e:
+        print(f"Error getting data sources: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get data sources: {e}")
+
+@app.post("/api/data-sources/test-connection")
+async def test_data_source_connection(request: DataSourceTestRequest) -> dict:
+    """Test connection to a data source."""
+    if not data_source_manager:
+        raise HTTPException(status_code=503, detail="Data source manager not available.")
+
+    try:
+        success = await data_source_manager.test_connection(
+            request.source_type,
+            request.connection
+        )
+        return {"success": success}
+    except Exception as e:
+        print(f"Error testing connection: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to test connection: {e}")
+
+@app.post("/api/data-sources/discover")
+async def discover_data_sources(request: DataSourceDiscoveryRequest) -> dict:
+    """Discover available sources from a data source."""
+    if not data_source_manager:
+        raise HTTPException(status_code=503, detail="Data source manager not available.")
+
+    try:
+        sources = await data_source_manager.discover_sources(
+            request.source_type,
+            request.connection
+        )
+        return {"sources": sources}
+    except Exception as e:
+        print(f"Error discovering sources: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to discover sources: {e}")
+
+@app.post("/api/data-sources/index", status_code=202)
+async def start_data_source_indexing(request: DataSourceIndexRequest) -> DataSourceIndexResponse:
+    """Start indexing from a data source."""
+    if not data_source_manager:
+        raise HTTPException(status_code=503, detail="Data source manager not available.")
+
+    try:
+        job_id = await data_source_manager.start_indexing(
+            request.source_type,
+            request.connection,
+            request.source_ids,
+            request.config
+        )
+        return DataSourceIndexResponse(
+            job_id=job_id,
+            status="pending",
+            message="Indexing job started successfully"
+        )
+    except Exception as e:
+        print(f"Error starting indexing: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to start indexing: {e}")
+
+@app.get("/api/data-sources/jobs/{job_id}")
+def get_indexing_job_progress(job_id: str) -> DataSourceProgressResponse:
+    """Get the progress of an indexing job."""
+    if not data_source_manager:
+        raise HTTPException(status_code=503, detail="Data source manager not available.")
+
+    try:
+        progress = data_source_manager.get_job_progress(job_id)
+        if not progress:
+            raise HTTPException(status_code=404, detail="Job not found")
+
+        return DataSourceProgressResponse(
+            job_id=progress.job_id,
+            status=progress.status,
+            total_items=progress.total_items,
+            processed_items=progress.processed_items,
+            current_item=progress.current_item,
+            error_message=progress.error_message,
+            started_at=progress.started_at,
+            completed_at=progress.completed_at
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error getting job progress: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get job progress: {e}")
+
+@app.get("/api/data-sources/jobs")
+def get_all_indexing_jobs() -> dict:
+    """Get all indexing jobs."""
+    if not data_source_manager:
+        raise HTTPException(status_code=503, detail="Data source manager not available.")
+
+    try:
+        jobs = data_source_manager.get_all_jobs()
+        return {"jobs": [
+            DataSourceProgressResponse(
+                job_id=job.job_id,
+                status=job.status,
+                total_items=job.total_items,
+                processed_items=job.processed_items,
+                current_item=job.current_item,
+                error_message=job.error_message,
+                started_at=job.started_at,
+                completed_at=job.completed_at
+            ) for job in jobs
+        ]}
+    except Exception as e:
+        print(f"Error getting jobs: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get jobs: {e}")
+
+@app.delete("/api/data-sources/jobs/{job_id}")
+def cancel_indexing_job(job_id: str) -> dict:
+    """Cancel an indexing job."""
+    if not data_source_manager:
+        raise HTTPException(status_code=503, detail="Data source manager not available.")
+
+    try:
+        success = data_source_manager.cancel_job(job_id)
+        if not success:
+            raise HTTPException(status_code=404, detail="Job not found or not running")
+
+        return {"success": True, "message": "Job cancelled successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error cancelling job: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to cancel job: {e}")
+
+# --- Service Management Endpoints ---
+
+@app.post("/api/services/vector-store/reconnect")
+def reconnect_vector_store() -> dict:
+    """Manually trigger ChromaDB reconnection."""
+    if not vector_store_service:
+        raise HTTPException(status_code=503, detail="Vector store service not available.")
+
+    try:
+        # Force reconnection
+        vector_store_service._initialize_chroma()
+        return {"success": True, "message": "Vector store reconnected successfully"}
+    except Exception as e:
+        print(f"Error reconnecting vector store: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to reconnect vector store: {e}")
+
+@app.get("/api/services/status")
+def get_services_status() -> dict:
+    """Get detailed status of all services."""
+    status = {
+        "chunker": chunker_service is not None,
+        "vector_store": vector_store_service is not None and vector_store_service.health_check() if vector_store_service else False,
+        "generator": generator_service is not None,
+        "data_source_manager": data_source_manager is not None
+    }
+
+    return {
+        "services": status,
+        "overall_health": all(status.values())
+    }

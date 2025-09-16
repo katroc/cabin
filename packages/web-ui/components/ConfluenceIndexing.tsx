@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Database, Play, Trash2, RefreshCw, CheckCircle, AlertCircle, Clock } from 'lucide-react'
+import { Database, Play, Trash2, RefreshCw, CheckCircle, AlertCircle, Clock, Wifi } from 'lucide-react'
 
 interface ConfluenceConfig {
   baseUrl: string
@@ -44,6 +44,8 @@ export default function ConfluenceIndexing({ isOpen, onClose }: ConfluenceIndexi
   const [spaceInput, setSpaceInput] = useState('')
   const [jobs, setJobs] = useState<IndexingJob[]>([])
   const [isIndexing, setIsIndexing] = useState(false)
+  const [isTestingConnection, setIsTestingConnection] = useState(false)
+  const [connectionStatus, setConnectionStatus] = useState<'untested' | 'success' | 'failed'>('untested')
 
   if (!isOpen) return null
 
@@ -64,104 +66,174 @@ export default function ConfluenceIndexing({ isOpen, onClose }: ConfluenceIndexi
     }))
   }
 
+  const handleTestConnection = async () => {
+    if (!config.baseUrl) {
+      alert('Please provide a Confluence base URL first')
+      return
+    }
+
+    setIsTestingConnection(true)
+    setConnectionStatus('untested')
+
+    try {
+      const testResponse = await fetch('http://localhost:8788/api/data-sources/test-connection', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          source_type: 'confluence',
+          connection: {
+            base_url: config.baseUrl,
+            username: config.username || null,
+            password: config.password || null
+          }
+        })
+      })
+
+      if (testResponse.ok) {
+        const testData = await testResponse.json()
+        setConnectionStatus(testData.success ? 'success' : 'failed')
+      } else {
+        setConnectionStatus('failed')
+      }
+    } catch (error) {
+      console.error('Connection test failed:', error)
+      setConnectionStatus('failed')
+    } finally {
+      setIsTestingConnection(false)
+    }
+  }
+
   const handleStartIndexing = async () => {
     if (!config.baseUrl) {
       alert('Please provide at least a Confluence base URL')
       return
     }
 
-    if (!config.indexAllSpaces && config.spaces.length === 0) {
-      alert('Please add at least one space or select "Index All Spaces"')
-      return
-    }
-
     setIsIndexing(true)
-
-    const newJob: IndexingJob = {
-      id: Date.now().toString(),
-      status: 'running',
-      progress: 0,
-      totalPages: 0,
-      indexedPages: 0,
-      startedAt: new Date(),
-      config: { ...config }
-    }
-
-    setJobs(prev => [newJob, ...prev])
 
     try {
       // Determine which spaces to index
       let spacesToIndex = config.spaces
       if (config.indexAllSpaces) {
-        // For demonstration, we'll use some common space examples
-        // In a real implementation, this would fetch all spaces from Confluence API
-        spacesToIndex = ['PROJ', 'DOCS', 'KB', 'DEV', 'QA']
-      }
-
-      // Start the indexing process by calling the backend
-      for (const space of spacesToIndex) {
-        // Create a test document for each space
-        const testContent = `
-          <h1>${space} Space Documentation</h1>
-          <h2>Getting Started</h2>
-          <p>Welcome to the ${space} space. This contains documentation for the ${space} project.</p>
-          <h3>Overview</h3>
-          <p>This space contains important information about our ${space} workflows and processes.</p>
-          <h3>Key Features</h3>
-          <ul>
-            <li>Feature 1: Core functionality</li>
-            <li>Feature 2: Advanced tools</li>
-            <li>Feature 3: Integration capabilities</li>
-          </ul>
-        `
-
-        const indexResponse = await fetch('http://localhost:8788/api/index', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            page_title: `${space} Space Documentation`,
-            text: testContent,
-            space_name: space,
-            source_url: `${config.baseUrl}/spaces/${space}`,
-            last_modified: new Date().toISOString()
-          })
-        })
-
-        if (!indexResponse.ok) {
-          throw new Error(`Failed to index space ${space}`)
-        }
-
-        // Update progress
-        const currentProgress = ((spacesToIndex.indexOf(space) + 1) / spacesToIndex.length) * 100
-        setJobs(prev => prev.map(job =>
-          job.id === newJob.id
-            ? {
-                ...job,
-                progress: Math.floor(currentProgress),
-                indexedPages: spacesToIndex.indexOf(space) + 1,
-                totalPages: spacesToIndex.length
+        // Discover all available spaces
+        try {
+          const discoveryResponse = await fetch('http://localhost:8788/api/data-sources/discover', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              source_type: 'confluence',
+              connection: {
+                base_url: config.baseUrl,
+                username: config.username || null,
+                password: config.password || null
               }
-            : job
-        ))
+            })
+          })
 
-        // Add delay between requests
-        await new Promise(resolve => setTimeout(resolve, 1000))
+          if (discoveryResponse.ok) {
+            const discoveryData = await discoveryResponse.json()
+            spacesToIndex = discoveryData.sources.map((s: any) => s.id)
+          } else {
+            // Fallback to empty array if discovery fails
+            spacesToIndex = []
+          }
+        } catch (error) {
+          console.error('Failed to discover spaces:', error)
+          spacesToIndex = []
+        }
       }
 
-      setJobs(prev => prev.map(job =>
-        job.id === newJob.id
-          ? { ...job, status: 'completed', completedAt: new Date() }
-          : job
-      ))
+      // Start the indexing job
+      const indexingResponse = await fetch('http://localhost:8788/api/data-sources/index', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          source_type: 'confluence',
+          connection: {
+            base_url: config.baseUrl,
+            username: config.username || null,
+            password: config.password || null
+          },
+          source_ids: spacesToIndex,
+          config: {
+            max_items: config.maxPages,
+            include_attachments: config.includeAttachments
+          }
+        })
+      })
+
+      if (!indexingResponse.ok) {
+        throw new Error('Failed to start indexing job')
+      }
+
+      const indexingData = await indexingResponse.json()
+      const jobId = indexingData.job_id
+
+      // Create job entry
+      const newJob: IndexingJob = {
+        id: jobId,
+        status: 'running',
+        progress: 0,
+        totalPages: 0,
+        indexedPages: 0,
+        startedAt: new Date(),
+        config: { ...config }
+      }
+
+      setJobs(prev => [newJob, ...prev])
+
+      // Poll for progress updates
+      const pollProgress = async () => {
+        try {
+          const progressResponse = await fetch(`http://localhost:8788/api/data-sources/jobs/${jobId}`)
+
+          if (progressResponse.ok) {
+            const progressData = await progressResponse.json()
+
+            setJobs(prev => prev.map(job =>
+              job.id === jobId
+                ? {
+                    ...job,
+                    status: progressData.status,
+                    progress: progressData.total_items > 0
+                      ? Math.min(100, Math.max(0, Math.floor((progressData.processed_items / progressData.total_items) * 100)))
+                      : progressData.processed_items > 0 ? 50 : 0, // Show some progress even without total
+                    totalPages: progressData.total_items,
+                    indexedPages: progressData.processed_items,
+                    error: progressData.error_message,
+                    completedAt: progressData.completed_at ? new Date(progressData.completed_at) : undefined
+                  }
+                : job
+            ))
+
+            // Continue polling if still running
+            if (progressData.status === 'running' || progressData.status === 'pending') {
+              setTimeout(pollProgress, 2000) // Poll every 2 seconds
+            } else {
+              setIsIndexing(false)
+            }
+          } else {
+            console.error('Failed to get progress update')
+            setIsIndexing(false)
+          }
+        } catch (error) {
+          console.error('Error polling progress:', error)
+          setIsIndexing(false)
+        }
+      }
+
+      // Start polling
+      setTimeout(pollProgress, 1000)
+
     } catch (error) {
-      setJobs(prev => prev.map(job =>
-        job.id === newJob.id
-          ? { ...job, status: 'failed', error: 'Failed to index Confluence content' }
-          : job
-      ))
-    } finally {
+      console.error('Error starting indexing:', error)
+      alert('Failed to start indexing. Please check your configuration and try again.')
       setIsIndexing(false)
     }
   }
@@ -225,7 +297,10 @@ export default function ConfluenceIndexing({ isOpen, onClose }: ConfluenceIndexi
                 <input
                   type="text"
                   value={config.baseUrl}
-                  onChange={(e) => setConfig(prev => ({ ...prev, baseUrl: e.target.value }))}
+                  onChange={(e) => {
+                    setConfig(prev => ({ ...prev, baseUrl: e.target.value }))
+                    setConnectionStatus('untested')
+                  }}
                   placeholder="https://yourcompany.atlassian.net/wiki"
                   className="input-base"
                 />
@@ -239,7 +314,10 @@ export default function ConfluenceIndexing({ isOpen, onClose }: ConfluenceIndexi
                   <input
                     type="text"
                     value={config.username}
-                    onChange={(e) => setConfig(prev => ({ ...prev, username: e.target.value }))}
+                    onChange={(e) => {
+                      setConfig(prev => ({ ...prev, username: e.target.value }))
+                      setConnectionStatus('untested')
+                    }}
                     placeholder="user@company.com"
                     className="input-base"
                   />
@@ -251,11 +329,48 @@ export default function ConfluenceIndexing({ isOpen, onClose }: ConfluenceIndexi
                   <input
                     type="password"
                     value={config.password}
-                    onChange={(e) => setConfig(prev => ({ ...prev, password: e.target.value }))}
+                    onChange={(e) => {
+                      setConfig(prev => ({ ...prev, password: e.target.value }))
+                      setConnectionStatus('untested')
+                    }}
                     placeholder="API token or password"
                     className="input-base"
                   />
                 </div>
+              </div>
+
+              {/* Test Connection */}
+              <div className="form-group">
+                <button
+                  onClick={handleTestConnection}
+                  disabled={isTestingConnection || !config.baseUrl}
+                  className="btn-secondary flex items-center gap-2"
+                >
+                  {isTestingConnection ? (
+                    <RefreshCw size={16} className="animate-spin" />
+                  ) : (
+                    <Wifi size={16} />
+                  )}
+                  {isTestingConnection ? 'Testing...' : 'Test Connection'}
+                </button>
+
+                {connectionStatus !== 'untested' && (
+                  <div className="flex items-center gap-2 mt-2 text-sm" style={{
+                    color: connectionStatus === 'success' ? 'var(--success)' : 'var(--error)'
+                  }}>
+                    {connectionStatus === 'success' ? (
+                      <>
+                        <CheckCircle size={16} />
+                        Connection successful
+                      </>
+                    ) : (
+                      <>
+                        <AlertCircle size={16} />
+                        Connection failed
+                      </>
+                    )}
+                  </div>
+                )}
               </div>
 
               <div className="form-group">
@@ -420,18 +535,18 @@ export default function ConfluenceIndexing({ isOpen, onClose }: ConfluenceIndexi
                     {job.status === 'running' && (
                       <div className="mb-2">
                         <div className="flex justify-between text-sm mb-1" style={{ color: 'var(--text-secondary)' }}>
-                          <span>Progress: {job.progress}%</span>
+                          <span>Progress: {Math.min(100, Math.max(0, job.progress || 0))}%</span>
                           <span>{job.indexedPages} pages indexed</span>
                         </div>
                         <div
-                          className="w-full h-2 rounded-full"
+                          className="w-full h-2 rounded-full overflow-hidden"
                           style={{ background: 'var(--bg-primary)' }}
                         >
                           <div
                             className="h-2 rounded-full transition-all"
                             style={{
                               background: 'var(--accent)',
-                              width: `${job.progress}%`
+                              width: `${Math.min(100, Math.max(0, job.progress || 0))}%`
                             }}
                           />
                         </div>

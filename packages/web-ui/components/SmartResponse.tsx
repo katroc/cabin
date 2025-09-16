@@ -3,10 +3,21 @@
 import React from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import rehypeRaw from 'rehype-raw';
+
+interface Citation {
+  id: string;
+  page_title: string;
+  space_name?: string;
+  source_url?: string;
+  page_section?: string;
+  last_modified?: string;
+}
 
 interface SmartResponseProps {
   answer: string;
   query: string;
+  citations?: Citation[];
   animate?: boolean;
 }
 
@@ -21,10 +32,12 @@ interface ResponseSection {
 export const SmartResponse: React.FC<SmartResponseProps> = ({
   answer,
   query,
+  citations = [],
   animate = false
 }) => {
   const [displayedAnswer, setDisplayedAnswer] = React.useState(animate ? '' : answer);
   const [isAnimating, setIsAnimating] = React.useState(animate);
+  const containerRef = React.useRef<HTMLDivElement | null>(null);
 
   // Animation effect
   React.useEffect(() => {
@@ -133,10 +146,65 @@ export const SmartResponse: React.FC<SmartResponseProps> = ({
   };
 
   const queryType = detectQueryType(query);
+
+  // Map unicode superscript digits to their numeric equivalents
+  const superscriptMap: Record<string, string> = {
+    '¹': '1', '²': '2', '³': '3', '⁴': '4', '⁵': '5', '⁶': '6', '⁷': '7', '⁸': '8', '⁹': '9'
+  };
+
+  // Transform any superscript digits found in text nodes into clickable citation refs
+  const renderWithCitations = (children: React.ReactNode): React.ReactNode => {
+    const transform = (node: React.ReactNode): React.ReactNode => {
+      if (typeof node === 'string') {
+        const parts = node.split(/([¹²³⁴⁵⁶⁷⁸⁹])/g);
+        return parts.map((part, idx) => {
+          const num = superscriptMap[part as keyof typeof superscriptMap];
+          if (num) {
+            const cite = citations.find(c => String(c.id) === String(num));
+            const title = cite?.page_title || `Source ${num}`;
+            return (
+              <sup key={`cite-${idx}`} className="cite-ref" data-cite={num}>
+                <a href={`#src-${num}`} aria-label={`Jump to source ${num}`} title={title}>{num}</a>
+              </sup>
+            );
+          }
+          return part;
+        });
+      }
+      if (Array.isArray(node)) return node.map((n, i) => <React.Fragment key={i}>{transform(n)}</React.Fragment>);
+      if (React.isValidElement(node) && (node.props as any)?.children) {
+        return React.cloneElement(node as React.ReactElement, {
+          children: transform((node.props as any).children)
+        });
+      }
+      return node;
+    };
+    return transform(children);
+  };
+
+  // Handle click on inline citation to smooth scroll + temporary highlight the target source
+  const onContentClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    const target = e.target as HTMLElement;
+    const anchor = target.closest('a');
+    if (!anchor) return;
+    const href = anchor.getAttribute('href');
+    if (href && href.startsWith('#src-')) {
+      e.preventDefault();
+      const id = href.slice(1);
+      const el = document.getElementById(id);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        el.classList.add('citation-highlight');
+        window.setTimeout(() => el.classList.remove('citation-highlight'), 1400);
+        history.replaceState(null, '', href);
+      }
+    }
+  };
+
   const sections = parseResponse(displayedAnswer, queryType);
 
   return (
-    <div className={`smart-response ${getResponseClass(queryType)}`}>
+    <div ref={containerRef} className={`smart-response ${getResponseClass(queryType)}`}>
       {/* Query type indicator */}
       <div className="response-type-indicator">
         {queryType === 'howto' && (
@@ -174,7 +242,7 @@ export const SmartResponse: React.FC<SmartResponseProps> = ({
       </div>
 
       {/* Main content */}
-      <div className="response-content">
+      <div className="response-content" onClick={onContentClick}>
         {sections.map((section, index) => (
           <div key={index} className={`response-section section-${section.type}`}>
             {section.type !== 'main' && (
@@ -185,6 +253,7 @@ export const SmartResponse: React.FC<SmartResponseProps> = ({
             <div className="section-body">
               <ReactMarkdown
                 remarkPlugins={[remarkGfm]}
+                rehypePlugins={[rehypeRaw]}
                 components={{
                   // Custom rendering for different elements
                   code: ({ children, className }) => {
@@ -201,14 +270,15 @@ export const SmartResponse: React.FC<SmartResponseProps> = ({
                   },
 
                   // Enhanced list rendering
-                  ol: ({ children }) => <ol className="ordered-list">{children}</ol>,
-                  ul: ({ children }) => <ul className="unordered-list">{children}</ul>,
-                  li: ({ children }) => <li className="list-item">{children}</li>,
+                  ol: ({ children }) => <ol className="ordered-list">{renderWithCitations(children)}</ol>,
+                  ul: ({ children }) => <ul className="unordered-list">{renderWithCitations(children)}</ul>,
+                  li: ({ children }) => <li className="list-item">{renderWithCitations(children)}</li>,
 
                   // Enhanced headings
-                  h1: ({ children }) => <h1 className="response-h1">{children}</h1>,
-                  h2: ({ children }) => <h2 className="response-h2">{children}</h2>,
-                  h3: ({ children }) => <h3 className="response-h3">{children}</h3>,
+                  h1: ({ children }) => <h1 className="response-h1">{renderWithCitations(children)}</h1>,
+                  h2: ({ children }) => <h2 className="response-h2">{renderWithCitations(children)}</h2>,
+                  h3: ({ children }) => <h3 className="response-h3">{renderWithCitations(children)}</h3>,
+                  p: ({ children }) => <p>{renderWithCitations(children)}</p>,
 
                   // Enhanced emphasis
                   strong: ({ children }) => <strong className="text-bold">{children}</strong>,
@@ -247,6 +317,52 @@ export const SmartResponse: React.FC<SmartResponseProps> = ({
             </div>
           </div>
         ))}
+
+        {/* Citations Section */}
+        {citations && citations.length > 0 && (
+          <div className="citations-section">
+            <div className="citations-header">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" className="citations-icon">
+                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+              </svg>
+              <span className="citations-title">Sources</span>
+            </div>
+            <div className="citations-list">
+              {citations.map((citation) => (
+                <div key={citation.id} id={`src-${citation.id}`} className="citation-item">
+                  <div className="citation-id">{citation.id}</div>
+                  <div className="citation-content">
+                    <div className="citation-title">{citation.page_title}</div>
+                    {citation.space_name && (
+                      <div className="citation-space">Space: {citation.space_name}</div>
+                    )}
+                    {citation.page_section && (
+                      <div className="citation-section">Section: {citation.page_section}</div>
+                    )}
+                    {citation.source_url && (
+                      <a
+                        href={citation.source_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="citation-link"
+                      >
+                        View Source
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                          <path d="M19 19H5V5h7V3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z"/>
+                        </svg>
+                      </a>
+                    )}
+                    {citation.last_modified && (
+                      <div className="citation-date">
+                        Last modified: {new Date(citation.last_modified).toLocaleDateString()}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

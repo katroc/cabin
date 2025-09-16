@@ -4,10 +4,20 @@ import { useState } from 'react'
 import { Send } from 'lucide-react'
 import { SmartResponse } from './SmartResponse'
 
+interface Citation {
+  id: string;
+  page_title: string;
+  space_name?: string;
+  source_url?: string;
+  page_section?: string;
+  last_modified?: string;
+}
+
 interface Message {
   id: string
   role: 'user' | 'assistant'
   content: string
+  citations?: Citation[]
   timestamp: Date
 }
 
@@ -42,7 +52,7 @@ export default function ChatInterface() {
     setMessages(prev => [...prev, assistantMessage])
 
     try {
-      const response = await fetch('http://localhost:8788/api/chat/stream', {
+      const response = await fetch('http://localhost:8788/api/chat', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -52,25 +62,18 @@ export default function ChatInterface() {
 
       if (!response.ok) throw new Error('Network response was not ok')
 
-      const reader = response.body?.getReader()
-      if (!reader) throw new Error('No response body')
+      const data = await response.json()
 
-      const decoder = new TextDecoder()
-      let buffer = ''
-
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-
-        buffer += decoder.decode(value, { stream: true })
-
-        // Update the assistant message with the accumulated content
-        setMessages(prev => prev.map(msg =>
-          msg.id === assistantMessageId
-            ? { ...msg, content: buffer }
-            : msg
-        ))
-      }
+      // Update the assistant message with the complete response and citations
+      setMessages(prev => prev.map(msg =>
+        msg.id === assistantMessageId
+          ? {
+              ...msg,
+              content: data.response || 'No response received',
+              citations: data.citations || []
+            }
+          : msg
+      ))
     } catch (error) {
       console.error('Streaming error:', error)
       setMessages(prev => prev.map(msg =>
@@ -131,6 +134,7 @@ export default function ChatInterface() {
                   <SmartResponse
                     answer={message.content}
                     query={messages[index - 1]?.content || ''}
+                    citations={message.citations || []}
                   />
                   <div className="text-xs mt-3" style={{color: 'var(--text-muted)'}}>
                     Answered at {message.timestamp.toLocaleTimeString()}
@@ -181,13 +185,7 @@ export default function ChatInterface() {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               placeholder="Ask about your documentation..."
-              className="flex-1 px-4 py-3 rounded-lg border focus:outline-none focus:ring-2"
-              style={{
-                background: 'var(--bg-primary)',
-                borderColor: 'var(--border)',
-                color: 'var(--text-primary)',
-                '--tw-ring-color': 'var(--accent)'
-              }}
+              className="flex-1 input-base"
               disabled={isLoading}
             />
             <button
