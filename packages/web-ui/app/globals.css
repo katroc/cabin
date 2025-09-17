@@ -830,14 +830,14 @@ input[type="checkbox"] {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 1.65rem;
-  height: 1.4rem;
-  padding: 0 0.45rem;
+  min-width: 1rem;
+  height: 1rem;
+  padding: 0 0.3rem;
   border-radius: 999px;
   background: var(--cite-color);
   color: var(--cite-text);
   font-weight: var(--cite-weight);
-  font-size: var(--cite-inline-font, 0.75rem);
+  font-size: var(--cite-inline-font, 0.6rem);
   font-family: var(--cite-font);
   text-decoration: none;
   transition: transform 0.2s ease, filter 0.2s ease;

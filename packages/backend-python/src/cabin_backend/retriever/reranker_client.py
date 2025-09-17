@@ -24,6 +24,7 @@ class RerankerClient:
 
     def rerank(self, query: str, candidates: Dict[str, str]) -> List[Tuple[str, float]]:
         if not candidates:
+            logger.info("Reranker skipped: no candidates for query '%s'", query)
             return []
 
         payload = {
@@ -38,15 +39,28 @@ class RerankerClient:
                 response = requests.post(url, json=payload, timeout=self.timeout)
                 response.raise_for_status()
                 data = response.json()
-                return [(item["id"], float(item["score"])) for item in data.get("results", [])]
+                results = [(item["id"], float(item["score"])) for item in data.get("results", [])]
+                logger.info(
+                    "Reranker success via %s (attempt %d/%d): %d results",
+                    url,
+                    index,
+                    len(self._candidate_urls),
+                    len(results),
+                )
+                return results
             except Exception as exc:  # pragma: no cover - network path
                 last_error = exc
                 logger.debug("Reranker attempt %d failed for %s: %s", index, url, exc)
 
         if last_error is not None:
             logger.warning("Reranker sidecar unavailable (%s); using heuristic fallback", last_error)
-
-        return self._heuristic_fallback(query, candidates)
+        fallback = self._heuristic_fallback(query, candidates)
+        logger.info(
+            "Reranker heuristic fallback returning %d results for query '%s'",
+            len(fallback),
+            query,
+        )
+        return fallback
 
     def _build_url_candidates(self) -> List[str]:
         """Build an ordered list of URLs to attempt for reranking."""
