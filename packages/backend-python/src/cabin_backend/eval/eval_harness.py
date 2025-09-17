@@ -33,6 +33,16 @@ class EvalResult:
 
 
 @dataclass
+class EvalRunConfig:
+    """Optional overrides for evaluation runs."""
+
+    use_reranker: Optional[bool] = None
+    use_rm3: Optional[bool] = None
+    allow_reranker_fallback: Optional[bool] = None
+    enforce_provenance: Optional[bool] = None
+
+
+@dataclass
 class EvalSummary:
     results: List[EvalResult]
 
@@ -60,12 +70,22 @@ class EvalHarness:
         self.vector_store = vector_store
         self.generator = generator
 
-    def run(self, samples: Iterable[EvalSample]) -> EvalSummary:
+    def run(self, samples: Iterable[EvalSample], config: Optional[EvalRunConfig] = None) -> EvalSummary:
         results: List[EvalResult] = []
+        run_cfg = config or EvalRunConfig()
         for sample in samples:
             with self._timed() as timer:
-                chunks = self.vector_store.query(sample.question)
-                response = self.generator.ask(sample.question, chunks)
+                chunks = self.vector_store.query(
+                    sample.question,
+                    use_reranker=run_cfg.use_reranker,
+                    use_rm3=run_cfg.use_rm3,
+                    allow_reranker_fallback=run_cfg.allow_reranker_fallback,
+                )
+                response = self.generator.ask(
+                    sample.question,
+                    chunks,
+                    enforce_provenance=run_cfg.enforce_provenance,
+                )
             precision = self._citation_precision(response.citations, sample.expected_citations)
             results.append(
                 EvalResult(

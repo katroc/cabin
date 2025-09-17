@@ -16,7 +16,7 @@ from .retriever import (
     reciprocal_rank_fusion,
 )
 from .retriever.reranker_client import RerankerClient
-from .telemetry.metrics import metrics
+from .telemetry import metrics, sanitize_text
 
 logger = logging.getLogger(__name__)
 
@@ -49,13 +49,12 @@ class VectorStore:
         )
         self.reranker = RerankerClient()
         retrieval_cfg = settings.app_config.retrieval
-        self.rm3_expander: Optional[RM3Expander] = None
-        if settings.feature_flags.rm3:
-            self.rm3_expander = RM3Expander(
-                top_docs=retrieval_cfg.rm3_top_docs,
-                expansion_terms=retrieval_cfg.rm3_terms,
-                alpha=retrieval_cfg.rm3_alpha,
-            )
+        self.rm3_expander = RM3Expander(
+            top_docs=retrieval_cfg.rm3_top_docs,
+            expansion_terms=retrieval_cfg.rm3_terms,
+            alpha=retrieval_cfg.rm3_alpha,
+        )
+        self._last_lexical_rankings: List[Dict[str, Any]] = []
 
 
     def delete_document(self, document_id: str) -> None:
@@ -118,16 +117,26 @@ class VectorStore:
 
         return sanitized
 
-    def query(self, query_text: str, top_k: int = settings.top_k, filters: Optional[Dict[str, Any]] = None) -> List[ParentChunk]:
+    def query(
+        self,
+        query_text: str,
+        top_k: int = settings.top_k,
+        filters: Optional[Dict[str, Any]] = None,
+        *,
+        use_rm3: Optional[bool] = None,
+        use_reranker: Optional[bool] = None,
+        allow_reranker_fallback: Optional[bool] = None,
+    ) -> List[ParentChunk]:
         """
         Queries for child chunks and returns the corresponding parent chunks.
         This implements the core "Parent Document Retriever" logic.
         """
-        query_preview = query_text[:64].replace("\n", " ")
+        query_preview = sanitize_text(query_text[:64].replace("\n", " "))
         logger.debug(
             "VectorStore query received (len=%d): %s", len(query_text), query_preview
         )
         metrics.increment("retrieval.vector_store.calls")
+        self._last_lexical_rankings = []
         with metrics.timer("retrieval.vector_store.query_time", query=query_text):
             try:
                 # Check if collection has any documents
@@ -240,10 +249,15 @@ class VectorStore:
             return []
 
         candidates = list(parent_chunks_map.values())
+        all_chunk_lookup = {
+            record.get("metadata", {}).get("chunk_id") or record["chunk"].id: record["chunk"]
+            for record in candidates
+        }
 
         query_tokens = self._tokenize_text(query_text)
 
-        if self.rm3_expander and settings.feature_flags.rm3:
+        rm3_enabled = settings.feature_flags.rm3 if use_rm3 is None else use_rm3
+        if rm3_enabled:
             expanded_tokens = self.rm3_expander.expand(
                 query_tokens,
                 [candidate["tokens"] for candidate in candidates],
@@ -367,10 +381,29 @@ class VectorStore:
 
         chunk_lookup = {meta.get("chunk_id") or chunk.id: chunk for meta, chunk in extracted}
 
+        if query_tokens:
+            lexical_rankings = self.bm25_index.query(query_tokens)
+            self._last_lexical_rankings = [
+                {
+                    "chunk_id": doc_id,
+                    "score": score,
+                    "metadata": (all_chunk_lookup.get(doc_id) or chunk_lookup.get(doc_id)).metadata if (all_chunk_lookup.get(doc_id) or chunk_lookup.get(doc_id)) else None,
+                }
+                for doc_id, score in lexical_rankings
+            ]
+        else:
+            self._last_lexical_rankings = []
+
         ordered_ids = selected_ids
-        if settings.feature_flags.reranker:
+        reranker_enabled = settings.feature_flags.reranker if use_reranker is None else use_reranker
+        fallback_enabled = settings.feature_flags.heuristic_fallback if allow_reranker_fallback is None else allow_reranker_fallback
+        if reranker_enabled:
             reranker_input = {cid: chunk_lookup[cid].text for cid in selected_ids if cid in chunk_lookup}
-            reranked = self.reranker.rerank(query_text, reranker_input)
+            reranked = self.reranker.rerank(
+                query_text,
+                reranker_input,
+                allow_fallback=fallback_enabled,
+            )
             if reranked:
                 ordered_ids = [cid for cid, _ in reranked]
 
@@ -509,3 +542,7 @@ class VectorStore:
         except Exception as e:
             logger.error(f"Vector store health check failed: {e}")
             return False
+
+    def last_lexical_rankings(self) -> List[Dict[str, Any]]:
+        """Return lexical rankings from the most recent query call."""
+        return list(self._last_lexical_rankings)

@@ -25,7 +25,7 @@ _Last updated: 2025-09-17_
 ## Lexical Retrieval (BM25 + RM3)
 - [x] Upgrade the existing BM25 implementation in `VectorStore` into `lexical/bm25_index.py` (chunk-level, with stemming/stopwords) including persistence and refresh logic.
 - [x] Implement optional RM3 expansion in `lexical/rm3.py`, guarded by FEATURE_RM3 flag and configurable parameters (stub exists).
-- [ ] Expose combined lexical query interface returning scored candidates with metadata aligned to dense IDs.
+- [x] Expose combined lexical query interface returning scored candidates with metadata aligned to dense IDs.
 
 ## Retrieval Orchestration
 - [x] Implement `retriever/fusion.py` to combine existing dense+lexical scores via RRF (configurable `rrf_k`) targeting ~100 candidates.
@@ -56,12 +56,12 @@ _Last updated: 2025-09-17_
 ## Evaluation Harness
 - [x] Build `eval/eval_harness.py` to run gold QA set through pipeline, compute citation precision, answerability, and latency metrics, and export CSV/JSON summaries.
 - [x] Create `eval/gold/qa_citations.yaml` template with representative questions, expected anchors, and quotes.
-- [ ] Implement ablation toggles (reranker off, RM3 on/off, heuristic fallback) for comparative experiments and track results.
+- [x] Implement ablation toggles (reranker off, RM3 on/off, heuristic fallback) for comparative experiments and track results.
 
 ## Configuration & Feature Flags
 - [x] Materialize `config/app.yaml` with defaults from spec and hook it into the extended config loader.
 - [x] Ensure feature flags (FEATURE_RAG_PROVENANCE_LOCK, FEATURE_RERANKER, FEATURE_RM3, FEATURE_HEURISTIC_FALLBACK) gate behavior at runtime with dynamic reload support if needed.
-- [ ] Document configuration overrides for environments (dev, staging, prod) and ensure secrets (.env) updated accordingly.
+- [x] Document configuration overrides for environments (dev, staging, prod) and ensure secrets (.env) updated accordingly.
 
 ## Security & Reliability
 - [x] Sanitize and size-limit ingestion inputs; strip scripts/HTML and validate anchors before indexing.

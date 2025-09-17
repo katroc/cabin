@@ -9,7 +9,7 @@ from .generation import build_context_blocks, build_generation_prompt
 from .citations import QuoteVerifier, render_citation_payloads
 from .config import settings
 from .models import ParentChunk, ChatResponse, Citation
-from .telemetry.metrics import metrics
+from .telemetry import metrics, sanitize_text
 
 
 logger = logging.getLogger(__name__)
@@ -24,7 +24,13 @@ class Generator:
             threshold=settings.app_config.verification.fuzzy_partial_ratio_min
         )
 
-    def ask(self, query: str, context_chunks: List[ParentChunk]) -> ChatResponse:
+    def ask(
+        self,
+        query: str,
+        context_chunks: List[ParentChunk],
+        *,
+        enforce_provenance: Optional[bool] = None,
+    ) -> ChatResponse:
         """Generates a standard, non-streaming response with enforced citations."""
         if not context_chunks:
             return ChatResponse(response="Not found in docs.", citations=[], rendered_citations=[])
@@ -42,7 +48,8 @@ class Generator:
         )
 
         answer = response.choices[0].message.content
-        if not settings.feature_flags.rag_provenance_lock:
+        provenance_required = settings.feature_flags.rag_provenance_lock if enforce_provenance is None else enforce_provenance
+        if not provenance_required:
             sanitized = self._remove_free_urls(answer.strip())
             metrics.increment("generator.provenance_disabled")
             return ChatResponse(response=sanitized, citations=[], rendered_citations=[])
@@ -113,7 +120,7 @@ FORMATTING RULES:
         cleaned = self._remove_free_urls(response.strip())
         cleaned = cleaned.replace('【', '[').replace('】', ']')
         preview = cleaned[:200] + ("…" if len(cleaned) > 200 else "")
-        query_preview = (query or "")[:64].replace("\n", " ") if query else ""
+        query_preview = sanitize_text((query or "")[:64].replace("\n", " ")) if query else ""
         log_ctx = {"query_preview": query_preview, "query_len": len(query or "")}
         logger.debug("LLM response preview %s | %s", preview, log_ctx)
 

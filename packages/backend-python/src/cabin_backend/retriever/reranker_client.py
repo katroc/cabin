@@ -25,7 +25,13 @@ class RerankerClient:
         api_key = settings.app_config.reranker.api_key or os.getenv("RERANKER_API_KEY")
         self._headers = {"X-API-Key": api_key} if api_key else None
 
-    def rerank(self, query: str, candidates: Dict[str, str]) -> List[Tuple[str, float]]:
+    def rerank(
+        self,
+        query: str,
+        candidates: Dict[str, str],
+        *,
+        allow_fallback: bool = True,
+    ) -> List[Tuple[str, float]]:
         if not candidates:
             logger.info("Reranker skipped: no candidates for query '%s'", query)
             metrics.increment("retrieval.reranker.skipped")
@@ -64,7 +70,7 @@ class RerankerClient:
 
         if last_error is not None:
             logger.warning("Reranker sidecar unavailable (%s); using heuristic fallback", last_error)
-        if not settings.feature_flags.heuristic_fallback:
+        if not allow_fallback:
             logger.info("Heuristic fallback disabled for reranker; returning empty results")
             metrics.increment("retrieval.reranker.disabled")
             return []

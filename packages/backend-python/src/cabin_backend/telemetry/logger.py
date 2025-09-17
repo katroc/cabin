@@ -3,9 +3,23 @@
 from __future__ import annotations
 
 import logging
+import re
 from typing import Optional
 
 _DEFAULT_FORMAT = "%(asctime)s | %(levelname)s | %(name)s | %(message)s"
+
+EMAIL_RE = re.compile(r"[\w.+-]+@[\w.-]+\.[a-zA-Z]{2,}")
+DIGIT_RE = re.compile(r"\b\d{4,}\b")
+
+
+def sanitize_text(value: Optional[str]) -> str:
+    """Mask common PII patterns (emails, long numbers) for logging."""
+
+    if not value:
+        return ""
+    masked = EMAIL_RE.sub("<email>", value)
+    masked = DIGIT_RE.sub("<num>", masked)
+    return masked
 
 
 def setup_logging(level: Optional[str] = None, *, fmt: str = _DEFAULT_FORMAT) -> None:
