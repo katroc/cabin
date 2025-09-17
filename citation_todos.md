@@ -69,11 +69,11 @@ _Last updated: 2025-09-17_
 - [ ] Ensure PII-safe logging (hash user IDs, exclude sensitive page content) and review for compliance.
 
 ## Rollout & Operations
-- [ ] Remove deprecated post-generation BM25 validation and free-URL rendering paths (flagged for deletion) once new pipeline ready.
+- [x] Remove deprecated post-generation BM25 validation and free-URL rendering paths (flagged for deletion) once new pipeline ready.
 - [ ] Reindex canary Confluence space with updated ingestion+dedup path; monitor metrics and validate anchors.
-- [ ] Gradually enable hybrid retrieval + reranker via feature flags (canary → global) with rollback instructions.
+- [x] Gradually enable hybrid retrieval + reranker via feature flags (canary → global) with rollback instructions.
 - [ ] Tune cosine floor, keyword gate, MMR λ using eval harness results before full rollout.
-- [ ] Produce runbook covering sidecar health checks, failure modes, fallback toggles, and incident response steps.
+- [x] Produce runbook covering sidecar health checks, failure modes, fallback toggles, and incident response steps.
 
 ## Acceptance Criteria & Validation
 - [ ] Verify citation provenance lock prevents out-of-set sources; add tests covering candidate freeze behavior.
