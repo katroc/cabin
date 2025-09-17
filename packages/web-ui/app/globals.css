@@ -818,6 +818,43 @@ input[type="checkbox"] {
 }
 
 
+.citation-pill-inline {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 0.25rem;
+  vertical-align: baseline;
+}
+
+.citation-pill-inline a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.65rem;
+  height: 1.4rem;
+  padding: 0 0.45rem;
+  border-radius: 999px;
+  background: var(--cite-color);
+  color: var(--cite-text);
+  font-weight: var(--cite-weight);
+  font-size: var(--cite-inline-font, 0.75rem);
+  font-family: var(--cite-font);
+  text-decoration: none;
+  transition: transform 0.2s ease, filter 0.2s ease;
+}
+
+.citation-pill-inline a:hover,
+.citation-pill-inline a:focus {
+  filter: brightness(1.05);
+  transform: translateY(-1px);
+}
+
+.citation-pill-inline a:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+
 /* Source citation pills */
 .citation-id {
   display: inline-flex;

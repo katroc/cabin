@@ -152,21 +152,37 @@ const SmartResponse: React.FC<SmartResponseProps> = ({
     '¹': '1', '²': '2', '³': '3', '⁴': '4', '⁵': '5', '⁶': '6', '⁷': '7', '⁸': '8', '⁹': '9'
   };
 
-  // Transform any superscript digits found in text nodes into clickable citation refs
+  const renderCitationPill = (num: string, key: string | number) => {
+    const cite = citations.find(c => String(c.id) === String(num));
+    const title = cite?.page_title || `Source ${num}`;
+    return (
+      <span key={`cite-pill-${key}`} className="citation-pill-inline" data-cite={num}>
+        <a
+          href={`#src-${num}`}
+          aria-label={`Jump to source ${num}`}
+          title={title}
+        >
+          {num}
+        </a>
+      </span>
+    );
+  };
+
+  // Transform any inline citation markers into clickable pills
   const renderWithCitations = (children: React.ReactNode): React.ReactNode => {
     const transform = (node: React.ReactNode): React.ReactNode => {
       if (typeof node === 'string') {
-        const parts = node.split(/([¹²³⁴⁵⁶⁷⁸⁹])/g);
+        const parts = node.split(/(\[\d+\]|[¹²³⁴⁵⁶⁷⁸⁹])/g);
         return parts.map((part, idx) => {
           const num = superscriptMap[part as keyof typeof superscriptMap];
           if (num) {
-            const cite = citations.find(c => String(c.id) === String(num));
-            const title = cite?.page_title || `Source ${num}`;
-            return (
-              <sup key={`cite-${idx}`} className="cite-ref" data-cite={num}>
-                <a href={`#src-${num}`} aria-label={`Jump to source ${num}`} title={title}>{num}</a>
-              </sup>
-            );
+            return renderCitationPill(num, `${idx}-${num}-sup`);
+          }
+
+          const bracketMatch = part.match(/^\[(\d+)\]$/);
+          if (bracketMatch) {
+            const bracketNum = bracketMatch[1];
+            return renderCitationPill(bracketNum, `${idx}-${bracketNum}-bracket`);
           }
           return part;
         });
