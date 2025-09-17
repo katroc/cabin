@@ -36,15 +36,21 @@ interface Conversation {
 
 interface SettingsData {
   llmBaseUrl: string
+  llmModel: string
   embeddingBaseUrl: string
-  model: string
+  embeddingModel: string
   temperature: number
   chromaHost: string
   chromaPort: number
-  topK: number
-  relevanceThreshold: number
-  useOptimizedPipeline: boolean
-  enableIntentProcessing: boolean
+  finalPassages: number
+  cosineFloor: number
+  minKeywordOverlap: number
+  useReranker: boolean
+  allowRerankerFallback: boolean
+  useRm3: boolean
+  rerankerUrl: string
+  rerankerPort: number
+  logLevel: string
 }
 
 const STORAGE_KEY = 'cabin.conversations.v1'
@@ -86,16 +92,22 @@ export default function Home() {
   const [isIndexingOpen, setIsIndexingOpen] = useState(false)
   const [isHydrated, setIsHydrated] = useState(false)
   const [settings, setSettings] = useState<SettingsData>({
-    llmBaseUrl: 'http://localhost:1234',
-    embeddingBaseUrl: 'http://localhost:1234',
-    model: 'local-model',
-    temperature: 0.7,
+    llmBaseUrl: 'http://localhost:1234/v1',
+    llmModel: 'openai/gpt-oss-20b',
+    embeddingBaseUrl: 'http://localhost:1234/v1',
+    embeddingModel: 'text-embedding-bge-m3',
+    temperature: 0.1,
     chromaHost: 'localhost',
     chromaPort: 8000,
-    topK: 5,
-    relevanceThreshold: 0.05,
-    useOptimizedPipeline: true,
-    enableIntentProcessing: true
+    finalPassages: 8,
+    cosineFloor: 0.18,
+    minKeywordOverlap: 2,
+    useReranker: true,
+    allowRerankerFallback: true,
+    useRm3: false,
+    rerankerUrl: 'http://localhost:8010/rerank',
+    rerankerPort: 8010,
+    logLevel: 'INFO'
   })
 
   useEffect(() => {
