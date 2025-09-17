@@ -9,17 +9,23 @@ from .generation import build_context_blocks, build_generation_prompt
 from .citations import QuoteVerifier, render_citation_payloads
 from .config import settings
 from .models import ParentChunk, ChatResponse, Citation
+from .runtime import RuntimeOverrides
 from .telemetry import metrics, sanitize_text
 
 
 logger = logging.getLogger(__name__)
 
 class Generator:
-    def __init__(self):
+    def __init__(self, overrides: Optional[RuntimeOverrides] = None):
+        overrides = overrides or RuntimeOverrides()
+        base_url = overrides.llm_base_url or settings.llm_base_url
+        model = overrides.llm_model or settings.llm_model
+        self.temperature = overrides.temperature if overrides.temperature is not None else 0.1
         self.llm_client = openai.OpenAI(
             api_key=settings.llm_api_key,
-            base_url=settings.llm_base_url,
+            base_url=base_url,
         )
+        self.llm_model = model
         self.quote_verifier = QuoteVerifier(
             threshold=settings.app_config.verification.fuzzy_partial_ratio_min
         )
@@ -39,12 +45,13 @@ class Generator:
         prompt = build_generation_prompt(query, context_blocks, len(context_chunks))
 
         response = self.llm_client.chat.completions.create(
-            model=settings.llm_model,
+            model=self.llm_model,
             messages=[
                 {"role": "system", "content": self._get_citation_system_prompt()},
                 {"role": "user", "content": prompt}
             ],
             stream=False,
+            temperature=self.temperature,
         )
 
         answer = response.choices[0].message.content

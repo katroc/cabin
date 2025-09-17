@@ -111,6 +111,46 @@ export default function Home() {
   })
 
   useEffect(() => {
+    let cancelled = false
+    const fetchSettings = async () => {
+      try {
+        const response = await fetch('/api/settings')
+        if (!response.ok) {
+          throw new Error(`Failed to fetch settings: ${response.status}`)
+        }
+        const data = await response.json()
+        if (cancelled) return
+        setSettings({
+          llmBaseUrl: data.llmBaseUrl || settings.llmBaseUrl,
+          llmModel: data.llmModel || settings.llmModel,
+          embeddingBaseUrl: data.embeddingBaseUrl || settings.embeddingBaseUrl,
+          embeddingModel: data.embeddingModel || settings.embeddingModel,
+          temperature: typeof data.temperature === 'number' ? data.temperature : settings.temperature,
+          chromaHost: data.chromaHost || settings.chromaHost,
+          chromaPort: typeof data.chromaPort === 'number' ? data.chromaPort : settings.chromaPort,
+          finalPassages: typeof data.finalPassages === 'number' ? data.finalPassages : settings.finalPassages,
+          cosineFloor: typeof data.cosineFloor === 'number' ? data.cosineFloor : settings.cosineFloor,
+          minKeywordOverlap: typeof data.minKeywordOverlap === 'number' ? data.minKeywordOverlap : settings.minKeywordOverlap,
+          useReranker: typeof data.useReranker === 'boolean' ? data.useReranker : settings.useReranker,
+          allowRerankerFallback: typeof data.allowRerankerFallback === 'boolean' ? data.allowRerankerFallback : settings.allowRerankerFallback,
+          useRm3: typeof data.useRm3 === 'boolean' ? data.useRm3 : settings.useRm3,
+          rerankerUrl: data.rerankerUrl || settings.rerankerUrl,
+          rerankerPort: typeof data.rerankerPort === 'number' ? data.rerankerPort : settings.rerankerPort,
+          logLevel: data.logLevel || settings.logLevel,
+        })
+      } catch (error) {
+        console.warn('Failed to load runtime settings:', error)
+      }
+    }
+
+    fetchSettings()
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  useEffect(() => {
     if (typeof window === 'undefined') return
 
     try {
@@ -290,6 +330,19 @@ export default function Home() {
     [activeConversationId]
   )
 
+  const handleSettingsSave = useCallback(async (nextSettings: SettingsData) => {
+    setSettings(nextSettings)
+    try {
+      await fetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(nextSettings)
+      })
+    } catch (error) {
+      console.error('Failed to persist settings:', error)
+    }
+  }, [])
+
   return (
     <main className="h-screen flex flex-col overflow-hidden" style={{ background: 'var(--bg-primary)' }}>
       <header
@@ -347,7 +400,7 @@ export default function Home() {
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
         settings={settings}
-        onSave={setSettings}
+        onSave={handleSettingsSave}
       />
 
       <ConfluenceIndexing

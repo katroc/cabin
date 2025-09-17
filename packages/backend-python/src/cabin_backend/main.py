@@ -1,9 +1,12 @@
 import logging
 import os
+from urllib.parse import urlparse
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.responses import StreamingResponse
+
+from pydantic import BaseModel, Field
 
 from .models import (
     IngestRequest, ChatRequest, ChatResponse,
@@ -16,10 +19,90 @@ from .generator import Generator
 from .data_sources.manager import DataSourceManager
 from .data_sources.confluence import ConfluenceDataSource  # Import to register
 from .config import settings
+from .runtime import RuntimeOverrides
 from .telemetry import setup_logging, metrics
 
-log_level = os.getenv("CABIN_LOG_LEVEL") or settings.app_config.telemetry.log_level
-setup_logging(log_level)
+
+class UISettingsPayload(BaseModel):
+    llm_base_url: str = Field(alias="llmBaseUrl")
+    llm_model: str = Field(alias="llmModel")
+    embedding_base_url: str = Field(alias="embeddingBaseUrl")
+    embedding_model: str = Field(alias="embeddingModel")
+    temperature: float = Field(alias="temperature")
+    chroma_host: str = Field(alias="chromaHost")
+    chroma_port: int = Field(alias="chromaPort")
+    final_passages: int = Field(alias="finalPassages")
+    cosine_floor: float = Field(alias="cosineFloor")
+    min_keyword_overlap: int = Field(alias="minKeywordOverlap")
+    use_reranker: bool = Field(alias="useReranker")
+    allow_reranker_fallback: bool = Field(alias="allowRerankerFallback")
+    use_rm3: bool = Field(alias="useRm3")
+    reranker_url: str = Field(alias="rerankerUrl")
+    reranker_port: int = Field(alias="rerankerPort")
+    log_level: str = Field(alias="logLevel")
+
+    class Config:
+        populate_by_name = True
+
+    def to_overrides(self) -> RuntimeOverrides:
+        return RuntimeOverrides(
+            llm_base_url=self.llm_base_url,
+            llm_model=self.llm_model,
+            temperature=self.temperature,
+            embedding_base_url=self.embedding_base_url,
+            embedding_model=self.embedding_model,
+            chroma_host=self.chroma_host,
+            chroma_port=self.chroma_port,
+            final_passages=self.final_passages,
+            cosine_floor=self.cosine_floor,
+            min_keyword_overlap=self.min_keyword_overlap,
+            use_reranker=self.use_reranker,
+            allow_reranker_fallback=self.allow_reranker_fallback,
+            use_rm3=self.use_rm3,
+            reranker_url=self.reranker_url,
+            log_level=self.log_level,
+        )
+
+
+def _parse_port_from_url(url: str, default: int = 8000) -> int:
+    try:
+        parsed = urlparse(url)
+        if parsed.port:
+            return parsed.port
+    except Exception:
+        pass
+    return default
+
+
+def load_default_ui_settings() -> UISettingsPayload:
+    retrieval_cfg = settings.app_config.retrieval
+    feature_flags = settings.feature_flags
+    reranker_url = settings.app_config.reranker.url
+    reranker_port = _parse_port_from_url(reranker_url, default=8000)
+    log_level = os.getenv("CABIN_LOG_LEVEL") or settings.app_config.telemetry.log_level
+    return UISettingsPayload(
+        llmBaseUrl=settings.llm_base_url,
+        llmModel=settings.llm_model,
+        embeddingBaseUrl=settings.embedding_base_url,
+        embeddingModel=settings.embedding_model,
+        temperature=0.1,
+        chromaHost=settings.chroma_host,
+        chromaPort=settings.chroma_port,
+        finalPassages=retrieval_cfg.final_passages,
+        cosineFloor=retrieval_cfg.cosine_floor,
+        minKeywordOverlap=retrieval_cfg.min_keyword_overlap,
+        useReranker=feature_flags.reranker,
+        allowRerankerFallback=feature_flags.heuristic_fallback,
+        useRm3=feature_flags.rm3,
+        rerankerUrl=reranker_url,
+        rerankerPort=reranker_port,
+        logLevel=log_level,
+    )
+
+
+current_ui_settings = load_default_ui_settings()
+current_overrides = current_ui_settings.to_overrides()
+setup_logging(current_ui_settings.log_level)
 metrics.configure(enabled=settings.app_config.telemetry.metrics_enabled)
 logger = logging.getLogger(__name__)
 
@@ -42,8 +125,8 @@ app.add_middleware(
 # --- Service Initialization ---
 try:
     chunker_service = SemanticChunker()
-    vector_store_service = VectorStore()
-    generator_service = Generator()
+    vector_store_service = VectorStore(overrides=current_overrides)
+    generator_service = Generator(overrides=current_overrides)
     data_source_manager = DataSourceManager(chunker_service, vector_store_service)
 except Exception as e:
     # If services fail to initialize (e.g., can't connect to ChromaDB),
@@ -55,6 +138,27 @@ except Exception as e:
     vector_store_service = None
     generator_service = None
     data_source_manager = None
+
+
+def apply_ui_settings(payload: UISettingsPayload) -> None:
+    global current_ui_settings, current_overrides
+    global vector_store_service, generator_service, data_source_manager
+
+    overrides = payload.to_overrides()
+    setup_logging(payload.log_level)
+    current_ui_settings = payload
+    current_overrides = overrides
+
+    if chunker_service is None:
+        raise RuntimeError("Chunker service not available")
+
+    new_vector_store = VectorStore(overrides=overrides)
+    new_generator = Generator(overrides=overrides)
+    new_data_manager = DataSourceManager(chunker_service, new_vector_store)
+
+    vector_store_service = new_vector_store
+    generator_service = new_generator
+    data_source_manager = new_data_manager
 
 # --- Health Check ---
 @app.get("/health")
@@ -160,6 +264,21 @@ def chat_stream(request: ChatRequest):
         # The client will see a dropped connection.
         # Proper handling would involve a more complex setup.
         return StreamingResponse("Error processing request.", media_type="text/plain", status_code=500)
+
+
+@app.get("/api/settings")
+def get_runtime_settings():
+    return current_ui_settings.model_dump(by_alias=True)
+
+
+@app.post("/api/settings")
+def update_runtime_settings(payload: UISettingsPayload):
+    try:
+        apply_ui_settings(payload)
+        return {"status": "ok"}
+    except Exception as exc:
+        logger.error("Failed to update runtime settings: %s", exc)
+        raise HTTPException(status_code=500, detail=f"Failed to update settings: {exc}")
 
 # --- Data Source API Endpoints ---
 

@@ -26,7 +26,7 @@ interface SettingsDrawerProps {
   isOpen: boolean
   onClose: () => void
   settings: SettingsData
-  onSave: (settings: SettingsData) => void
+  onSave: (settings: SettingsData) => void | Promise<void>
 }
 
 export default function SettingsDrawer({ isOpen, onClose, settings, onSave }: SettingsDrawerProps) {
@@ -134,8 +134,8 @@ export default function SettingsDrawer({ isOpen, onClose, settings, onSave }: Se
     }
   }, [formData.embeddingBaseUrl, isOpen, formData.embeddingModel])
 
-  const handleSave = () => {
-    onSave(formData)
+  const handleSave = async () => {
+    await onSave(formData)
     onClose()
   }
 

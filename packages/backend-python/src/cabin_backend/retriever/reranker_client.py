@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 from urllib.parse import urlsplit, urlunsplit
 
 import requests
@@ -18,9 +18,10 @@ logger = logging.getLogger(__name__)
 class RerankerClient:
     """Best-effort reranker caller with environment-aware fallbacks."""
 
-    def __init__(self) -> None:
+    def __init__(self, base_url: Optional[str] = None) -> None:
         self.top_n = settings.app_config.reranker.top_n
         self.timeout = settings.app_config.reranker.timeout_s
+        self._explicit_url = base_url.rstrip("/") if base_url else None
         self._candidate_urls = self._build_url_candidates()
         api_key = settings.app_config.reranker.api_key or os.getenv("RERANKER_API_KEY")
         self._headers = {"X-API-Key": api_key} if api_key else None
@@ -87,6 +88,9 @@ class RerankerClient:
         """Build an ordered list of URLs to attempt for reranking."""
 
         candidates: List[str] = []
+
+        if self._explicit_url:
+            candidates.append(self._explicit_url)
 
         # Environment overrides take precedence.
         env_override = os.getenv("RERANKER_URL") or os.getenv("CABIN_RERANKER_URL")

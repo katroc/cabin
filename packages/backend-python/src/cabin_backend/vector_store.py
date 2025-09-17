@@ -16,17 +16,31 @@ from .retriever import (
     reciprocal_rank_fusion,
 )
 from .retriever.reranker_client import RerankerClient
+from .runtime import RuntimeOverrides
 from .telemetry import metrics, sanitize_text
 
 logger = logging.getLogger(__name__)
 
 class VectorStore:
-    def __init__(self):
+    def __init__(self, overrides: Optional[RuntimeOverrides] = None):
+        overrides = overrides or RuntimeOverrides()
         cache_cfg = settings.app_config.embedding_cache
+        embedding_base = overrides.embedding_base_url or settings.embedding_base_url
+        embedding_model = overrides.embedding_model or settings.embedding_model
+        chroma_host = overrides.chroma_host or settings.chroma_host
+        chroma_port = overrides.chroma_port or settings.chroma_port
+        self.default_final_passages = overrides.final_passages or settings.app_config.retrieval.final_passages
+        self.cosine_floor_default = overrides.cosine_floor if overrides.cosine_floor is not None else settings.app_config.retrieval.cosine_floor
+        self.min_keyword_overlap_default = overrides.min_keyword_overlap if overrides.min_keyword_overlap is not None else settings.app_config.retrieval.min_keyword_overlap
+        self.use_reranker_default = overrides.use_reranker if overrides.use_reranker is not None else settings.feature_flags.reranker
+        self.allow_reranker_fallback_default = overrides.allow_reranker_fallback if overrides.allow_reranker_fallback is not None else settings.feature_flags.heuristic_fallback
+        self.use_rm3_default = overrides.use_rm3 if overrides.use_rm3 is not None else settings.feature_flags.rm3
+        reranker_url = overrides.reranker_url or settings.app_config.reranker.url
+
         self.embedding_client = EmbeddingClient(
             api_key=settings.embedding_api_key,
-            base_url=settings.embedding_base_url,
-            model=settings.embedding_model,
+            base_url=embedding_base,
+            model=embedding_model,
             dimensions=settings.embedding_dimensions,
             batch_size=getattr(settings, "embedding_batch_size", 16),
             cache_enabled=cache_cfg.enabled,
@@ -36,8 +50,8 @@ class VectorStore:
 
         # Initialize managed Chroma collection
         self.chroma = ChromaCollectionManager(
-            host=settings.chroma_host,
-            port=settings.chroma_port,
+            host=chroma_host,
+            port=chroma_port,
             collection_name=settings.child_collection_name,
         )
         self._token_pattern = re.compile(r"\b[\w'-]+\b")
@@ -47,7 +61,7 @@ class VectorStore:
             language_stopwords=self._stopwords,
             min_token_length=self._min_token_length,
         )
-        self.reranker = RerankerClient()
+        self.reranker = RerankerClient(base_url=reranker_url)
         retrieval_cfg = settings.app_config.retrieval
         self.rm3_expander = RM3Expander(
             top_docs=retrieval_cfg.rm3_top_docs,
@@ -120,7 +134,7 @@ class VectorStore:
     def query(
         self,
         query_text: str,
-        top_k: int = settings.top_k,
+        top_k: Optional[int] = None,
         filters: Optional[Dict[str, Any]] = None,
         *,
         use_rm3: Optional[bool] = None,
@@ -153,7 +167,8 @@ class VectorStore:
                 query_embedding = self._get_embeddings([query_text])[0]
 
                 # Build query parameters
-                n_results = min(top_k, collection_count)
+                effective_top_k = top_k or self.default_final_passages
+                n_results = min(effective_top_k, collection_count)
                 results = self.chroma.query(
                     query_embeddings=[query_embedding],
                     n_results=n_results,
@@ -256,7 +271,7 @@ class VectorStore:
 
         query_tokens = self._tokenize_text(query_text)
 
-        rm3_enabled = settings.feature_flags.rm3 if use_rm3 is None else use_rm3
+        rm3_enabled = self.use_rm3_default if use_rm3 is None else use_rm3
         if rm3_enabled:
             expanded_tokens = self.rm3_expander.expand(
                 query_tokens,
@@ -332,7 +347,7 @@ class VectorStore:
         # Apply hygiene filters
         cosine_filtered = filter_by_cosine_floor(
             fusion_scores,
-            cosine_floor=settings.app_config.retrieval.cosine_floor,
+            cosine_floor=self.cosine_floor_default,
         )
 
         keyword_candidates = {
@@ -346,7 +361,7 @@ class VectorStore:
         allowed_ids = set(
             filter_by_keyword_overlap(
                 candidates=keyword_candidates,
-                min_overlap=settings.app_config.retrieval.min_keyword_overlap,
+                min_overlap=self.min_keyword_overlap_default,
                 content_types_permissive=("code", "table"),
             )
         )
@@ -395,8 +410,8 @@ class VectorStore:
             self._last_lexical_rankings = []
 
         ordered_ids = selected_ids
-        reranker_enabled = settings.feature_flags.reranker if use_reranker is None else use_reranker
-        fallback_enabled = settings.feature_flags.heuristic_fallback if allow_reranker_fallback is None else allow_reranker_fallback
+        reranker_enabled = self.use_reranker_default if use_reranker is None else use_reranker
+        fallback_enabled = self.allow_reranker_fallback_default if allow_reranker_fallback is None else allow_reranker_fallback
         if reranker_enabled:
             reranker_input = {cid: chunk_lookup[cid].text for cid in selected_ids if cid in chunk_lookup}
             reranked = self.reranker.rerank(
@@ -416,7 +431,8 @@ class VectorStore:
         )
         metrics.increment("retrieval.vector_store.selected", len(selected_chunks))
 
-        return selected_chunks[:top_k]
+        effective_top_k = top_k or self.default_final_passages
+        return selected_chunks[:effective_top_k]
 
     def _get_embeddings(self, texts: List[str]) -> List[List[float]]:
         """Generates embeddings for a list of texts."""
