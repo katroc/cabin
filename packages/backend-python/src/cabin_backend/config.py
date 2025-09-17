@@ -45,6 +45,7 @@ class IngestionSettings(BaseModel):
     dedup_enabled: bool = True
     dedup_method: str = "minhash"
     dedup_threshold: float = 0.92
+    max_html_chars: int = 500_000
 
     class Config:
         extra = "ignore"
@@ -59,6 +60,9 @@ class RetrievalSettings(BaseModel):
     cosine_floor: float = 0.18
     min_keyword_overlap: int = 2
     final_passages: int = 8
+    rm3_top_docs: int = 10
+    rm3_terms: int = 10
+    rm3_alpha: float = 0.4
 
     class Config:
         extra = "ignore"
@@ -69,6 +73,7 @@ class RerankerSettings(BaseModel):
     top_n: int = 8
     timeout_s: int = 8
     model: str = "BAAI/bge-reranker-base"
+    api_key: Optional[str] = None
 
     class Config:
         extra = "ignore"
@@ -90,6 +95,23 @@ class VerificationSettings(BaseModel):
         extra = "ignore"
 
 
+class EmbeddingCacheSettings(BaseModel):
+    enabled: bool = True
+    max_items: int = 512
+    ttl_seconds: int = 600
+
+    class Config:
+        extra = "ignore"
+
+
+class TelemetrySettings(BaseModel):
+    log_level: str = "INFO"
+    metrics_enabled: bool = True
+
+    class Config:
+        extra = "ignore"
+
+
 class AppConfig(BaseModel):
     features: FeatureFlags = Field(default_factory=FeatureFlags)
     ingestion: IngestionSettings = Field(default_factory=IngestionSettings)
@@ -97,6 +119,8 @@ class AppConfig(BaseModel):
     reranker: RerankerSettings = Field(default_factory=RerankerSettings)
     generation: GenerationSettings = Field(default_factory=GenerationSettings)
     verification: VerificationSettings = Field(default_factory=VerificationSettings)
+    embedding_cache: EmbeddingCacheSettings = Field(default_factory=EmbeddingCacheSettings)
+    telemetry: TelemetrySettings = Field(default_factory=TelemetrySettings)
 
     class Config:
         extra = "ignore"

@@ -1,0 +1,15 @@
+# Example evaluation set for citation QA.
+# Each item defines a question and the expected chunk_ids (or other provenance identifiers)
+# that should be cited in the answer. Extend this file with real canary data before running
+# the harness in CI / staging.
+
+- question: "How do I obtain a refund for a draw.io app purchase?"
+  expected_citations:
+    - "4151509027:1"
+    - "4151509027:2"
+  notes: "Confirm refund process via Atlassian support ticket."
+
+- question: "Is it possible to extend a trial for draw.io on Confluence Cloud?"
+  expected_citations:
+    - "4166123521:1"
+  notes: "Trial extensions require Atlassian licensing request."

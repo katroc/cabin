@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Iterable, List, Sequence
+from typing import Iterable, List, Optional, Sequence, Tuple
 
 from rank_bm25 import BM25Okapi
 
@@ -18,16 +18,24 @@ class BM25Index:
         self._language_stopwords = set(language_stopwords or [])
         self._min_token_length = max(1, min_token_length)
         self._corpus_tokens: List[List[str]] = []
+        self._doc_ids: List[str] = []
         self._bm25: BM25Okapi | None = None
 
-    def build(self, corpus_tokens: Iterable[Iterable[str]]) -> None:
+    def build(self, corpus_tokens: Iterable[Iterable[str]], doc_ids: Optional[Iterable[str]] = None) -> None:
         self._corpus_tokens = [list(tokens) for tokens in corpus_tokens]
+        if doc_ids is not None:
+            ids_list = list(doc_ids)
+            if len(ids_list) != len(self._corpus_tokens):
+                raise ValueError("doc_ids length must match corpus size")
+            self._doc_ids = ids_list
+        else:
+            self._doc_ids = [str(index) for index in range(len(self._corpus_tokens))]
         self._bm25 = BM25Okapi(self._corpus_tokens)
         logger.debug("BM25 index built with %d documents", len(self._corpus_tokens))
 
-    def update(self, corpus_tokens: Iterable[Iterable[str]]) -> None:
+    def update(self, corpus_tokens: Iterable[Iterable[str]], doc_ids: Optional[Iterable[str]] = None) -> None:
         # For now rebuild; future work could do incremental updates.
-        self.build(corpus_tokens)
+        self.build(corpus_tokens, doc_ids)
 
     def scores(self, query_tokens: Sequence[str]) -> List[float]:
         if not self._bm25 or not self._corpus_tokens:
@@ -41,6 +49,15 @@ class BM25Index:
         if max_score <= 0:
             return [0.0] * len(self._corpus_tokens)
         return [float(score) / max_score for score in raw_scores]
+
+    def query(self, query_tokens: Sequence[str]) -> List[Tuple[str, float]]:
+        """Return (doc_id, score) pairs sorted by score descending."""
+        scores = self.scores(query_tokens)
+        return sorted(
+            zip(self._doc_ids, scores, strict=False),
+            key=lambda item: item[1],
+            reverse=True,
+        )
 
     @property
     def corpus_size(self) -> int:

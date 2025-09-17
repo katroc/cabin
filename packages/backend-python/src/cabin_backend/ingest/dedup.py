@@ -7,6 +7,7 @@ from datetime import datetime
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
 from ..models import ChildChunk
+from ..telemetry.metrics import metrics
 
 
 @dataclass
@@ -55,7 +56,11 @@ class Deduplicator:
                 kept.append(chunk)
                 signatures[chunk.id] = shingles
 
+        if dropped:
+            metrics.increment("ingest.dedup.dropped", value=len(dropped))
+        metrics.increment("ingest.dedup.kept", value=len(kept))
         return DeduplicationResult(kept=kept, dropped=dropped)
+        
 
     def _shingle(self, text: str) -> set[str]:
         normalized = " ".join(text.split()).lower()

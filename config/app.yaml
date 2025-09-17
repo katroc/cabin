@@ -15,6 +15,7 @@ ingestion:
   dedup_enabled: true
   dedup_method: minhash
   dedup_threshold: 0.92
+  max_html_chars: 500000
 
 retrieval:
   dense_k: 80
@@ -25,12 +26,16 @@ retrieval:
   cosine_floor: 0.18
   min_keyword_overlap: 2
   final_passages: 8
+  rm3_top_docs: 10
+  rm3_terms: 10
+  rm3_alpha: 0.4
 
 reranker:
   url: "http://reranker:8000/rerank"
   top_n: 8
   timeout_s: 8
   model: "BAAI/bge-reranker-base"
+  api_key: null
 
 generation:
   max_citations: 3
@@ -39,3 +44,12 @@ generation:
 
 verification:
   fuzzy_partial_ratio_min: 90
+
+embedding_cache:
+  enabled: true
+  max_items: 512
+  ttl_seconds: 600
+
+telemetry:
+  log_level: info
+  metrics_enabled: true

@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import logging
+import os
+import time
+from collections import defaultdict, deque
 from dataclasses import dataclass
-from typing import List, Optional, Tuple
+from typing import Deque, Dict, List, Optional, Tuple
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel
 
 logger = logging.getLogger("cabin.reranker")
@@ -51,6 +54,10 @@ class RerankResponse(BaseModel):
 
 app = FastAPI()
 CONFIG = RerankerConfig()
+API_KEY = os.getenv("RERANKER_API_KEY")
+RATE_WINDOW_SECONDS = int(os.getenv("RERANKER_RATE_WINDOW_SECONDS", "60"))
+RATE_MAX_REQUESTS = int(os.getenv("RERANKER_RATE_MAX_REQUESTS", "120"))
+_rate_buckets: Dict[str, Deque[float]] = defaultdict(deque)
 
 
 def _load_model() -> Optional[FlagReranker]:
@@ -139,3 +146,23 @@ def _heuristic_scores(query: str, candidates: List[Candidate]) -> List[Tuple[str
         score = len(overlap) / len(query_terms)
         scores.append((candidate.id, score))
     return scores
+@app.middleware("http")
+async def enforce_security(request: Request, call_next):  # pragma: no cover - integration path
+    if API_KEY:
+        header = request.headers.get("X-API-Key")
+        if header != API_KEY:
+            raise HTTPException(status_code=401, detail="Invalid API key for reranker sidecar")
+
+    if RATE_MAX_REQUESTS > 0 and RATE_WINDOW_SECONDS > 0:
+        now = time.time()
+        client_ip = request.client.host if request.client else "unknown"
+        bucket = _rate_buckets[client_ip]
+        expiration = now - RATE_WINDOW_SECONDS
+        while bucket and bucket[0] < expiration:
+            bucket.popleft()
+        if len(bucket) >= RATE_MAX_REQUESTS:
+            raise HTTPException(status_code=429, detail="Reranker rate limit exceeded")
+        bucket.append(now)
+
+    response = await call_next(request)
+    return response

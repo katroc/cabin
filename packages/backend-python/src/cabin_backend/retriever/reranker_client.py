@@ -10,6 +10,7 @@ from urllib.parse import urlsplit, urlunsplit
 import requests
 
 from ..config import settings
+from ..telemetry.metrics import metrics
 
 logger = logging.getLogger(__name__)
 
@@ -21,10 +22,13 @@ class RerankerClient:
         self.top_n = settings.app_config.reranker.top_n
         self.timeout = settings.app_config.reranker.timeout_s
         self._candidate_urls = self._build_url_candidates()
+        api_key = settings.app_config.reranker.api_key or os.getenv("RERANKER_API_KEY")
+        self._headers = {"X-API-Key": api_key} if api_key else None
 
     def rerank(self, query: str, candidates: Dict[str, str]) -> List[Tuple[str, float]]:
         if not candidates:
             logger.info("Reranker skipped: no candidates for query '%s'", query)
+            metrics.increment("retrieval.reranker.skipped")
             return []
 
         payload = {
@@ -36,7 +40,12 @@ class RerankerClient:
         last_error: Exception | None = None
         for index, url in enumerate(self._candidate_urls, start=1):
             try:
-                response = requests.post(url, json=payload, timeout=self.timeout)
+                response = requests.post(
+                    url,
+                    json=payload,
+                    timeout=self.timeout,
+                    headers=self._headers,
+                )
                 response.raise_for_status()
                 data = response.json()
                 results = [(item["id"], float(item["score"])) for item in data.get("results", [])]
@@ -47,6 +56,7 @@ class RerankerClient:
                     len(self._candidate_urls),
                     len(results),
                 )
+                metrics.increment("retrieval.reranker.success", len(results))
                 return results
             except Exception as exc:  # pragma: no cover - network path
                 last_error = exc
@@ -54,12 +64,17 @@ class RerankerClient:
 
         if last_error is not None:
             logger.warning("Reranker sidecar unavailable (%s); using heuristic fallback", last_error)
+        if not settings.feature_flags.heuristic_fallback:
+            logger.info("Heuristic fallback disabled for reranker; returning empty results")
+            metrics.increment("retrieval.reranker.disabled")
+            return []
         fallback = self._heuristic_fallback(query, candidates)
         logger.info(
             "Reranker heuristic fallback returning %d results for query '%s'",
             len(fallback),
             query,
         )
+        metrics.increment("retrieval.reranker.fallback", len(fallback))
         return fallback
 
     def _build_url_candidates(self) -> List[str]:

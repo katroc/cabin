@@ -15,9 +15,12 @@ from .vector_store import VectorStore
 from .generator import Generator
 from .data_sources.manager import DataSourceManager
 from .data_sources.confluence import ConfluenceDataSource  # Import to register
+from .config import settings
+from .telemetry import setup_logging, metrics
 
-
-logging.basicConfig(level=os.getenv("CABIN_LOG_LEVEL", "INFO").upper())
+log_level = os.getenv("CABIN_LOG_LEVEL") or settings.app_config.telemetry.log_level
+setup_logging(log_level)
+metrics.configure(enabled=settings.app_config.telemetry.metrics_enabled)
 logger = logging.getLogger(__name__)
 
 # --- App Initialization ---

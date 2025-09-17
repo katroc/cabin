@@ -70,6 +70,7 @@ class ServiceManager:
             os.environ.get("CABIN_RERANKER_URL") or os.environ.get("RERANKER_URL"),
             os.environ.get("CABIN_RERANKER_PORT")
         )
+        self.reranker_api_key = os.environ.get("CABIN_RERANKER_API_KEY") or os.environ.get("RERANKER_API_KEY")
 
         # Ensure downstream consumers see the resolved values
         os.environ["CABIN_RERANKER_URL"] = self.reranker_url
@@ -93,7 +94,7 @@ class ServiceManager:
                 'cwd': self.root_dir / 'packages' / 'backend-python',
                 'health_url': f'http://localhost:{self.reranker_port}/healthz',
                 'startup_delay': 8,
-                'env': {},
+                'env': {"RERANKER_API_KEY": self.reranker_api_key} if self.reranker_api_key else {},
             }
             self.startup_sequence.append('reranker')
         else:
@@ -118,6 +119,7 @@ class ServiceManager:
                 'RERANKER_URL': self.reranker_url,
                 'CABIN_RERANKER_URL': self.reranker_url,
                 'CABIN_RERANKER_PORT': str(self.reranker_port),
+                **({"RERANKER_API_KEY": self.reranker_api_key} if self.reranker_api_key else {}),
             },
         }
         self.startup_sequence.append('backend')

@@ -9,6 +9,7 @@ from .generation import build_context_blocks, build_generation_prompt
 from .citations import QuoteVerifier, render_citation_payloads
 from .config import settings
 from .models import ParentChunk, ChatResponse, Citation
+from .telemetry.metrics import metrics
 
 
 logger = logging.getLogger(__name__)
@@ -41,6 +42,10 @@ class Generator:
         )
 
         answer = response.choices[0].message.content
+        if not settings.feature_flags.rag_provenance_lock:
+            sanitized = self._remove_free_urls(answer.strip())
+            metrics.increment("generator.provenance_disabled")
+            return ChatResponse(response=sanitized, citations=[], rendered_citations=[])
         return self._post_process(answer, provenance, query)
 
     def ask_stream(self, query: str, context_chunks: List[ParentChunk]) -> Iterator[str]:
@@ -107,15 +112,19 @@ FORMATTING RULES:
 
         cleaned = self._remove_free_urls(response.strip())
         cleaned = cleaned.replace('【', '[').replace('】', ']')
-        logger.debug("LLM raw response for query '%s': %s", query, cleaned)
+        preview = cleaned[:200] + ("…" if len(cleaned) > 200 else "")
+        query_preview = (query or "")[:64].replace("\n", " ") if query else ""
+        log_ctx = {"query_preview": query_preview, "query_len": len(query or "")}
+        logger.debug("LLM response preview %s | %s", preview, log_ctx)
 
         indices = self._extract_citation_indices(cleaned)
 
         if not indices:
             logger.warning(
-                "No citation markers detected for query '%s'; returning fallback.",
-                query,
+                "No citation markers detected; returning fallback | %s",
+                log_ctx,
             )
+            metrics.increment("generator.citation_fallback", reason="no_markers")
             return ChatResponse(response="Not found in docs.", citations=[], rendered_citations=[])
 
         seen: List[str] = []
@@ -147,27 +156,29 @@ FORMATTING RULES:
             fallback_used = False
             if not quote:
                 logger.warning(
-                    "Citation [%s] missing quote for query '%s'; generating fallback snippet.",
+                    "Citation [%s] missing quote; generating fallback snippet | %s",
                     idx,
-                    query,
+                    log_ctx,
                 )
                 quote = self._default_quote(chunk.text, quote_limit)
                 fallback_used = True
+                metrics.increment("generator.citation_repair", reason="missing_quote")
 
             truncated_quote = self._truncate_quote(quote, quote_limit)
             if not self.quote_verifier.verify(truncated_quote, chunk.text):
                 if fallback_used:
                     logger.warning(
-                        "Fallback quote for citation [%s] failed verification for query '%s'.",
+                        "Fallback quote for citation [%s] failed verification | %s",
                         idx,
-                        query,
+                        log_ctx,
                     )
                 else:
                     logger.warning(
-                        "Citation [%s] quote failed verification for query '%s'.",
+                        "Citation [%s] quote failed verification | %s",
                         idx,
-                        query,
+                        log_ctx,
                     )
+                metrics.increment("generator.citation_repair", reason="verification_failed")
                 invalid.add(idx)
                 continue
             citation = Citation(
@@ -186,17 +197,16 @@ FORMATTING RULES:
 
         if invalid:
             logger.warning(
-                "Removed invalid citations for query '%s': %s",
-                query,
+                "Removed invalid citations %s | %s",
                 sorted(invalid),
+                log_ctx,
             )
             cleaned = self._remove_citations(cleaned, invalid)
+            metrics.increment("generator.citation_repair", value=len(invalid), reason="invalid_removed")
 
         if not citations:
-            logger.warning(
-                "No valid citations remained for query '%s'; returning fallback.",
-                query,
-            )
+            logger.warning("No valid citations remained; returning fallback | %s", log_ctx)
+            metrics.increment("generator.citation_fallback", reason="no_valid_citations")
             return ChatResponse(response="Not found in docs.", citations=[], rendered_citations=[])
 
         rendered = render_citation_payloads(citations)

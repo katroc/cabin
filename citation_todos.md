@@ -20,11 +20,11 @@ _Last updated: 2025-09-17_
 ## Dense Embeddings & Chroma
 - [x] Refactor existing `packages/backend-python/src/cabin_backend/vector_store.py` (Chroma + embeddings) into reusable modules (`dense/chroma_client.py`, `dense/embed_index.py`) without breaking current API, and layer retries/health checks.
 - [x] Confirm current embedding client usage (OpenAI-compatible in `VectorStore`) and adapt it to LM Studio bge-m3 with healthcheck, batching, and L2 normalization in `dense/embed_index.py`.
-- [ ] Add caching layer for recent embeddings to mitigate LM Studio hiccups and expose metrics (hit rate, latency).
+- [x] Add caching layer for recent embeddings to mitigate LM Studio hiccups and expose metrics (hit rate, latency).
 
 ## Lexical Retrieval (BM25 + RM3)
 - [x] Upgrade the existing BM25 implementation in `VectorStore` into `lexical/bm25_index.py` (chunk-level, with stemming/stopwords) including persistence and refresh logic.
-- [ ] Implement optional RM3 expansion in `lexical/rm3.py`, guarded by FEATURE_RM3 flag and configurable parameters (stub exists).
+- [x] Implement optional RM3 expansion in `lexical/rm3.py`, guarded by FEATURE_RM3 flag and configurable parameters (stub exists).
 - [ ] Expose combined lexical query interface returning scored candidates with metadata aligned to dense IDs.
 
 ## Retrieval Orchestration
@@ -50,22 +50,22 @@ _Last updated: 2025-09-17_
 - [x] Ensure verification failures trigger fallback messaging or heuristic rerank retries per spec and document behavior.
 
 ## Telemetry & Metrics
-- [ ] Implement `telemetry/logger.py` and `telemetry/metrics.py` capturing per-stage latencies, candidate ID lists, reranker results, verification outcomes, feature flags, and dedup statistics, integrating with existing logging where possible.
+- [x] Implement `telemetry/logger.py` and `telemetry/metrics.py` capturing per-stage latencies, candidate ID lists, reranker results, verification outcomes, feature flags, and dedup statistics, integrating with existing logging where possible.
 - [ ] Integrate telemetry with existing logging/metrics stack (e.g., OpenTelemetry/Prometheus) and add dashboards for KPIs (citation precision, latency, "Not found" accuracy).
 
 ## Evaluation Harness
-- [ ] Build `eval/eval_harness.py` to run gold QA set through pipeline, compute citation precision, answerability, and latency metrics, and export CSV/JSON summaries.
-- [ ] Create `eval/gold/qa_citations.yaml` template with representative questions, expected anchors, and quotes.
+- [x] Build `eval/eval_harness.py` to run gold QA set through pipeline, compute citation precision, answerability, and latency metrics, and export CSV/JSON summaries.
+- [x] Create `eval/gold/qa_citations.yaml` template with representative questions, expected anchors, and quotes.
 - [ ] Implement ablation toggles (reranker off, RM3 on/off, heuristic fallback) for comparative experiments and track results.
 
 ## Configuration & Feature Flags
 - [x] Materialize `config/app.yaml` with defaults from spec and hook it into the extended config loader.
-- [ ] Ensure feature flags (FEATURE_RAG_PROVENANCE_LOCK, FEATURE_RERANKER, FEATURE_RM3, FEATURE_HEURISTIC_FALLBACK) gate behavior at runtime with dynamic reload support if needed.
+- [x] Ensure feature flags (FEATURE_RAG_PROVENANCE_LOCK, FEATURE_RERANKER, FEATURE_RM3, FEATURE_HEURISTIC_FALLBACK) gate behavior at runtime with dynamic reload support if needed.
 - [ ] Document configuration overrides for environments (dev, staging, prod) and ensure secrets (.env) updated accordingly.
 
 ## Security & Reliability
-- [ ] Sanitize and size-limit ingestion inputs; strip scripts/HTML and validate anchors before indexing.
-- [ ] Add auth or network ACL options for reranker sidecar plus rate limiting and circuit breaker to heuristic fallback.
+- [x] Sanitize and size-limit ingestion inputs; strip scripts/HTML and validate anchors before indexing.
+- [x] Add auth or network ACL options for reranker sidecar plus rate limiting and circuit breaker to heuristic fallback.
 - [ ] Ensure PII-safe logging (hash user IDs, exclude sensitive page content) and review for compliance.
 
 ## Rollout & Operations

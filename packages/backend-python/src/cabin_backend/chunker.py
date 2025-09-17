@@ -20,6 +20,7 @@ class SemanticChunker:
         ingestion_cfg = settings.app_config.ingestion
         self.chunk_size_tokens = max(int(ingestion_cfg.chunk_size_tokens), 1)
         self.chunk_stride_tokens = max(int(ingestion_cfg.chunk_stride_tokens), 1)
+        self.max_html_chars = max(1_000, int(getattr(ingestion_cfg, "max_html_chars", 500_000)))
 
     # ------------------------------------------------------------------
     # Public API
@@ -257,7 +258,10 @@ class SemanticChunker:
     # ------------------------------------------------------------------
 
     def _prepare_root(self, html: str) -> Tag:
-        soup = BeautifulSoup(html or "", "html.parser")
+        trimmed = (html or "")[: self.max_html_chars]
+        soup = BeautifulSoup(trimmed, "html.parser")
+        for tag in soup.find_all(["script", "style", "noscript", "iframe"]):
+            tag.decompose()
         return soup.body or soup
 
     def _normalize_text(self, text: str) -> str:

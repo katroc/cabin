@@ -8,7 +8,7 @@ from stopwordsiso import stopwords
 from .config import settings
 from .models import ChildChunk, ParentChunk, DocumentMetadata
 from .dense import ChromaCollectionManager, EmbeddingClient
-from .lexical import BM25Index
+from .lexical import BM25Index, RM3Expander
 from .retriever import (
     filter_by_cosine_floor,
     filter_by_keyword_overlap,
@@ -16,17 +16,22 @@ from .retriever import (
     reciprocal_rank_fusion,
 )
 from .retriever.reranker_client import RerankerClient
+from .telemetry.metrics import metrics
 
 logger = logging.getLogger(__name__)
 
 class VectorStore:
     def __init__(self):
+        cache_cfg = settings.app_config.embedding_cache
         self.embedding_client = EmbeddingClient(
             api_key=settings.embedding_api_key,
             base_url=settings.embedding_base_url,
             model=settings.embedding_model,
             dimensions=settings.embedding_dimensions,
             batch_size=getattr(settings, "embedding_batch_size", 16),
+            cache_enabled=cache_cfg.enabled,
+            cache_max_items=cache_cfg.max_items,
+            cache_ttl_seconds=cache_cfg.ttl_seconds,
         )
 
         # Initialize managed Chroma collection
@@ -43,6 +48,14 @@ class VectorStore:
             min_token_length=self._min_token_length,
         )
         self.reranker = RerankerClient()
+        retrieval_cfg = settings.app_config.retrieval
+        self.rm3_expander: Optional[RM3Expander] = None
+        if settings.feature_flags.rm3:
+            self.rm3_expander = RM3Expander(
+                top_docs=retrieval_cfg.rm3_top_docs,
+                expansion_terms=retrieval_cfg.rm3_terms,
+                alpha=retrieval_cfg.rm3_alpha,
+            )
 
 
     def delete_document(self, document_id: str) -> None:
@@ -110,27 +123,43 @@ class VectorStore:
         Queries for child chunks and returns the corresponding parent chunks.
         This implements the core "Parent Document Retriever" logic.
         """
-        logger.debug("VectorStore query received: %s", query_text)
-        try:
-            # Check if collection has any documents
-            collection_count = self.chroma.count()
-            if collection_count == 0:
-                logger.warning("VectorStore empty; no documents indexed when querying '%s'", query_text)
-                return []  # Return empty list if no documents indexed
+        query_preview = query_text[:64].replace("\n", " ")
+        logger.debug(
+            "VectorStore query received (len=%d): %s", len(query_text), query_preview
+        )
+        metrics.increment("retrieval.vector_store.calls")
+        with metrics.timer("retrieval.vector_store.query_time", query=query_text):
+            try:
+                # Check if collection has any documents
+                collection_count = self.chroma.count()
+                if collection_count == 0:
+                    logger.warning(
+                        "VectorStore empty; no documents indexed (len=%d, preview=%s)",
+                        len(query_text),
+                        query_preview,
+                    )
+                    metrics.increment("retrieval.vector_store.empty")
+                    return []  # Return empty list if no documents indexed
 
-            query_embedding = self._get_embeddings([query_text])[0]
+                query_embedding = self._get_embeddings([query_text])[0]
 
-            # Build query parameters
-            n_results = min(top_k, collection_count)
-            results = self.chroma.query(
-                query_embeddings=[query_embedding],
-                n_results=n_results,
-                where=filters,
-            )
+                # Build query parameters
+                n_results = min(top_k, collection_count)
+                results = self.chroma.query(
+                    query_embeddings=[query_embedding],
+                    n_results=n_results,
+                    where=filters,
+                )
 
-        except Exception as e:
-            logger.error("Failed to query ChromaDB for '%s': %s", query_text, e)
-            return []  # Return empty results instead of crashing
+            except Exception as e:
+                logger.error(
+                    "Failed to query ChromaDB (len=%d, preview=%s): %s",
+                    len(query_text),
+                    query_preview,
+                    e,
+                )
+                metrics.increment("retrieval.vector_store.errors")
+                return []  # Return empty results instead of crashing
 
         # Process results to get unique parent chunks
         parent_chunks_map: Dict[str, Dict[str, Any]] = {}
@@ -203,15 +232,35 @@ class VectorStore:
                 }
 
         if not parent_chunks_map:
-            logger.warning("No parent candidates built for query '%s'", query_text)
+            logger.warning(
+                "No parent candidates built (len=%d, preview=%s)",
+                len(query_text),
+                query_preview,
+            )
             return []
 
         candidates = list(parent_chunks_map.values())
 
         query_tokens = self._tokenize_text(query_text)
+
+        if self.rm3_expander and settings.feature_flags.rm3:
+            expanded_tokens = self.rm3_expander.expand(
+                query_tokens,
+                [candidate["tokens"] for candidate in candidates],
+            )
+            if expanded_tokens != query_tokens:
+                metrics.increment("retrieval.rm3.applied")
+                query_tokens = expanded_tokens
+
+        candidate_ids = [
+            candidate.get("metadata", {}).get("chunk_id") or candidate["chunk"].id
+            for candidate in candidates
+        ]
+
         lexical_scores = self._calculate_lexical_scores(
             query_tokens,
             [candidate["tokens"] for candidate in candidates],
+            candidate_ids,
         )
 
         logger.debug(
@@ -332,6 +381,7 @@ class VectorStore:
             len(selected_chunks),
             query_text,
         )
+        metrics.increment("retrieval.vector_store.selected", len(selected_chunks))
 
         return selected_chunks[:top_k]
 
@@ -389,6 +439,7 @@ class VectorStore:
         self,
         query_tokens: List[str],
         candidate_tokens_list: List[List[str]],
+        candidate_ids: List[str],
     ) -> List[float]:
         """Calculates normalized lexical relevance scores using BM25."""
         if not candidate_tokens_list:
@@ -405,7 +456,8 @@ class VectorStore:
             return scores
 
         corpus = [candidate_tokens_list[index] for index in non_empty_indices]
-        self.bm25_index.build(corpus)
+        doc_ids = [candidate_ids[index] for index in non_empty_indices]
+        self.bm25_index.build(corpus, doc_ids)
         raw_scores = self.bm25_index.scores(query_tokens)
 
         for idx, raw_score in zip(non_empty_indices, raw_scores):
