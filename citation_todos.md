@@ -3,7 +3,7 @@
 _Last updated: 2025-09-17_
 
 ## Global Setup
-- [ ] Map existing backend modules (`data_sources`, `chunker`, `vector_store`, `generation`) onto the proposed layout; add new packages or `__init__.py` only where functionality is missing.
+- [x] Map existing backend modules (`data_sources`, `chunker`, `vector_store`, `generation`) onto the proposed layout; add new packages or `__init__.py` only where functionality is missing.
 - [x] Review `packages/backend-python/src/cabin_backend/models.py` and extend metadata/citation structures (chunk IDs, anchors, provenance payload) so they can be reused across ingestion/retrieval modules.
 - [x] Extend existing `packages/backend-python/src/cabin_backend/config.py` to load `config/app.yaml`, surface feature flags, and keep `.env` overrides working.
 - [ ] Update dependency manifests (`requirements.txt`, `pyproject.toml`, Dockerfiles) with chromadb, rapidfuzz, bm25s/pyserini, nltk stemmer, text-dedup/datasketch, FlagEmbedding, PyYAML (already added), etc., and refresh lockfiles/pins.
@@ -66,7 +66,7 @@ _Last updated: 2025-09-17_
 ## Security & Reliability
 - [x] Sanitize and size-limit ingestion inputs; strip scripts/HTML and validate anchors before indexing.
 - [x] Add auth or network ACL options for reranker sidecar plus rate limiting and circuit breaker to heuristic fallback.
-- [ ] Ensure PII-safe logging (hash user IDs, exclude sensitive page content) and review for compliance.
+- [x] Ensure PII-safe logging (hash user IDs, exclude sensitive page content) and review for compliance.
 
 ## Rollout & Operations
 - [x] Remove deprecated post-generation BM25 validation and free-URL rendering paths (flagged for deletion) once new pipeline ready.
@@ -76,13 +76,13 @@ _Last updated: 2025-09-17_
 - [x] Produce runbook covering sidecar health checks, failure modes, fallback toggles, and incident response steps.
 
 ## Acceptance Criteria & Validation
-- [ ] Verify citation provenance lock prevents out-of-set sources; add tests covering candidate freeze behavior.
-- [ ] Confirm quote verification enforces ≤12 word snippets and >=90 similarity across evaluation set.
+- [x] Verify citation provenance lock prevents out-of-set sources; add tests covering candidate freeze behavior.
+- [x] Confirm quote verification enforces ≤12 word snippets and >=90 similarity across evaluation set.
 - [ ] Measure latency end-to-end (median ≤2.5s) under load with reranker enabled and heuristic fallback.
 - [ ] Validate dedup removes ≥90% near duplicates on canary data and log results.
 
 
 
 ## Documentation & Knowledge Transfer
-- [ ] Update `HANDOVER.md` or new docs with architecture diagrams, pipeline flow, and module responsibilities.
-- [ ] Document feature flag matrix, config parameters, and tuning guidelines for future adjustments.
+- [x] Update `HANDOVER.md` or new docs with architecture diagrams, pipeline flow, and module responsibilities.
+- [x] Document feature flag matrix, config parameters, and tuning guidelines for future adjustments.
