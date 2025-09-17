@@ -6,8 +6,11 @@ langchain
 beautifulsoup4
 pydantic
 pydantic-settings
+pyyaml
 markdown-it-py
 aiohttp
 rank-bm25
 stopwordsiso
 setuptools
+rapidfuzz
+requests

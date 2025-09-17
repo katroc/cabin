@@ -188,31 +188,35 @@ export default function ChatInterface({
     }
 
     try {
+      // Always fetch full response for citations, but handle content differently
       const fullResponse = await requestFullResponse(question)
-      updateAssistantMessage(assistantMessageId, message => ({
-        ...message,
-        content: fullResponse.response || streamedText || 'No response received',
-        citations: fullResponse.citations || [],
-        timestamp: new Date()
-      }))
+
+      if (streamingFailed || !streamedText) {
+        // If streaming failed, use the full response content
+        updateAssistantMessage(assistantMessageId, message => ({
+          ...message,
+          content: fullResponse.response || 'No response received',
+          citations: fullResponse.citations || [],
+          timestamp: new Date()
+        }))
+      } else {
+        // If streaming succeeded, keep streamed content but add citations
+        updateAssistantMessage(assistantMessageId, message => ({
+          ...message,
+          citations: fullResponse.citations || [],
+          timestamp: new Date()
+        }))
+      }
     } catch (error) {
       if ((error as Error).name === 'AbortError') {
         return
       }
       console.error('Failed to fetch complete response:', error)
-      if (streamedText && !streamingFailed) {
-        updateAssistantMessage(assistantMessageId, message => ({
-          ...message,
-          content: streamedText,
-          timestamp: new Date()
-        }))
-      } else {
-        updateAssistantMessage(assistantMessageId, message => ({
-          ...message,
-          content: 'Sorry, I encountered an error processing your request.',
-          timestamp: new Date()
-        }))
-      }
+      updateAssistantMessage(assistantMessageId, message => ({
+        ...message,
+        content: 'Sorry, I encountered an error processing your request.',
+        timestamp: new Date()
+      }))
     } finally {
       setIsProcessing(false)
       abortControllerRef.current = null

@@ -1,3 +1,6 @@
+import logging
+import os
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.responses import StreamingResponse
@@ -9,9 +12,13 @@ from .models import (
 )
 from .chunker import SemanticChunker
 from .vector_store import VectorStore
-from .generation import Generator
+from .generator import Generator
 from .data_sources.manager import DataSourceManager
 from .data_sources.confluence import ConfluenceDataSource  # Import to register
+
+
+logging.basicConfig(level=os.getenv("CABIN_LOG_LEVEL", "INFO").upper())
+logger = logging.getLogger(__name__)
 
 # --- App Initialization ---
 app = FastAPI(
@@ -120,7 +127,12 @@ def chat(request: ChatRequest) -> ChatResponse:
 
     try:
         context_chunks = vector_store_service.query(request.message, filters=request.filters)
+        logger.debug("Chat query '%s' retrieved %d context chunks", request.message, len(context_chunks))
+        if not context_chunks:
+            logger.warning("No context chunks found for query '%s'", request.message)
         response = generator_service.ask(request.message, context_chunks)
+        if response.response == "Not found in docs.":
+            logger.warning("LLM returned fallback for query '%s'", request.message)
         return response
     except Exception as e:
         print(f"Error during chat: {e}")
@@ -134,6 +146,9 @@ def chat_stream(request: ChatRequest):
 
     try:
         context_chunks = vector_store_service.query(request.message, filters=request.filters)
+        logger.debug("Streaming chat query '%s' retrieved %d context chunks", request.message, len(context_chunks))
+        if not context_chunks:
+            logger.warning("No context chunks found for streaming query '%s'", request.message)
         stream = generator_service.ask_stream(request.message, context_chunks)
         return StreamingResponse(stream, media_type="text/plain")
     except Exception as e:

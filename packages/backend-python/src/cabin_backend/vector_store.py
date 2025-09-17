@@ -1,185 +1,136 @@
-import chromadb
-import openai
+import json
 import logging
 import re
-import time
-from typing import List, Dict, Any, Optional
+from typing import Any, Dict, List, Optional
 
-from rank_bm25 import BM25Okapi
 from stopwordsiso import stopwords
 
 from .config import settings
 from .models import ChildChunk, ParentChunk, DocumentMetadata
+from .dense import ChromaCollectionManager, EmbeddingClient
+from .lexical import BM25Index
+from .retriever import (
+    filter_by_cosine_floor,
+    filter_by_keyword_overlap,
+    max_marginal_relevance,
+    reciprocal_rank_fusion,
+)
+from .retriever.reranker_client import RerankerClient
 
 logger = logging.getLogger(__name__)
 
 class VectorStore:
     def __init__(self):
-        # Initialize OpenAI client for embeddings
-        self.embedding_client = openai.OpenAI(
+        self.embedding_client = EmbeddingClient(
             api_key=settings.embedding_api_key,
             base_url=settings.embedding_base_url,
+            model=settings.embedding_model,
+            dimensions=settings.embedding_dimensions,
+            batch_size=getattr(settings, "embedding_batch_size", 16),
         )
 
-        # Initialize ChromaDB client and collection
-        self.chroma_client = None
-        self.collection = None
-        self._initialize_chroma()
+        # Initialize managed Chroma collection
+        self.chroma = ChromaCollectionManager(
+            host=settings.chroma_host,
+            port=settings.chroma_port,
+            collection_name=settings.child_collection_name,
+        )
         self._token_pattern = re.compile(r"\b[\w'-]+\b")
         self._stopwords = self._load_stopwords(settings.stopwords_language)
         self._min_token_length = settings.min_token_length
+        self.bm25_index = BM25Index(
+            language_stopwords=self._stopwords,
+            min_token_length=self._min_token_length,
+        )
+        self.reranker = RerankerClient()
 
-    def _initialize_chroma(self, max_retries: int = 3, retry_delay: float = 1.0):
-        """Initialize ChromaDB client and collection with retry logic."""
-        for attempt in range(max_retries):
-            try:
-                # Initialize ChromaDB client
-                self.chroma_client = chromadb.HttpClient(
-                    host=settings.chroma_host,
-                    port=settings.chroma_port
-                )
 
-                # Test the connection
-                self.chroma_client.heartbeat()
-
-                # Get or create the collection
-                self.collection = self.chroma_client.get_or_create_collection(
-                    name=settings.child_collection_name
-                )
-
-                logger.info(f"ChromaDB connection established successfully (attempt {attempt + 1}/{max_retries})")
-                return
-
-            except Exception as e:
-                logger.warning(f"ChromaDB connection attempt {attempt + 1}/{max_retries} failed: {e}")
-                if attempt < max_retries - 1:
-                    time.sleep(retry_delay * (2 ** attempt))  # Exponential backoff
-                else:
-                    logger.error("Failed to establish ChromaDB connection after all retries")
-                    raise
-
-    def _ensure_connection(self):
-        """Ensure ChromaDB connection is active, reconnect if necessary."""
+    def delete_document(self, document_id: str) -> None:
+        """Remove all chunks associated with a document_id from the store."""
+        if not document_id:
+            return
         try:
-            # Test the connection
-            if self.chroma_client and self.collection:
-                self.chroma_client.heartbeat()
-                # Test collection access
-                self.collection.count()
-                return
-        except Exception as e:
-            logger.warning(f"ChromaDB connection lost: {e}. Attempting to reconnect...")
-
-        # Reconnect
-        try:
-            self._initialize_chroma()
-        except Exception as e:
-            logger.error(f"Failed to reconnect to ChromaDB: {e}")
-            raise ConnectionError(f"ChromaDB connection failed: {e}")
+            self.chroma.collection.delete(where={"document_id": document_id})
+        except Exception as exc:
+            logger.warning("Failed to delete document %s from Chroma: %s", document_id, exc)
 
     def add_documents(self, chunks: List[ChildChunk]):
         """Embeds and stores a list of ChildChunks in ChromaDB."""
         if not chunks:
             return
 
-        # Ensure connection is active
-        self._ensure_connection()
-
         ids = [chunk.id for chunk in chunks]
         documents = [chunk.text for chunk in chunks]
         metadatas = []
         for chunk in chunks:
-            metadata = chunk.metadata.dict()
-            # Convert lists to strings for ChromaDB compatibility
-            if 'headings' in metadata and isinstance(metadata['headings'], list):
-                metadata['headings'] = ' | '.join(metadata['headings'])
-            metadata['parent_chunk_text'] = chunk.parent_chunk_text
-
-            # Filter out None values as ChromaDB doesn't handle them well
-            filtered_metadata = {k: v for k, v in metadata.items() if v is not None}
-            metadatas.append(filtered_metadata)
+            metadata = (
+                chunk.metadata.model_dump()
+                if hasattr(chunk.metadata, "model_dump")
+                else chunk.metadata.dict()
+            )
+            metadata["parent_chunk_text"] = chunk.parent_chunk_text
+            metadatas.append(self._sanitize_metadata(metadata))
 
         # Note: ChromaDB automatically handles embedding generation if an embedding function
         # is associated with the collection. However, managing it explicitly gives more control.
         embeddings = self._get_embeddings(documents)
 
-        try:
-            self.collection.add(
-                ids=ids,
-                embeddings=embeddings,
-                documents=documents,
-                metadatas=metadatas
-            )
-        except Exception as e:
-            logger.error(f"Failed to add documents to ChromaDB: {e}")
-            # Try to reconnect and retry once
-            try:
-                logger.info("Attempting to reconnect and retry document addition...")
-                self._ensure_connection()
-                self.collection.add(
-                    ids=ids,
-                    embeddings=embeddings,
-                    documents=documents,
-                    metadatas=metadatas
-                )
-                logger.info("Successfully added documents after reconnection")
-            except Exception as retry_e:
-                logger.error(f"Failed to add documents even after reconnection: {retry_e}")
-                raise
+        self.chroma.add(ids=ids, embeddings=embeddings, documents=documents, metadatas=metadatas)
+
+    @staticmethod
+    def _sanitize_metadata(metadata: Dict[str, Any]) -> Dict[str, Any]:
+        """Ensure metadata values conform to ChromaDB's primitive requirements."""
+        sanitized: Dict[str, Any] = {}
+
+        for key, value in metadata.items():
+            if value is None:
+                continue
+
+            if isinstance(value, list):
+                joined = " | ".join(str(item) for item in value if item not in (None, ""))
+                if joined:
+                    sanitized[key] = joined
+                continue
+
+            if isinstance(value, dict):
+                # Preserve structure while meeting primitive requirements.
+                sanitized[key] = json.dumps(value, sort_keys=True)
+                continue
+
+            if isinstance(value, (str, int, float, bool)):
+                sanitized[key] = value
+                continue
+
+            sanitized[key] = str(value)
+
+        return sanitized
 
     def query(self, query_text: str, top_k: int = settings.top_k, filters: Optional[Dict[str, Any]] = None) -> List[ParentChunk]:
         """
         Queries for child chunks and returns the corresponding parent chunks.
         This implements the core "Parent Document Retriever" logic.
         """
-        # Ensure connection is active
-        self._ensure_connection()
-
+        logger.debug("VectorStore query received: %s", query_text)
         try:
             # Check if collection has any documents
-            collection_count = self.collection.count()
+            collection_count = self.chroma.count()
             if collection_count == 0:
+                logger.warning("VectorStore empty; no documents indexed when querying '%s'", query_text)
                 return []  # Return empty list if no documents indexed
 
             query_embedding = self._get_embeddings([query_text])[0]
 
             # Build query parameters
-            query_params = {
-                "query_embeddings": [query_embedding],
-                "n_results": min(top_k, collection_count)  # Don't request more than available
-            }
-
-            # Only add where clause if filters are provided
-            if filters:
-                query_params["where"] = filters
-
-            results = self.collection.query(**query_params)
+            n_results = min(top_k, collection_count)
+            results = self.chroma.query(
+                query_embeddings=[query_embedding],
+                n_results=n_results,
+                where=filters,
+            )
 
         except Exception as e:
-            logger.error(f"Failed to query ChromaDB: {e}")
-            # Try to reconnect and retry once
-            try:
-                logger.info("Attempting to reconnect and retry query...")
-                self._ensure_connection()
-
-                collection_count = self.collection.count()
-                if collection_count == 0:
-                    return []
-
-                query_embedding = self._get_embeddings([query_text])[0]
-                query_params = {
-                    "query_embeddings": [query_embedding],
-                    "n_results": min(top_k, collection_count)
-                }
-                if filters:
-                    query_params["where"] = filters
-
-                results = self.collection.query(**query_params)
-                logger.info("Successfully queried after reconnection")
-
-            except Exception as retry_e:
-                logger.error(f"Failed to query even after reconnection: {retry_e}")
-                return []  # Return empty results instead of crashing
+            logger.error("Failed to query ChromaDB for '%s': %s", query_text, e)
+            return []  # Return empty results instead of crashing
 
         # Process results to get unique parent chunks
         parent_chunks_map: Dict[str, Dict[str, Any]] = {}
@@ -190,29 +141,47 @@ class VectorStore:
         retrieved_similarities = results.get('similarities') or []
 
         for i, metadata in enumerate(retrieved_metadatas):
-            parent_text = metadata.get("parent_chunk_text")
+            metadata_copy = dict(metadata)
+            parent_text = metadata_copy.get("parent_chunk_text")
             if not parent_text:
                 continue
 
-            document_id = metadata.get("document_id") or metadata.get("source_url") or metadata.get("page_title")
-            parent_chunk_id = metadata.get("parent_chunk_id") or metadata.get("chunk_id")
+            document_id = (
+                metadata_copy.get("document_id")
+                or metadata_copy.get("source_url")
+                or metadata_copy.get("page_title")
+            )
+            parent_chunk_id = metadata_copy.get("parent_chunk_id") or metadata_copy.get("chunk_id")
             chunk_identifier = parent_chunk_id or retrieved_ids[i]
             key = f"{document_id or ''}::{chunk_identifier or parent_text}"
 
-            headings = metadata.get("headings", [])
-            if isinstance(headings, str):
-                headings = headings.split(' | ') if headings else []
+            raw_headings = metadata_copy.get("headings", [])
+            if isinstance(raw_headings, str):
+                headings = raw_headings.split(' | ') if raw_headings else []
+            elif isinstance(raw_headings, list):
+                headings = [heading for heading in raw_headings if heading]
+            else:
+                headings = []
+
+            metadata_copy["headings"] = headings
+            metadata_copy.setdefault("chunk_id", chunk_identifier)
+            metadata_copy.setdefault("document_id", document_id)
 
             parent_metadata = DocumentMetadata(
-                page_title=metadata.get("page_title", ""),
-                space_name=metadata.get("space_name"),
-                source_url=metadata.get("source_url"),
+                page_title=metadata_copy.get("page_title", ""),
+                space_name=metadata_copy.get("space_name"),
+                space_key=metadata_copy.get("space_key"),
+                source_url=metadata_copy.get("source_url"),
+                url=metadata_copy.get("url"),
                 headings=headings,
-                last_modified=metadata.get("last_modified"),
+                last_modified=metadata_copy.get("last_modified"),
                 document_id=document_id,
                 parent_chunk_id=parent_chunk_id,
                 chunk_id=chunk_identifier,
                 chunk_type="parent",
+                page_version=metadata_copy.get("page_version"),
+                content_type=metadata_copy.get("content_type"),
+                anchor_id=metadata_copy.get("anchor_id"),
             )
             parent_chunk = ParentChunk(
                 id=chunk_identifier,
@@ -221,18 +190,20 @@ class VectorStore:
             )
 
             embedding_score = self._calculate_embedding_score(i, retrieved_distances, retrieved_similarities)
-            candidate_text = self._build_candidate_text(parent_text, metadata)
+            candidate_text = self._build_candidate_text(parent_text, metadata_copy)
             candidate_tokens = self._tokenize_text(candidate_text)
 
             existing = parent_chunks_map.get(key)
             if not existing or embedding_score > existing["embedding_score"]:
                 parent_chunks_map[key] = {
                     "chunk": parent_chunk,
+                    "metadata": metadata_copy,
                     "embedding_score": embedding_score,
                     "tokens": candidate_tokens,
                 }
 
         if not parent_chunks_map:
+            logger.warning("No parent candidates built for query '%s'", query_text)
             return []
 
         candidates = list(parent_chunks_map.values())
@@ -243,12 +214,20 @@ class VectorStore:
             [candidate["tokens"] for candidate in candidates],
         )
 
+        logger.debug(
+            "VectorStore candidates before hygiene for '%s': %d", query_text, len(candidates)
+        )
+
+        query_term_set = set(query_tokens)
+
         for candidate, lexical_score in zip(candidates, lexical_scores):
             candidate["lexical_score"] = lexical_score
             candidate["combined_score"] = self._combine_scores(
                 candidate["embedding_score"],
                 lexical_score,
             )
+            tokens_set = set(candidate["tokens"])
+            candidate["keyword_overlap"] = len(query_term_set & tokens_set) if query_term_set else 0
 
         if query_tokens:
             filtered_candidates = [
@@ -261,22 +240,104 @@ class VectorStore:
         if not filtered_candidates:
             filtered_candidates = candidates
 
-        sorted_candidates = sorted(
-            filtered_candidates,
-            key=lambda candidate: candidate["combined_score"],
+        active_candidates = filtered_candidates
+
+        extracted = [
+            (candidate.get("metadata", {}), candidate["chunk"])
+            for candidate in active_candidates
+        ]
+
+        def _ranking_ids(entries: List[Dict[str, Any]], key_name: str) -> List[str]:
+            seen: set[str] = set()
+            ordered: List[str] = []
+            for candidate in sorted(entries, key=lambda item: item.get(key_name, 0.0), reverse=True):
+                chunk_id = candidate.get("metadata", {}).get("chunk_id") or candidate["chunk"].id
+                if chunk_id in seen:
+                    continue
+                seen.add(chunk_id)
+                ordered.append(chunk_id)
+            return ordered
+
+        dense_ranked_ids = _ranking_ids(active_candidates, "embedding_score")
+        lexical_ranked_ids = _ranking_ids(active_candidates, "lexical_score")
+
+        fusion_scores = reciprocal_rank_fusion(
+            [dense_ranked_ids, lexical_ranked_ids],
+            k=settings.app_config.retrieval.rrf_k,
+        )
+
+        # Apply hygiene filters
+        cosine_filtered = filter_by_cosine_floor(
+            fusion_scores,
+            cosine_floor=settings.app_config.retrieval.cosine_floor,
+        )
+
+        keyword_candidates = {
+            (meta.get("chunk_id") or chunk.id): {
+                "keyword_overlap": candidate.get("keyword_overlap", 0),
+                "content_type": chunk.metadata.content_type,
+            }
+            for candidate, (meta, chunk) in zip(active_candidates, extracted)
+        }
+
+        allowed_ids = set(
+            filter_by_keyword_overlap(
+                candidates=keyword_candidates,
+                min_overlap=settings.app_config.retrieval.min_keyword_overlap,
+                content_types_permissive=("code", "table"),
+            )
+        )
+
+        filtered_scores = {
+            item_id: score
+            for item_id, score in cosine_filtered.items()
+            if item_id in allowed_ids
+        }
+
+        if not filtered_scores:
+            filtered_scores = fusion_scores
+
+        candidates_for_mmr = sorted(
+            filtered_scores.items(),
+            key=lambda item: item[1],
             reverse=True,
         )
 
-        return [candidate["chunk"] for candidate in sorted_candidates[:top_k]]
+        similarity_matrix = {}
+        # TODO: compute actual pairwise similarities once embedding metadata is available
+        for (meta_a, chunk_a), (meta_b, chunk_b) in zip(extracted, extracted[1:]):
+            key = ((meta_a.get("chunk_id") or chunk_a.id), (meta_b.get("chunk_id") or chunk_b.id))
+            similarity_matrix[key] = 0.0
+
+        selected_ids = max_marginal_relevance(
+            candidates=candidates_for_mmr,
+            similarity_matrix=similarity_matrix,
+            lambda_param=settings.app_config.retrieval.mmr_lambda,
+            limit=settings.app_config.retrieval.final_passages,
+        )
+
+        chunk_lookup = {meta.get("chunk_id") or chunk.id: chunk for meta, chunk in extracted}
+
+        ordered_ids = selected_ids
+        if settings.feature_flags.reranker:
+            reranker_input = {cid: chunk_lookup[cid].text for cid in selected_ids if cid in chunk_lookup}
+            reranked = self.reranker.rerank(query_text, reranker_input)
+            if reranked:
+                ordered_ids = [cid for cid, _ in reranked]
+
+        selected_chunks = [chunk_lookup[cid] for cid in ordered_ids if cid in chunk_lookup]
+
+        logger.debug(
+            "VectorStore returning %d parent chunks for query '%s'",
+            len(selected_chunks),
+            query_text,
+        )
+
+        return selected_chunks[:top_k]
 
     def _get_embeddings(self, texts: List[str]) -> List[List[float]]:
         """Generates embeddings for a list of texts."""
-        response = self.embedding_client.embeddings.create(
-            input=texts,
-            model=settings.embedding_model,
-            dimensions=settings.embedding_dimensions
-        )
-        return [item.embedding for item in response.data]
+        return self.embedding_client.embed(texts)
 
     def _load_stopwords(self, language: Optional[str]) -> set[str]:
         """Loads stopwords for the configured language."""
@@ -344,18 +405,11 @@ class VectorStore:
             return scores
 
         corpus = [candidate_tokens_list[index] for index in non_empty_indices]
-        bm25 = BM25Okapi(corpus)
-        raw_scores = bm25.get_scores(query_tokens)
-
-        if not len(raw_scores):
-            return scores
-
-        max_score = float(raw_scores.max())
-        if max_score <= 0:
-            return scores
+        self.bm25_index.build(corpus)
+        raw_scores = self.bm25_index.scores(query_tokens)
 
         for idx, raw_score in zip(non_empty_indices, raw_scores):
-            scores[idx] = float(raw_score) / max_score
+            scores[idx] = raw_score
 
         return scores
 
@@ -388,35 +442,17 @@ class VectorStore:
 
     def clear_collection(self):
         """Clears all documents from the collection."""
-        # Ensure connection is active
-        self._ensure_connection()
-
         try:
-            # This is a bit of a workaround as ChromaDB's delete can be complex.
-            # For a full clear, deleting and recreating the collection is often easiest.
-            self.chroma_client.delete_collection(name=settings.child_collection_name)
-            self.collection = self.chroma_client.get_or_create_collection(
-                name=settings.child_collection_name
-            )
+            self.chroma.reset()
         except Exception as e:
             logger.error(f"Failed to clear collection: {e}")
-            # Try to reconnect and retry once
-            try:
-                logger.info("Attempting to reconnect and retry collection clearing...")
-                self._ensure_connection()
-                self.chroma_client.delete_collection(name=settings.child_collection_name)
-                self.collection = self.chroma_client.get_or_create_collection(
-                    name=settings.child_collection_name
-                )
-                logger.info("Successfully cleared collection after reconnection")
-            except Exception as retry_e:
-                logger.error(f"Failed to clear collection even after reconnection: {retry_e}")
-                raise
+            raise
 
     def health_check(self) -> bool:
         """Check if the vector store is healthy and connected."""
         try:
-            self._ensure_connection()
+            self.chroma.ensure_connection()
+            self.embedding_client.health_check()
             return True
         except Exception as e:
             logger.error(f"Vector store health check failed: {e}")

@@ -5,13 +5,16 @@ data sources and the vector store.
 
 import asyncio
 import logging
-from typing import Dict, Optional, List
+import time
 from datetime import datetime
+from typing import Any, Dict, List, Optional, Set
 
 from .base import (
     DataSource, DataSourceType, DataSourceConnection, IndexingConfig,
     IndexingProgress, data_source_registry
 )
+from ..config import settings
+from ..ingest import Deduplicator
 from ..models import IngestRequest
 from ..chunker import SemanticChunker
 from ..vector_store import VectorStore
@@ -26,8 +29,11 @@ class DataSourceManager:
         self.vector_store = vector_store
         self._jobs: Dict[str, IndexingProgress] = {}
         self._running_tasks: Dict[str, asyncio.Task] = {}
+        self._deduplicator = Deduplicator(
+            threshold=settings.app_config.ingestion.dedup_threshold
+        )
 
-    def get_available_sources(self) -> List[Dict[str, any]]:
+    def get_available_sources(self) -> List[Dict[str, Any]]:
         """Get information about all available data source types."""
         sources = []
         for source_type in data_source_registry.get_available_types():
@@ -49,7 +55,7 @@ class DataSourceManager:
     async def test_connection(
         self,
         source_type: str,
-        connection_config: Dict[str, any]
+        connection_config: Dict[str, Any]
     ) -> bool:
         """Test connection to a data source."""
         try:
@@ -68,8 +74,8 @@ class DataSourceManager:
     async def discover_sources(
         self,
         source_type: str,
-        connection_config: Dict[str, any]
-    ) -> List[Dict[str, any]]:
+        connection_config: Dict[str, Any]
+    ) -> List[Dict[str, Any]]:
         """Discover available sources (spaces, repos, etc.) from a data source."""
         try:
             source_type_enum = DataSourceType(source_type)
@@ -87,9 +93,9 @@ class DataSourceManager:
     async def start_indexing(
         self,
         source_type: str,
-        connection_config: Dict[str, any],
+        connection_config: Dict[str, Any],
         source_ids: List[str],
-        indexing_config: Dict[str, any]
+        indexing_config: Dict[str, Any]
     ) -> str:
         """Start an indexing job."""
         try:
@@ -140,25 +146,88 @@ class DataSourceManager:
             if job_id in self._jobs:
                 self._jobs[job_id].status = "running"
 
+            ingestion_cfg = settings.app_config.ingestion
+            drop_labels = {label.lower() for label in ingestion_cfg.drop_labels}
+            stats = {
+                "processed": 0,
+                "skipped_label": 0,
+                "skipped_boilerplate": 0,
+                "dedup_dropped": 0,
+                "processing_time_total": 0.0,
+            }
+
             processed_count = 0
 
             # Extract documents and process them
             async for document in source.extract_documents(source_ids, config):
                 try:
                     # Convert to IngestRequest format for existing pipeline
+                    source_meta = document.source.metadata or {}
+                    doc_meta = document.metadata or {}
+
+                    skip_reason = self._evaluate_skip(
+                        doc_meta,
+                        drop_labels,
+                        ingestion_cfg.drop_boilerplate,
+                    )
+                    if skip_reason:
+                        key = f"skipped_{skip_reason}"
+                        stats[key] += 1
+                        logger.info(
+                            "Skipping document %s due to %s filter",
+                            document.id,
+                            skip_reason,
+                        )
+                        continue
+
                     ingest_request = IngestRequest(
                         page_title=document.title,
                         text=document.content,
-                        space_name=document.source.metadata.get("space_name"),
+                        space_name=source_meta.get("space_name") or doc_meta.get("space_name"),
+                        space_key=doc_meta.get("space_key"),
+                        page_id=doc_meta.get("page_id"),
+                        page_version=doc_meta.get("page_version"),
+                        labels=doc_meta.get("labels", []),
                         source_url=document.source.source_url,
-                        last_modified=document.source.last_modified.isoformat() if document.source.last_modified else None
+                        url=doc_meta.get("url") or document.source.source_url,
+                        last_modified=document.source.last_modified.isoformat() if document.source.last_modified else doc_meta.get("last_modified"),
+                        document_id=doc_meta.get("document_id"),
+                        metadata=doc_meta,
                     )
 
+                    if ingest_request.document_id:
+                        self.vector_store.delete_document(ingest_request.document_id)
+
                     # Process through existing chunking and vector store pipeline
+                    start_time = time.perf_counter()
                     child_chunks = self.chunker.chunk(ingest_request)
+
+                    if settings.app_config.ingestion.dedup_enabled:
+                        dedup_result = self._deduplicator.deduplicate(child_chunks)
+                        child_chunks = dedup_result.kept
+                        stats["dedup_dropped"] += len(dedup_result.dropped)
+                        for dropped_chunk, kept_chunk, score in dedup_result.dropped:
+                            logger.debug(
+                                "Dedup dropped chunk %s in favour of %s (score=%.2f)",
+                                dropped_chunk.id,
+                                kept_chunk.id,
+                                score,
+                            )
+
                     self.vector_store.add_documents(child_chunks)
+                    elapsed = time.perf_counter() - start_time
+
+                    stats["processed"] += 1
+                    stats["processing_time_total"] += elapsed
 
                     processed_count += 1
+
+                    logger.debug(
+                        "Indexed document %s with %d child chunks in %.3fs",
+                        document.id,
+                        len(child_chunks),
+                        elapsed,
+                    )
 
                     # Update progress from source if available
                     source_progress = source.get_progress(job_id)
@@ -173,6 +242,23 @@ class DataSourceManager:
                 self._jobs[job_id].status = "completed"
                 self._jobs[job_id].completed_at = datetime.now()
                 self._jobs[job_id].processed_items = processed_count
+
+            total_seen = stats["processed"] + stats["skipped_label"] + stats["skipped_boilerplate"]
+            avg_latency = (
+                stats["processing_time_total"] / stats["processed"]
+                if stats["processed"]
+                else 0.0
+            )
+            logger.info(
+                "Ingestion job %s summary: total=%d processed=%d skipped_label=%d skipped_boilerplate=%d dedup_dropped=%d avg_latency=%.3fs",
+                job_id,
+                total_seen,
+                stats["processed"],
+                stats["skipped_label"],
+                stats["skipped_boilerplate"],
+                stats["dedup_dropped"],
+                avg_latency,
+            )
 
         except Exception as e:
             logger.error(f"Indexing job {job_id} failed: {e}")
@@ -203,3 +289,25 @@ class DataSourceManager:
                 self._jobs[job_id].completed_at = datetime.now()
             return True
         return False
+
+    # ------------------------------------------------------------------
+    # Filtering helpers
+    # ------------------------------------------------------------------
+
+    def _evaluate_skip(
+        self,
+        metadata: Dict[str, Any],
+        drop_labels: Set[str],
+        drop_boilerplate: bool,
+    ) -> str:
+        if not metadata:
+            return ""
+
+        if drop_boilerplate and metadata.get("is_boilerplate"):
+            return "boilerplate"
+
+        labels = {label.lower() for label in metadata.get("labels", []) if label}
+        if drop_labels and labels.intersection(drop_labels):
+            return "label"
+
+        return ""

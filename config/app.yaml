@@ -1,0 +1,41 @@
+features:
+  FEATURE_RAG_PROVENANCE_LOCK: true
+  FEATURE_RERANKER: true
+  FEATURE_RM3: false
+  FEATURE_HEURISTIC_FALLBACK: true
+
+ingestion:
+  chunk_size_tokens: 250
+  chunk_stride_tokens: 75
+  drop_labels:
+    - template
+    - archive
+    - index
+  drop_boilerplate: true
+  dedup_enabled: true
+  dedup_method: minhash
+  dedup_threshold: 0.92
+
+retrieval:
+  dense_k: 80
+  lexical_backend: bm25
+  lexical_k: 80
+  rrf_k: 60
+  mmr_lambda: 0.5
+  cosine_floor: 0.18
+  min_keyword_overlap: 2
+  final_passages: 8
+
+reranker:
+  url: "http://reranker:8000/rerank"
+  top_n: 8
+  timeout_s: 8
+  model: "BAAI/bge-reranker-base"
+
+generation:
+  max_citations: 3
+  require_quotes: true
+  quote_max_words: 12
+
+verification:
+  fuzzy_partial_ratio_min: 90
