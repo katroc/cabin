@@ -54,6 +54,7 @@ interface SettingsData {
 }
 
 const STORAGE_KEY = 'cabin.conversations.v1'
+const SETTINGS_ENDPOINT = 'http://localhost:8788/api/settings'
 
 const createDefaultConversation = (): Conversation => ({
   id: Date.now().toString(),
@@ -114,7 +115,7 @@ export default function Home() {
     let cancelled = false
     const fetchSettings = async () => {
       try {
-        const response = await fetch('/api/settings')
+        const response = await fetch(SETTINGS_ENDPOINT)
         if (!response.ok) {
           throw new Error(`Failed to fetch settings: ${response.status}`)
         }
@@ -333,7 +334,7 @@ export default function Home() {
   const handleSettingsSave = useCallback(async (nextSettings: SettingsData) => {
     setSettings(nextSettings)
     try {
-      await fetch('/api/settings', {
+      await fetch(SETTINGS_ENDPOINT, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(nextSettings)
