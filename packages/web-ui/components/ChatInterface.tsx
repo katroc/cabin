@@ -117,7 +117,7 @@ export default function ChatInterface({
 
   const requestFullResponse = useCallback(async (prompt: string) => {
     const controller = new AbortController()
-    abortControllerRef.current = controller
+    // Don't overwrite the main abortControllerRef during streaming
     const response = await fetch(CHAT_ENDPOINT, {
       method: 'POST',
       headers: {
@@ -131,7 +131,6 @@ export default function ChatInterface({
       throw new Error('Network response was not ok')
     }
 
-    abortControllerRef.current = null
     return response.json()
   }, [])
 
