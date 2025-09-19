@@ -19,6 +19,7 @@ interface SmartResponseProps {
   query: string;
   citations?: Citation[];
   animate?: boolean;
+  isVerifyingSources?: boolean;
 }
 
 type QueryType = 'factual' | 'howto' | 'troubleshooting' | 'comparison' | 'general';
@@ -33,7 +34,8 @@ const SmartResponse: React.FC<SmartResponseProps> = ({
   answer,
   query,
   citations = [],
-  animate = false
+  animate = false,
+  isVerifyingSources = false
 }) => {
   const [displayedAnswer, setDisplayedAnswer] = React.useState(animate ? '' : answer);
   const [isAnimating, setIsAnimating] = React.useState(animate);
@@ -335,16 +337,36 @@ const SmartResponse: React.FC<SmartResponseProps> = ({
         ))}
 
         {/* Citations Section */}
-        {citations && citations.length > 0 && (
+        {((citations && citations.length > 0) || isVerifyingSources) && (
           <div className="citations-section">
             <div className="citations-header">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" className="citations-icon">
-                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
-              </svg>
-              <span className="citations-title">Sources</span>
+              {isVerifyingSources ? (
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" className="citations-icon citations-loading">
+                  <path d="M12,4V2A10,10 0 0,0 2,12H4A8,8 0 0,1 12,4Z" />
+                </svg>
+              ) : (
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" className="citations-icon">
+                  <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+                </svg>
+              )}
+              <span className="citations-title">
+                {isVerifyingSources ? "Verifying sources..." : "Sources"}
+              </span>
             </div>
             <div className="citations-list">
-              {citations.map((citation) => (
+              {isVerifyingSources && citations.length === 0 ? (
+                <div className="citation-item citation-verifying">
+                  <div className="citation-verifying-content">
+                    <div className="citation-verifying-dots">
+                      <span>●</span>
+                      <span>●</span>
+                      <span>●</span>
+                    </div>
+                    <div className="citation-verifying-text">Checking source reliability...</div>
+                  </div>
+                </div>
+              ) : (
+                citations.map((citation) => (
                 <div key={citation.id} id={`src-${citation.id}`} className="citation-item">
                   <div className="citation-id">{citation.id}</div>
                   <div className="citation-content">
@@ -375,7 +397,8 @@ const SmartResponse: React.FC<SmartResponseProps> = ({
                     )}
                   </div>
                 </div>
-              ))}
+                ))
+              )}
             </div>
           </div>
         )}

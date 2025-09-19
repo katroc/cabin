@@ -38,24 +38,38 @@ class RerankerClient:
             metrics.increment("retrieval.reranker.skipped")
             return []
 
-        payload = {
-            "query": query,
-            "candidates": [{"id": cid, "text": text} for cid, text in candidates.items()],
-            "top_n": self.top_n,
-        }
-
         last_error: Exception | None = None
         for index, url in enumerate(self._candidate_urls, start=1):
             try:
-                response = requests.post(
-                    url,
-                    json=payload,
-                    timeout=self.timeout,
-                    headers=self._headers,
-                )
-                response.raise_for_status()
-                data = response.json()
-                results = [(item["id"], float(item["score"])) for item in data.get("results", [])]
+                # Detect if this is a vLLM endpoint and adapt the payload accordingly
+                if self._is_vllm_endpoint(url):
+                    payload = self._build_vllm_payload(query, candidates)
+                    resolved_url = self._resolve_vllm_url(url)
+                    response = requests.post(
+                        resolved_url,
+                        json=payload,
+                        timeout=self.timeout,
+                        headers=self._headers,
+                    )
+                    response.raise_for_status()
+                    data = response.json()
+                    results = self._parse_vllm_response(data, candidates)
+                else:
+                    # Original format for custom reranker service
+                    payload = {
+                        "query": query,
+                        "candidates": [{"id": cid, "text": text} for cid, text in candidates.items()],
+                        "top_n": self.top_n,
+                    }
+                    response = requests.post(
+                        url,
+                        json=payload,
+                        timeout=self.timeout,
+                        headers=self._headers,
+                    )
+                    response.raise_for_status()
+                    data = response.json()
+                    results = [(item["id"], float(item["score"])) for item in data.get("results", [])]
                 logger.info(
                     "Reranker success via %s (attempt %d/%d): %d results",
                     url,
@@ -108,7 +122,7 @@ class RerankerClient:
             if swapped and swapped not in candidates:
                 candidates.append(swapped)
 
-        return candidates or ["http://localhost:8000/rerank"]
+        return candidates or ["http://localhost:8002/rerank"]
 
     @staticmethod
     def _swap_host(url: str, host: str) -> str | None:
@@ -123,7 +137,8 @@ class RerankerClient:
         if parts.hostname != "reranker":
             return None
 
-        port_fragment = f":{parts.port}" if parts.port else ""
+        # Force use port 8002 for vLLM reranker instead of original port
+        port_fragment = ":8002"
         netloc = f"{host}{port_fragment}"
         swapped = urlunsplit((parts.scheme, netloc, parts.path, parts.query, parts.fragment))
         return swapped.rstrip("/")
@@ -137,3 +152,37 @@ class RerankerClient:
             score = len(overlap) / max(len(query_terms), 1)
             scored.append((cid, score))
         return sorted(scored, key=lambda item: item[1], reverse=True)
+
+    def _is_vllm_endpoint(self, url: str) -> bool:
+        """Detect if this is a vLLM reranker endpoint."""
+        # vLLM typically runs on ports 8000+ and has /rerank endpoint
+        return "8002" in url or "vllm" in url.lower() or "external-vllm" in url
+
+    def _resolve_vllm_url(self, url: str) -> str:
+        """Resolve external-vllm hostname to localhost for actual API calls."""
+        return url.replace("external-vllm", "localhost")
+
+    def _build_vllm_payload(self, query: str, candidates: Dict[str, str]) -> Dict:
+        """Build payload for vLLM reranker API."""
+        return {
+            "model": settings.app_config.reranker.model,
+            "query": query,
+            "documents": list(candidates.values()),
+            "top_n": self.top_n,
+        }
+
+    def _parse_vllm_response(self, data: Dict, candidates: Dict[str, str]) -> List[Tuple[str, float]]:
+        """Parse vLLM reranker response and map back to candidate IDs."""
+        results = []
+        candidate_list = list(candidates.items())
+
+        for result in data.get("results", []):
+            index = result.get("index", 0)
+            score = result.get("relevance_score", 0.0)
+
+            # Map index back to candidate ID
+            if 0 <= index < len(candidate_list):
+                candidate_id = candidate_list[index][0]
+                results.append((candidate_id, float(score)))
+
+        return results

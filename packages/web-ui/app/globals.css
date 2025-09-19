@@ -785,6 +785,15 @@ input[type="checkbox"] {
   flex-shrink: 0;
 }
 
+.citations-loading {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
 .citations-title {
   font-weight: 600;
   font-size: var(--text-sm);
@@ -917,4 +926,48 @@ input[type="checkbox"] {
   color: var(--text-muted);
   font-size: var(--text-xs);
   margin-top: var(--space-1);
+}
+
+/* Source verification animation */
+.citation-verifying {
+  opacity: 0.7;
+}
+
+.citation-verifying-content {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  padding: 1.25rem 1rem; /* py-5 px-4 equivalent */
+}
+
+.citation-verifying-dots {
+  display: flex;
+  gap: 2px;
+}
+
+.citation-verifying-dots span {
+  animation: pulse 1.4s ease-in-out infinite both;
+  color: var(--accent);
+}
+
+.citation-verifying-dots span:nth-child(1) { animation-delay: -0.32s; }
+.citation-verifying-dots span:nth-child(2) { animation-delay: -0.16s; }
+.citation-verifying-dots span:nth-child(3) { animation-delay: 0s; }
+
+.citation-verifying-text {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  font-style: italic;
+}
+
+@keyframes pulse {
+  0%, 80%, 100% {
+    opacity: 0.3;
+    transform: scale(0.8);
+  }
+  40% {
+    opacity: 1;
+    transform: scale(1);
+  }
 }

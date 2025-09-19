@@ -23,7 +23,7 @@ retrieval:
   lexical_k: 80
   rrf_k: 60
   mmr_lambda: 0.5
-  cosine_floor: 0.18
+  cosine_floor: 0.05
   min_keyword_overlap: 2
   final_passages: 8
   rm3_top_docs: 10
@@ -31,10 +31,10 @@ retrieval:
   rm3_alpha: 0.4
 
 reranker:
-  url: "http://reranker:8000/rerank"
+  url: "http://localhost:8002/rerank"
   top_n: 8
   timeout_s: 8
-  model: "BAAI/bge-reranker-base"
+  model: "bge-reranker-v2-m3"
   api_key: null
 
 generation:
@@ -43,7 +43,7 @@ generation:
   quote_max_words: 12
 
 verification:
-  fuzzy_partial_ratio_min: 90
+  fuzzy_partial_ratio_min: 70
 
 embedding_cache:
   enabled: true

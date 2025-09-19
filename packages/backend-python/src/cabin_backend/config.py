@@ -69,10 +69,10 @@ class RetrievalSettings(BaseModel):
 
 
 class RerankerSettings(BaseModel):
-    url: str = "http://reranker:8000/rerank"
+    url: str = "http://localhost:8002/rerank"
     top_n: int = 8
     timeout_s: int = 8
-    model: str = "BAAI/bge-reranker-base"
+    model: str = "bge-reranker-v2-m3"
     api_key: Optional[str] = None
 
     class Config:

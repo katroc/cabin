@@ -49,6 +49,7 @@ export default function ChatInterface({
 }: ChatInterfaceProps) {
   const [input, setInput] = useState('')
   const [isProcessing, setIsProcessing] = useState(false)
+  const [verifyingMessageId, setVerifyingMessageId] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement | null>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
   const lastAssistantIdRef = useRef<string | null>(null)
@@ -58,6 +59,7 @@ export default function ChatInterface({
   useEffect(() => {
     setInput('')
     setIsProcessing(false)
+    setVerifyingMessageId(null)
     lastAssistantIdRef.current = null
     abortControllerRef.current?.abort()
     abortControllerRef.current = null
@@ -67,6 +69,16 @@ export default function ChatInterface({
     if (!conversation) return
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [conversation?.messages, conversation?.id])
+
+  // Scroll when verification state changes (animation appears/disappears)
+  useEffect(() => {
+    if (verifyingMessageId) {
+      // Small delay to let the animation render first
+      setTimeout(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+      }, 100)
+    }
+  }, [verifyingMessageId])
 
   const updateAssistantMessage = useCallback(
     (assistantId: string, updater: (message: Message) => Message) => {
@@ -138,6 +150,7 @@ export default function ChatInterface({
     abortControllerRef.current?.abort()
     abortControllerRef.current = null
     setIsProcessing(false)
+    setVerifyingMessageId(null)
     lastAssistantIdRef.current = null
   }, [])
 
@@ -187,6 +200,8 @@ export default function ChatInterface({
     }
 
     try {
+      // Set verification state while fetching citations
+      setVerifyingMessageId(assistantMessageId)
       // Always fetch full response for citations, but handle content differently
       const fullResponse = await requestFullResponse(question)
 
@@ -206,6 +221,8 @@ export default function ChatInterface({
           timestamp: new Date()
         }))
       }
+      // Clear verification state
+      setVerifyingMessageId(null)
     } catch (error) {
       if ((error as Error).name === 'AbortError') {
         return
@@ -216,6 +233,8 @@ export default function ChatInterface({
         content: 'Sorry, I encountered an error processing your request.',
         timestamp: new Date()
       }))
+      // Clear verification state on error
+      setVerifyingMessageId(null)
     } finally {
       setIsProcessing(false)
       abortControllerRef.current = null
@@ -341,6 +360,7 @@ export default function ChatInterface({
                           answer={message.content}
                           query={messages[index - 1]?.content || ''}
                           citations={message.citations || []}
+                          isVerifyingSources={verifyingMessageId === message.id}
                         />
                       )}
                     </div>
