@@ -87,11 +87,16 @@ class EmbeddingClient:
     def _fetch_embeddings(self, texts: Sequence[str]) -> List[List[float]]:
         embeddings: List[List[float]] = []
         for batch in _batched(texts, self._batch_size):
-            response = self._client.embeddings.create(
-                input=list(batch),
-                model=self._model,
-                dimensions=self._dimensions,
-            )
+            # Only include dimensions parameter if it's > 0 and model supports it
+            # BGE-M3 and similar models have fixed dimensions and don't support this parameter
+            embedding_args = {
+                "input": list(batch),
+                "model": self._model,
+            }
+            if self._dimensions > 0 and not self._model.startswith(("bge-", "text-embedding-bge")):
+                embedding_args["dimensions"] = self._dimensions
+
+            response = self._client.embeddings.create(**embedding_args)
             for item in response.data:
                 vector = list(item.embedding)
                 if self._l2_normalize:

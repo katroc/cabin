@@ -57,7 +57,7 @@ class RetrievalSettings(BaseModel):
     lexical_k: int = 80
     rrf_k: int = 60
     mmr_lambda: float = 0.5
-    cosine_floor: float = 0.18
+    cosine_floor: float = 0.05
     min_keyword_overlap: int = 2
     final_passages: int = 8
     rm3_top_docs: int = 10
@@ -165,8 +165,8 @@ def get_app_config(path_str: str) -> AppConfig:
 
 class Settings(BaseSettings):
     # ChromaDB Configuration
-    chroma_host: str = Field("localhost", description="Hostname for ChromaDB")
-    chroma_port: int = Field(8000, description="Port for ChromaDB")
+    chroma_host: str = Field("localhost", description="Hostname for ChromaDB", env="CHROMA_HOST")
+    chroma_port: int = Field(8100, description="Port for ChromaDB", env="CHROMA_PORT")
     child_collection_name: str = Field("cabin_child_chunks", description="Name of the collection for child chunks")
 
     # LLM Provider Configuration (OpenAI-compatible)
