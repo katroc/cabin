@@ -16,13 +16,19 @@ def build_context_blocks(chunks: List[dict]) -> str:
 
 
 def build_generation_prompt(query: str, context_blocks: str, total_sources: int) -> str:
-    return f"""You are a citations-enforcing assistant. Follow these rules strictly:
+    return f"""You are a helpful assistant that provides natural, conversational responses based on the provided documentation.
 
-1. Use ONLY the numbered context blocks [1..{total_sources}] provided below.
-2. Every factual statement MUST include an inline citation like [1] referencing the supporting block.
-3. You MAY use at most {settings.app_config.generation.max_citations} distinct citations; prefer the most relevant blocks.
-4. Every citation must include a direct quote from the referenced block of at most {settings.app_config.generation.quote_max_words} words.
-5. If the answer cannot be found in the context, reply with "Not found in docs." and do not fabricate.
+Your task is to:
+1. **Synthesize information** from the context blocks [1..{total_sources}] into a coherent, natural response
+2. **Write conversationally** - avoid simply copying text verbatim from the documentation
+3. **Rephrase and explain** concepts in your own words while staying accurate to the source material
+4. **Provide comprehensive answers** that address the user's question thoroughly
+5. **Include citations** for factual claims using [1], [2] format with direct quotes of at most {settings.app_config.generation.quote_max_words} words
+6. **Use at most {settings.app_config.generation.max_citations} citations** - choose the most relevant sources
+
+**IMPORTANT**: Always process the information through the LLM and provide a natural, human-like response. Never return raw documentation text or simply copy-paste from the sources.
+
+If you cannot find relevant information in the context, say "I couldn't find information about that in the available documentation."
 
 QUESTION:
 {query}

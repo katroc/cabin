@@ -1,0 +1,56 @@
+version: "3.9"
+services:
+  gpt-oss-20b:
+    image: vllm/vllm-openai:latest
+    container_name: gpt-oss-20b
+    runtime: nvidia
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+    ports:
+      - "8000:8000"
+    volumes:
+      - ~/models/gpt-oss-20b:/models/gpt-oss-20b
+    command: >
+      --model /models/gpt-oss-20b
+      --served-model-name gpt-oss-20b
+      --max-model-len 4096
+      --gpu-memory-utilization 0.80
+      --max-num-batched-tokens 16384
+      --max-num-seqs 256
+      --enable-chunked-prefill
+      --enforce-eager
+
+  bge-m3:
+    image: vllm/vllm-openai:latest
+    container_name: bge-m3
+    runtime: nvidia
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+    ports:
+      - "8001:8000"
+    volumes:
+      - ~/models/bge-m3:/models/bge-m3
+    command: >
+      --model /models/bge-m3
+      --served-model-name bge-m3
+      --gpu-memory-utilization 0.05
+      --max-model-len 512
+      --disable-log-stats
+
+  bge-reranker-v2-m3:
+    image: vllm/vllm-openai:latest
+    container_name: bge-reranker-v2-m3
+    runtime: nvidia
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+    ports:
+      - "8002:8000"
+    volumes:
+      - ~/models/bge-reranker-v2-m3:/models/bge-reranker-v2-m3
+    command: >
+      --model /models/bge-reranker-v2-m3
+      --served-model-name bge-reranker-v2-m3
+      --gpu-memory-utilization 0.10
+      --max-model-len 512
+      --disable-log-stats
+
