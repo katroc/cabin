@@ -25,7 +25,7 @@ else:
 
 @dataclass
 class RerankerConfig:
-    model_name: str = "BAAI/bge-reranker-base"
+    model_name: str = os.getenv("RERANKER_MODEL", "BAAI/bge-reranker-base")
     device: str = "cuda"
     max_length: int = 512
     batch_size: int = 32
