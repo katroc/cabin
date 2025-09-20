@@ -282,10 +282,10 @@ export default function ConfluenceIndexing({ isOpen, onClose }: ConfluenceIndexi
           </button>
         </div>
 
-        <div className="p-6 space-y-6">
+        <div className="p-6 space-y-6 divide-y divide-[color:var(--border-faint)]">
           {/* Configuration Section */}
-          <div className="form-section">
-            <h3 className="form-section-title ui-text-secondary">
+          <div className="form-section pt-6 first:pt-0">
+            <h3 className="form-section-title ui-text-secondary text-sm uppercase tracking-wide">
               Configuration
             </h3>
 
@@ -449,8 +449,8 @@ export default function ConfluenceIndexing({ isOpen, onClose }: ConfluenceIndexi
                 )}
               </div>
 
-              <div className="form-row">
-                <div className="form-group">
+              <div className="form-row items-end gap-4">
+                <div className="form-group flex-1">
                   <label className="label-base">
                     Max Pages: {config.maxPages}
                   </label>
@@ -464,8 +464,8 @@ export default function ConfluenceIndexing({ isOpen, onClose }: ConfluenceIndexi
                     className="w-full"
                   />
                 </div>
-                <div className="flex items-center justify-between gap-3">
-                  <label htmlFor="includeAttachments" className="label-inline">
+                <div className="flex items-center justify-end gap-3">
+                  <label htmlFor="includeAttachments" className="label-inline ui-text-secondary">
                     Include Attachments
                   </label>
                   <input
@@ -502,7 +502,7 @@ export default function ConfluenceIndexing({ isOpen, onClose }: ConfluenceIndexi
           {/* Jobs History */}
           {jobs.length > 0 && (
             <div>
-              <h3 className="form-section-title ui-text-secondary">
+              <h3 className="form-section-title ui-text-secondary text-sm uppercase tracking-wide">
                 Indexing History
               </h3>
 

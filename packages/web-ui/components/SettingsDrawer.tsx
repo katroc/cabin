@@ -172,10 +172,10 @@ export default function SettingsDrawer({ isOpen, onClose, settings, onSave }: Se
           </button>
         </div>
 
-        <div className="p-6 space-y-6">
+        <div className="p-6 space-y-6 divide-y divide-[color:var(--border-faint)]">
           {/* LLM Provider */}
-          <div className="form-section">
-            <h3 className="form-section-title ui-text-secondary">LLM Provider</h3>
+          <div className="form-section pt-6 first:pt-0">
+            <h3 className="form-section-title ui-text-secondary text-sm uppercase tracking-wide">LLM Provider</h3>
             <div className="space-y-4">
               <div className="form-group">
                 <label className="label-base">LLM Base URL</label>
@@ -228,8 +228,8 @@ export default function SettingsDrawer({ isOpen, onClose, settings, onSave }: Se
           </div>
 
           {/* Embedding Provider */}
-          <div className="form-section">
-            <h3 className="form-section-title ui-text-secondary">Embedding Provider</h3>
+          <div className="form-section pt-6 first:pt-0">
+            <h3 className="form-section-title ui-text-secondary text-sm uppercase tracking-wide">Embedding Provider</h3>
             <div className="space-y-4">
               <div className="form-group">
                 <label className="label-base">Embedding Base URL</label>
@@ -270,7 +270,7 @@ export default function SettingsDrawer({ isOpen, onClose, settings, onSave }: Se
           </div>
 
           {/* Vector Database */}
-          <div className="form-section">
+          <div className="form-section pt-6 first:pt-0">
             <h3 className="form-section-title">Vector Database</h3>
             <div className="space-y-4">
               <div className="form-group">
