@@ -292,47 +292,24 @@ export default function ChatInterface({
     return !assistantMessage?.content
   }, [isProcessing, messages])
 
-  const placeholderState = useMemo<"routing" | "streaming" | null>(() => {
-    if (routingMessageId) return 'routing'
-    if (streamingPlaceholderVisible) return 'streaming'
+  const placeholderState = useMemo(() => {
+    if (routingMessageId) return "routing"
+    if (streamingPlaceholderVisible) return "streaming"
     return null
   }, [routingMessageId, streamingPlaceholderVisible])
 
   const hasMessages = messages.length > 0
   const canStop = isProcessing && Boolean(abortControllerRef.current)
 
-  if (!conversation) {
-    return (
-      <div
-        className="flex-1 flex items-center justify-center px-6"
-        style={{ background: 'var(--bg-primary)' }}
-      >
-        <div className="max-w-md text-center space-y-3">
-          <h1 className="text-2xl font-semibold" style={{ color: 'var(--text-primary)' }}>
-            Select a conversation
-          </h1>
-          <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-            Choose a chat from the sidebar or start a new one to begin asking questions.
-          </p>
-        </div>
-      </div>
-    )
-  }
-
   return (
-    <div className="flex-1 flex flex-col overflow-hidden relative" style={{ background: 'var(--bg-primary)' }}>
-      {/* Floating export buttons */}
-      <div className="absolute top-4 right-8 z-10 flex items-center gap-2">
+    <div className="flex h-full min-h-0 w-full flex-col ui-bg-primary">
+      <div
+        className="sticky top-0 z-10 flex justify-end gap-2 border-b px-4 py-3 sm:px-10 ui-bg-primary/95 backdrop-blur border-[color:var(--border-faint)]"
+      >
         <button
           onClick={() => onDownloadConversation('markdown')}
           disabled={!hasMessages}
-          className="flex items-center gap-2 px-3 py-2 text-sm rounded-lg border transition-colors disabled:opacity-40 disabled:cursor-not-allowed shadow-lg"
-          style={{
-            background: 'var(--bg-secondary)',
-            borderColor: 'var(--border-light)',
-            color: 'var(--text-primary)',
-            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)'
-          }}
+          className="flex items-center gap-2 rounded-lg border px-3 py-2 text-sm transition disabled:cursor-not-allowed disabled:opacity-40 ui-bg-secondary ui-border-light ui-text-primary ui-shadow-floating"
         >
           <Download size={16} />
           Markdown
@@ -340,168 +317,140 @@ export default function ChatInterface({
         <button
           onClick={() => onDownloadConversation('json')}
           disabled={!hasMessages}
-          className="flex items-center gap-2 px-3 py-2 text-sm rounded-lg border transition-colors disabled:opacity-40 disabled:cursor-not-allowed shadow-lg"
-          style={{
-            background: 'var(--bg-secondary)',
-            borderColor: 'var(--border-light)',
-            color: 'var(--text-primary)',
-            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)'
-          }}
+          className="flex items-center gap-2 rounded-lg border px-3 py-2 text-sm transition disabled:cursor-not-allowed disabled:opacity-40 ui-bg-secondary ui-border-light ui-text-primary ui-shadow-floating"
         >
           <FileJson size={16} />
           JSON
         </button>
       </div>
 
-      <div className="flex-1 overflow-hidden relative">
-        <div className="h-full overflow-y-auto pr-6 sm:pr-10 pt-6 pb-44" style={{ scrollbarGutter: 'stable' }}>
-          <div className="mx-auto w-full max-w-4xl space-y-5">
-            {!hasMessages && (
-              <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
-                <h3 className="text-lg font-medium" style={{ color: 'var(--text-primary)' }}>
-                  Cabin Assistant is ready
-                </h3>
-                <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-                  Ask a question or share an update whenever you're ready to begin.
-                </p>
-              </div>
-            )}
-
-            {messages.map((message, index) => {
-              const isUser = message.role === 'user'
-              return (
-                <div key={message.id} className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
-                  <div className={isUser ? 'max-w-xl space-y-2' : 'w-full space-y-2'}>
-                    <div className={isUser ? "py-2 px-3 rounded-lg border" : "py-2"} style={isUser ? { borderColor: 'var(--border-light)' } : {}}>
-                      {isUser ? (
-                        <p className="whitespace-pre-wrap text-base leading-relaxed" style={{ color: 'var(--text-primary)' }}>
-                          {message.content}
-                        </p>
-                      ) : (
-                        <SmartResponse
-                          answer={message.content}
-                          query={messages[index - 1]?.content || ''}
-                          citations={message.citations || []}
-                          isVerifyingSources={verifyingMessageId === message.id}
-                        />
-                      )}
-                    </div>
-                    <div
-                      className={`text-xs flex items-center gap-2 ${isUser ? 'justify-end' : 'justify-start'}`}
-                      style={{ color: 'var(--text-muted)' }}
-                    >
-                      <span>{isUser ? 'You' : 'Cabin Assistant'}</span>
-                      <span>•</span>
-                      <span>{message.timestamp.toLocaleTimeString()}</span>
-                    </div>
-                  </div>
-                </div>
-              )
-            })}
-
-            {placeholderState && (
-              <div className="flex justify-start">
-                <div className="w-full">
-                  <div
-                    className="rounded-xl border px-4 py-5"
-                    style={{
-                      background: 'var(--bg-secondary)',
-                      borderColor: 'var(--border-faint)'
-                    }}
-                  >
-                    {placeholderState === 'routing' ? (
-                      <div className="routing-section">
-                        <div className="routing-animation">
-                          <svg
-                            width="16"
-                            height="16"
-                            viewBox="0 0 24 24"
-                            fill="currentColor"
-                            className="routing-icon routing-loading"
-                          >
-                            <path d="M12,4V2A10,10 0 0,0 2,12H4A8,8 0 0,1 12,4Z" />
-                          </svg>
-                          <span className="routing-text">Analyzing request...</span>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="text-center">
-                        <Loader2 className="mx-auto animate-spin" style={{ color: 'var(--accent)' }} />
-                        <p className="mt-3 text-sm" style={{ color: 'var(--text-secondary)' }}>
-                          Generating response...
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            <div ref={messagesEndRef} />
-          </div>
-        </div>
-
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 pb-6 pr-[calc(1.5rem+8px)] sm:pr-[calc(2.5rem+8px)]">
-          <div className="mx-auto w-full max-w-6xl px-6 sm:px-10">
-            <div className="w-full">
-              <form onSubmit={handleSubmit} className="pointer-events-auto">
-              <div
-                className="border rounded-2xl px-4 py-2.5 sm:px-5 sm:py-3 shadow-lg"
-                style={{
-                  background: 'var(--bg-secondary)',
-                  borderColor: 'var(--border-light)',
-                  boxShadow: '0 18px 42px rgba(15, 23, 42, 0.16)'
-                }}
-              >
-                <textarea
-                  rows={2}
-                  value={input}
-                  onChange={(event) => setInput(event.target.value)}
-                  onKeyDown={handleComposerKeyDown}
-                  placeholder="Ask about your documentation..."
-                  className="w-full resize-none bg-transparent text-base leading-relaxed focus:outline-none"
-                  style={{ color: 'var(--text-primary)' }}
-                  disabled={isProcessing && !canStop}
-                />
-                <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
-                  <div className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                    Press Enter to send · Shift + Enter for a new line
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {canStop && (
-                      <button
-                        type="button"
-                        onClick={handleStopGeneration}
-                        className="flex items-center gap-2 px-3 py-1.5 text-xs sm:text-sm rounded-full border transition-colors"
-                        style={{
-                          borderColor: 'var(--border-light)',
-                          color: 'var(--text-secondary)'
-                        }}
-                      >
-                        <StopCircle size={16} />
-                        Stop
-                      </button>
-                    )}
-                    <button
-                      type="submit"
-                      disabled={!input.trim() || isProcessing}
-                      className="flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-full transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-                      style={{
-                        background: 'var(--accent)',
-                        color: 'white'
-                      }}
-                    >
-                      <Send size={18} />
-                      Send
-                    </button>
-                  </div>
-                </div>
-              </div>
-              </form>
+      <div className="flex-1 overflow-y-auto px-4 pb-10 pt-6 sm:px-10 min-h-0" style={{ scrollbarGutter: 'stable' }}>
+        <div className="mx-auto flex w-full max-w-3xl flex-col gap-5">
+          {!hasMessages && (
+            <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
+              <h3 className="text-lg font-medium ui-text-primary">
+                Cabin Assistant is ready
+              </h3>
+              <p className="text-sm ui-text-secondary">
+                Ask a question or share an update whenever you're ready to begin.
+              </p>
             </div>
-          </div>
+          )}
+
+          {messages.map((message, index) => {
+            const isUser = message.role === 'user'
+            return (
+              <div key={message.id} className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
+                <div className={isUser ? 'max-w-xl space-y-2' : 'w-full space-y-2'}>
+                  <div className={isUser ? "px-3 py-2 border rounded-lg ui-border-light" : "py-2"}>
+                    {isUser ? (
+                      <p className="whitespace-pre-wrap text-base leading-relaxed ui-text-primary">
+                        {message.content}
+                      </p>
+                    ) : (
+                      <SmartResponse
+                        answer={message.content}
+                        query={messages[index - 1]?.content || ''}
+                        citations={message.citations || []}
+                        isVerifyingSources={verifyingMessageId === message.id}
+                      />
+                    )}
+                  </div>
+                  <div
+                    className={`flex items-center gap-2 text-xs ${isUser ? 'justify-end' : 'justify-start'} ui-text-muted`}
+                  >
+                    <span>{isUser ? 'You' : 'Cabin Assistant'}</span>
+                    <span>•</span>
+                    <span>{message.timestamp.toLocaleTimeString()}</span>
+                  </div>
+                </div>
+              </div>
+            )
+          })}
+
+          {placeholderState && (
+            <div className="flex justify-start">
+              <div className="w-full">
+                <div className="rounded-xl border px-4 py-5 ui-bg-secondary ui-border-faint">
+                  {placeholderState === 'routing' ? (
+                    <div className="routing-section">
+                      <div className="routing-animation">
+                        <svg
+                          width="16"
+                          height="16"
+                          viewBox="0 0 24 24"
+                          fill="currentColor"
+                          className="routing-icon routing-loading"
+                        >
+                          <path d="M12,4V2A10,10 0 0,0 2,12H4A8,8 0 0,1 12,4Z" />
+                        </svg>
+                        <span className="routing-text">Analyzing request...</span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-center">
+                      <Loader2 className="mx-auto animate-spin text-[var(--accent)]" />
+                      <p className="mt-3 text-sm ui-text-secondary">
+                        Generating response...
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div ref={messagesEndRef} />
         </div>
       </div>
+
+      <footer
+        className="px-4 py-4 sm:px-10"
+        style={{
+          paddingBottom: 'max(1rem, calc(1rem + env(safe-area-inset-bottom, 0)))'
+        }}
+      >
+        <form onSubmit={handleSubmit} className="mx-auto max-w-3xl">
+          <div
+            className="rounded-2xl border px-4 py-2.5 sm:px-5 ui-bg-secondary ui-border-light ui-shadow-elevated"
+          >
+            <textarea
+              rows={2}
+              value={input}
+              onChange={(event) => setInput(event.target.value)}
+              onKeyDown={handleComposerKeyDown}
+              placeholder="Ask about your documentation..."
+              className="w-full resize-none bg-transparent text-base leading-relaxed focus:outline-none ui-text-primary"
+              disabled={isProcessing && !canStop}
+            />
+            <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
+              <div className="text-xs ui-text-muted">
+                Press Enter to send · Shift + Enter for a new line
+              </div>
+              <div className="flex items-center gap-2">
+                {canStop && (
+                  <button
+                    type="button"
+                    onClick={handleStopGeneration}
+                    className="flex items-center gap-1 rounded-full border px-3 py-1.5 text-xs font-medium transition ui-bg-secondary ui-border-light ui-text-secondary"
+                  >
+                    <StopCircle size={14} />
+                    Stop
+                  </button>
+                )}
+                <button
+                  type="submit"
+                  disabled={!input.trim()}
+                  className="flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition disabled:opacity-50 bg-[var(--accent)] text-white ui-shadow-elevated"
+                >
+                  <Send size={16} />
+                  Send
+                </button>
+              </div>
+            </div>
+          </div>
+        </form>
+      </footer>
     </div>
   )
 }

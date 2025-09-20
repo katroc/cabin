@@ -160,7 +160,7 @@ export default function SettingsDrawer({ isOpen, onClose, settings, onSave }: Se
   return (
     <div className="fixed inset-0 z-50 flex">
       <div className="drawer-overlay" onClick={onClose} />
-      <div className="drawer-panel relative ml-auto w-96 h-full overflow-y-auto">
+      <div className="drawer-panel relative ml-auto h-full w-[600px] overflow-y-auto">
         {/* Header */}
         <div className="drawer-header">
           <h2 className="drawer-title">

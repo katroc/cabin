@@ -5,7 +5,7 @@ import ConversationHistory from '../components/ConversationHistory'
 import ChatInterface from '../components/ChatInterface'
 import SettingsDrawer from '../components/SettingsDrawer'
 import ConfluenceIndexing from '../components/ConfluenceIndexing'
-import { Settings, Database } from 'lucide-react'
+import { Settings, Database, MessageSquare, X } from 'lucide-react'
 
 interface Citation {
   id: string
@@ -92,6 +92,7 @@ export default function Home() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [isIndexingOpen, setIsIndexingOpen] = useState(false)
   const [isHydrated, setIsHydrated] = useState(false)
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false)
   const [settings, setSettings] = useState<SettingsData>({
     llmBaseUrl: 'http://localhost:1234/v1',
     llmModel: 'openai/gpt-oss-20b',
@@ -235,6 +236,7 @@ export default function Home() {
     const newConversation = createDefaultConversation()
     setConversations(prev => [newConversation, ...prev])
     setActiveConversationId(newConversation.id)
+    setIsSidebarOpen(false)
   }
 
   const handlePinConversation = (id: string) => {
@@ -252,8 +254,9 @@ export default function Home() {
       }
 
       if (activeConversationId === id) {
-        setActiveConversationId(updated[0].id)
+        setActiveConversationId(updated[0]?.id ?? null)
       }
+      setIsSidebarOpen(false)
       return updated
     })
   }
@@ -264,6 +267,7 @@ export default function Home() {
     if (typeof window !== 'undefined') {
       window.localStorage.removeItem(STORAGE_KEY)
     }
+    setIsSidebarOpen(false)
   }
 
   const handleDownloadConversation = useCallback(
@@ -331,6 +335,14 @@ export default function Home() {
     [activeConversationId]
   )
 
+  const handleSelectConversation = useCallback(
+    (id: string) => {
+      setActiveConversationId(id)
+      setIsSidebarOpen(false)
+    },
+    []
+  )
+
   const handleSettingsSave = useCallback(async (nextSettings: SettingsData) => {
     setSettings(nextSettings)
     try {
@@ -345,56 +357,91 @@ export default function Home() {
   }, [])
 
   return (
-    <main className="h-screen flex flex-col overflow-hidden" style={{ background: 'var(--bg-primary)' }}>
+    <main className="h-[100dvh] grid grid-rows-[auto,1fr] ui-bg-primary overflow-hidden">
       <header
-        className="border-b p-4 flex items-center justify-between flex-shrink-0"
-        style={{
-          background: 'var(--bg-secondary)',
-          borderColor: 'var(--border-faint)'
-        }}
+        className="flex items-center justify-between border-b px-4 py-3 sm:px-6 sm:py-4 ui-bg-secondary border-[color:var(--border-faint)]"
       >
-        <h1 className="text-xl font-semibold" style={{ color: 'var(--text-primary)' }}>
+        <h1 className="text-xl font-semibold ui-text-primary">
           Cabin
         </h1>
         <div className="flex items-center gap-2">
           <button
+            onClick={() => setIsSidebarOpen(true)}
+            className="header-button p-2 rounded-lg transition-colors md:hidden ui-text-secondary"
+            title="Conversations"
+            aria-label="Open conversations"
+          >
+            <MessageSquare size={20} />
+          </button>
+          <button
             onClick={() => setIsIndexingOpen(true)}
-            className="header-button p-2 rounded-lg transition-colors"
-            style={{
-              color: 'var(--text-secondary)'
-            }}
+            className="header-button p-2 rounded-lg transition-colors ui-text-secondary"
             title="Confluence Indexing"
           >
             <Database size={20} />
           </button>
           <button
             onClick={() => setIsSettingsOpen(true)}
-            className="header-button p-2 rounded-lg transition-colors"
-            style={{
-              color: 'var(--text-secondary)'
-            }}
+            className="header-button p-2 rounded-lg transition-colors ui-text-secondary"
             title="Settings"
           >
             <Settings size={20} />
           </button>
         </div>
       </header>
-      <div className="flex-1 flex overflow-hidden">
-        <ConversationHistory
-          conversations={conversations}
-          activeConversationId={activeConversationId}
-          onSelectConversation={setActiveConversationId}
-          onPinConversation={handlePinConversation}
-          onDeleteConversation={handleDeleteConversation}
-          onNewConversation={handleNewConversation}
-          onDeleteAllConversations={handleDeleteAllConversations}
-        />
-        <ChatInterface
-          conversation={activeConversation}
-          onMessagesChange={setActiveConversationMessages}
-          onDownloadConversation={handleDownloadConversation}
-          onConversationTitleChange={handleConversationTitleUpdate}
-        />
+      <div className="relative grid grid-rows-[1fr] min-h-0 md:grid-cols-[320px,1fr] overflow-hidden">
+        <div className="hidden h-full md:flex md:flex-col md:min-h-0 md:overflow-hidden">
+          <ConversationHistory
+            conversations={conversations}
+            activeConversationId={activeConversationId}
+            onSelectConversation={handleSelectConversation}
+            onPinConversation={handlePinConversation}
+            onDeleteConversation={handleDeleteConversation}
+            onNewConversation={handleNewConversation}
+            onDeleteAllConversations={handleDeleteAllConversations}
+          />
+        </div>
+        <div className="relative h-full overflow-hidden min-h-0">
+          <ChatInterface
+            conversation={activeConversation}
+            onMessagesChange={setActiveConversationMessages}
+            onDownloadConversation={handleDownloadConversation}
+            onConversationTitleChange={handleConversationTitleUpdate}
+          />
+        </div>
+
+        {isSidebarOpen && (
+          <div className="fixed inset-0 z-40 flex md:hidden" role="dialog" aria-modal="true">
+            <div
+              className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+              onClick={() => setIsSidebarOpen(false)}
+            />
+            <div className="relative ml-auto flex h-full w-full max-w-xs flex-col ui-bg-secondary shadow-2xl">
+              <ConversationHistory
+                conversations={conversations}
+                activeConversationId={activeConversationId}
+                onSelectConversation={(id) => {
+                  handleSelectConversation(id)
+                }}
+                onPinConversation={handlePinConversation}
+                onDeleteConversation={handleDeleteConversation}
+                onNewConversation={handleNewConversation}
+                onDeleteAllConversations={handleDeleteAllConversations}
+                className="w-full border-0"
+                headerActions={
+                  <button
+                    type="button"
+                    onClick={() => setIsSidebarOpen(false)}
+                    className="rounded-full border p-2 ui-border-light ui-text-secondary"
+                    aria-label="Close conversations"
+                  >
+                    <X size={16} />
+                  </button>
+                }
+              />
+            </div>
+          </div>
+        )}
       </div>
 
       <SettingsDrawer

@@ -130,6 +130,45 @@ body {
   line-height: var(--leading-normal);
 }
 
+/* Utility helpers for design tokens */
+.ui-bg-primary { background: var(--bg-primary); }
+.ui-bg-secondary { background: var(--bg-secondary); }
+.ui-bg-tertiary { background: var(--bg-tertiary); }
+
+.ui-text-primary { color: var(--text-primary); }
+.ui-text-secondary { color: var(--text-secondary); }
+.ui-text-muted { color: var(--text-muted); }
+
+.ui-border-light { border-color: var(--border-light); }
+.ui-border-faint { border-color: var(--border-faint); }
+
+.ui-shadow-elevated { box-shadow: 0 18px 42px rgba(15, 23, 42, 0.16); }
+.ui-shadow-floating { box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15); }
+
+/* Scrollbar styling */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-light) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: var(--border-light);
+  border-radius: var(--radius-md);
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--border);
+}
+
 /* Smart Response Styles */
 .smart-response {
   margin-top: var(--space-4);

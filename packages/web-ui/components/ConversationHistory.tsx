@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { ReactNode, useEffect, useMemo, useState } from 'react'
 import { MessageSquare, Pin, Trash2, Search } from 'lucide-react'
 
 interface ConversationMessage {
@@ -27,6 +27,8 @@ interface ConversationHistoryProps {
   onDeleteConversation: (id: string) => void
   onNewConversation: () => void
   onDeleteAllConversations: () => void
+  className?: string
+  headerActions?: React.ReactNode
 }
 
 export default function ConversationHistory({
@@ -36,7 +38,9 @@ export default function ConversationHistory({
   onPinConversation,
   onDeleteConversation,
   onNewConversation,
-  onDeleteAllConversations
+  onDeleteAllConversations,
+  className,
+  headerActions
 }: ConversationHistoryProps) {
   const [searchTerm, setSearchTerm] = useState('')
 
@@ -52,8 +56,6 @@ export default function ConversationHistory({
 
   const pinnedConversations = filteredConversations.filter(conv => conv.isPinned)
   const unpinnedConversations = filteredConversations.filter(conv => !conv.isPinned)
-  const pinnedCount = pinnedConversations.length
-
   useEffect(() => {
     if (!activeConversationId) return
     const element = document.getElementById(`conversation-${activeConversationId}`)
@@ -62,31 +64,22 @@ export default function ConversationHistory({
 
   return (
     <aside
-      className="w-80 border-r h-full flex flex-col"
-      style={{
-        background: 'var(--bg-secondary)',
-        borderColor: 'var(--border-faint)'
-      }}
+      className={`flex h-full min-h-0 shrink-0 flex-col overflow-hidden border-r ui-border-faint ui-bg-secondary ${className ?? 'w-80'}`}
+      role="complementary"
+      aria-label="Conversation history"
     >
-      <div
-        className="border-b px-4 py-4 space-y-3"
-        style={{ borderColor: 'var(--border-faint)' }}
-      >
-          <div className="flex items-center justify-between gap-2.5">
-          <h2 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+      <div className="space-y-3 border-b px-4 py-4 border-[color:var(--border-faint)]">
+        <div className="flex items-center justify-between gap-2.5">
+          <h2 className="text-sm font-semibold ui-text-primary">
             Conversations
           </h2>
           <div className="flex items-center gap-2">
+            {headerActions}
             {conversations.length > 0 && (
               <button
                 type="button"
                 onClick={onDeleteAllConversations}
-                className="text-xs font-medium px-3 py-1.5 rounded-full border transition-colors disabled:opacity-40 disabled:cursor-not-allowed min-w-[60px]"
-                style={{
-                  background: 'var(--bg-primary)',
-                  borderColor: 'var(--border-light)',
-                  color: conversations.length === 0 ? 'var(--text-muted)' : 'var(--text-secondary)'
-                }}
+                className={`text-xs font-medium px-3 py-1.5 rounded-full border transition-colors disabled:opacity-40 disabled:cursor-not-allowed min-w-[60px] ui-bg-primary ui-border-light ${conversations.length === 0 ? 'ui-text-muted' : 'ui-text-secondary'}`}
                 disabled={conversations.length === 0}
               >
                 Clear
@@ -94,12 +87,7 @@ export default function ConversationHistory({
             )}
             <button
               onClick={onNewConversation}
-              className="text-xs font-medium px-3 py-1.5 rounded-full border transition-colors min-w-[60px]"
-              style={{
-                background: 'var(--accent)',
-                borderColor: 'var(--accent)',
-                color: 'white'
-              }}
+              className="text-xs font-medium px-3 py-1.5 rounded-full border transition-colors min-w-[60px] bg-[var(--accent)] text-white border-[var(--accent)]"
             >
               New
             </button>
@@ -108,27 +96,20 @@ export default function ConversationHistory({
         <div className="relative">
           <Search
             size={14}
-            className="absolute left-2.5 top-1/2 -translate-y-1/2"
-            style={{ color: 'var(--text-muted)' }}
+            className="absolute left-2.5 top-1/2 -translate-y-1/2 ui-text-muted"
           />
           <input
             type="text"
             placeholder="Search conversations..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full bg-transparent rounded-full pr-8 py-2 border focus:outline-none focus:ring-2 focus:ring-[var(--accent)] transition text-sm"
-            style={{
-              borderColor: 'var(--border-light)',
-              color: 'var(--text-primary)',
-              paddingLeft: '2.5rem'
-            }}
+            className="w-full bg-transparent rounded-full pr-8 py-2 pl-10 border ui-border-light ui-text-primary focus:outline-none focus:ring-2 focus:ring-[var(--accent)] transition text-sm"
           />
           {searchTerm && (
             <button
               type="button"
               onClick={() => setSearchTerm('')}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-xs"
-              style={{ color: 'var(--text-muted)' }}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-xs ui-text-muted"
               aria-label="Clear search"
             >
               ×
@@ -137,10 +118,10 @@ export default function ConversationHistory({
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-3 py-3 space-y-4">
+      <div className="flex-1 space-y-4 overflow-y-auto px-3 py-3 min-h-0">
         {pinnedConversations.length > 0 && (
           <section className="space-y-2">
-            <div className="text-xs" style={{ color: 'var(--text-muted)' }}>
+            <div className="text-xs ui-text-muted">
               <span>Pinned</span>
             </div>
             <div className="space-y-1.5">
@@ -159,7 +140,7 @@ export default function ConversationHistory({
         )}
 
         <section className="space-y-1.5">
-          <div className="text-xs" style={{ color: 'var(--text-muted)' }}>
+          <div className="text-xs ui-text-muted">
             <span>{pinnedConversations.length > 0 ? 'Recent' : 'All Conversations'}</span>
           </div>
           <div className="space-y-1.5">
@@ -179,10 +160,9 @@ export default function ConversationHistory({
             <div className="text-center py-8">
               <MessageSquare
                 size={36}
-                className="mx-auto mb-3 opacity-60"
-                style={{ color: 'var(--text-muted)' }}
+                className="mx-auto mb-3 opacity-60 text-[var(--text-muted)]"
               />
-              <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+              <p className="text-sm ui-text-muted">
                 No conversations found
               </p>
             </div>
@@ -207,45 +187,33 @@ function ConversationItem({ conversation, isActive, onSelect, onPin, onDelete }:
       ? `${conversation.messageCount} message${conversation.messageCount === 1 ? '' : 's'} in this thread.`
       : 'No messages yet — start the conversation!')
 
-  const baseStyle = {
-    background: isActive ? 'var(--bg-tertiary)' : 'var(--bg-secondary)',
-    borderColor: isActive ? 'var(--accent)' : 'var(--border-faint)'
-  }
+  const itemClasses = isActive
+    ? 'ui-bg-tertiary border-[var(--accent)]'
+    : 'ui-bg-secondary ui-border-faint hover:bg-[var(--bg-hover)] hover:border-[var(--border-light)]'
 
   return (
     <div
       id={`conversation-${conversation.id}`}
-      className="group relative p-2.5 rounded-xl cursor-pointer border transition-colors"
-      style={baseStyle}
+      className={`group relative cursor-pointer rounded-xl border p-2.5 transition-colors ${itemClasses}`}
       onClick={onSelect}
-      onMouseEnter={(event) => {
-        if (!isActive) {
-          event.currentTarget.style.background = 'var(--bg-hover)'
-        }
-      }}
-      onMouseLeave={(event) => {
-        event.currentTarget.style.background = baseStyle.background as string
-      }}
     >
       <div className="flex items-start gap-2.5">
         <div className="flex-1 min-w-0 space-y-1.5">
           <div className="flex items-center gap-2">
-            <h4 className="text-sm font-semibold truncate" style={{ color: 'var(--text-primary)' }}>
+            <h4 className="text-sm font-semibold truncate ui-text-primary">
               {conversation.title}
             </h4>
             {conversation.isPinned && (
               <span
-                className="px-2 py-0.5 rounded-full text-[10px] uppercase tracking-wide"
-                style={{ background: 'rgba(116, 104, 232, 0.18)', color: 'var(--accent)' }}
+                className="px-2 py-0.5 rounded-full text-[10px] uppercase tracking-wide bg-[rgba(116,104,232,0.18)] text-[var(--accent)]"
               >
                 Pinned
               </span>
             )}
           </div>
           <p
-            className="text-xs leading-relaxed"
+            className="text-xs leading-relaxed ui-text-secondary"
             style={{
-              color: 'var(--text-secondary)',
               display: '-webkit-box',
               WebkitLineClamp: 2,
               WebkitBoxOrient: 'vertical',
@@ -262,11 +230,7 @@ function ConversationItem({ conversation, isActive, onSelect, onPin, onDelete }:
               e.stopPropagation()
               onPin()
             }}
-            className="p-1.5 rounded-full border transition-colors"
-            style={{
-              borderColor: 'var(--border-light)',
-              color: conversation.isPinned ? 'var(--accent)' : 'var(--text-muted)'
-            }}
+            className={`p-1.5 rounded-full border transition-colors ui-border-light ${conversation.isPinned ? 'text-[var(--accent)]' : 'ui-text-muted hover:text-[var(--accent)]'}`}
           >
             <Pin size={14} />
           </button>
@@ -276,20 +240,13 @@ function ConversationItem({ conversation, isActive, onSelect, onPin, onDelete }:
               e.stopPropagation()
               onDelete()
             }}
-            className="p-1.5 rounded-full border transition-colors"
-            style={{ borderColor: 'var(--border-light)', color: 'var(--text-muted)' }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.color = 'var(--error)'
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.color = 'var(--text-muted)'
-            }}
+            className="p-1.5 rounded-full border transition-colors ui-border-light ui-text-muted hover:text-[var(--error)]"
           >
             <Trash2 size={14} />
           </button>
         </div>
       </div>
-      <div className="mt-2 flex items-center justify-between text-[11px]" style={{ color: 'var(--text-muted)' }}>
+      <div className="mt-2 flex items-center justify-between text-[11px] ui-text-muted">
         <span>{conversation.messageCount} message{conversation.messageCount === 1 ? '' : 's'}</span>
         <span>{conversation.timestamp.toLocaleDateString()}</span>
       </div>
