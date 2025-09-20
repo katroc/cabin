@@ -21,6 +21,15 @@ class QueryRouter:
             "describe the system architecture",
             "give me the policy details",
         ],
+        "analytics": [
+            "do we have p95 latency results?",
+            "show me the latest availability metrics",
+            "what are our error budgets this week?",
+            "can you pull the response time percentiles?",
+            "give me the dashboard stats for uptime",
+            "what is the p99 for api latency?",
+            "summarize the observability metrics for checkout",
+        ],
         "conversational": [
             "are you sure about that?",
             "is that correct?",
@@ -32,7 +41,7 @@ class QueryRouter:
         ],
     }
 
-    _RAG_INTENTS = {"information"}
+    _RAG_INTENTS = {"information", "analytics"}
     _INTENT_MIN_SCORE = 0.45
     _INTENT_MIN_MARGIN = 0.12
 
@@ -318,6 +327,23 @@ class QueryRouter:
         for signal in mid_signals:
             if signal in query_lower:
                 return signal.strip()
+
+        metrics_keywords = (
+            "p90", "p95", "p99", "percentile", "slo", "error budget",
+            "latency", "availability", "uptime", "metrics", "response time",
+            "throughput", "apdex", "lighthouse", "dashboard", "results"
+        )
+
+        analytics_prompts = (
+            "do we have", "show me", "can you pull", "give me", "fetch",
+            "what are", "what is", "provide", "share", "list", "report"
+        )
+
+        if any(keyword in query_lower for keyword in metrics_keywords):
+            if any(prompt in query_lower for prompt in analytics_prompts) or '?' in query_lower:
+                for keyword in metrics_keywords:
+                    if keyword in query_lower:
+                        return f"metrics:{keyword}"
 
         return None
 
