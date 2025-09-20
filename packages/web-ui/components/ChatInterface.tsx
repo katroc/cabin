@@ -405,7 +405,7 @@ export default function ChatInterface({
       </div>
 
       <footer
-        className="px-4 pb-4 sm:px-[calc(2.5rem+8px)] md:px-[calc(2.5rem+8px)] pr-[calc(1.5rem+8px)] pt-0 bg-transparent"
+        className="px-4 pb-4 sm:pl-10 sm:pr-[calc(2.5rem+8px)] md:pl-10 md:pr-[calc(2.5rem+8px)] pt-0 bg-transparent"
         style={{
           paddingBottom: 'max(1rem, calc(1rem + env(safe-area-inset-bottom, 0)))'
         }}
