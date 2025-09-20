@@ -2,16 +2,18 @@ import logging
 import os
 from urllib.parse import urlparse
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.responses import StreamingResponse
+from typing import List
 
 from pydantic import BaseModel, Field
 
 from .models import (
     IngestRequest, ChatRequest, ChatResponse,
     DataSourceIndexRequest, DataSourceDiscoveryRequest, DataSourceTestRequest,
-    DataSourceIndexResponse, DataSourceProgressResponse, DataSourceInfoResponse
+    DataSourceIndexResponse, DataSourceProgressResponse, DataSourceInfoResponse,
+    FileUploadRequest, FileUploadResponse
 )
 from .conversation_memory import ConversationMemoryManager
 from .query_router import QueryRouter
@@ -20,6 +22,7 @@ from .vector_store import VectorStore
 from .generator import Generator
 from .data_sources.manager import DataSourceManager
 from .data_sources.confluence import ConfluenceDataSource  # Import to register
+from .data_sources.file_upload import FileUploadDataSource  # Import to register
 from .config import settings
 from .runtime import RuntimeOverrides
 from .telemetry import setup_logging, metrics
@@ -642,6 +645,121 @@ def cancel_indexing_job(job_id: str) -> dict:
     except Exception as e:
         print(f"Error cancelling job: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to cancel job: {e}")
+
+# --- File Upload Endpoints ---
+
+@app.post("/api/files/upload")
+async def upload_files(files: List[UploadFile] = File(...)) -> FileUploadResponse:
+    """Upload files for indexing."""
+    import tempfile
+    import os
+    from pathlib import Path
+
+    if not data_source_manager:
+        raise HTTPException(status_code=503, detail="Data source manager not available.")
+
+    try:
+        # Create temporary directory for uploads
+        upload_dir = tempfile.mkdtemp(prefix="cabin_upload_")
+        upload_path = Path(upload_dir)
+
+        uploaded_files = []
+        failed_files = []
+
+        # Save uploaded files
+        for file in files:
+            try:
+                # Validate file
+                if not file.filename:
+                    failed_files.append({"name": "unknown", "error": "No filename provided"})
+                    continue
+
+                file_path = upload_path / file.filename
+
+                # Check file extension
+                if file_path.suffix.lower() not in {'.pdf', '.docx', '.docm', '.md', '.markdown', '.mdown', '.mkd', '.html', '.htm', '.txt', '.text', '.log', '.csv'}:
+                    failed_files.append({"name": file.filename, "error": "Unsupported file type"})
+                    continue
+
+                # Save file
+                content = await file.read()
+
+                # Check file size (50MB limit)
+                if len(content) > 50 * 1024 * 1024:
+                    failed_files.append({"name": file.filename, "error": "File too large (max 50MB)"})
+                    continue
+
+                with open(file_path, "wb") as f:
+                    f.write(content)
+
+                uploaded_files.append(file.filename)
+
+            except Exception as e:
+                failed_files.append({"name": file.filename, "error": str(e)})
+
+        if not uploaded_files:
+            # Clean up empty directory
+            os.rmdir(upload_dir)
+            return FileUploadResponse(
+                success=False,
+                message="No files were successfully uploaded",
+                files_failed=len(failed_files)
+            )
+
+        return FileUploadResponse(
+            success=True,
+            message=f"Successfully uploaded {len(uploaded_files)} files",
+            files_processed=len(uploaded_files),
+            files_failed=len(failed_files),
+            upload_id=os.path.basename(upload_dir)
+        )
+
+    except Exception as e:
+        print(f"Error uploading files: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to upload files: {e}")
+
+@app.post("/api/files/index", status_code=202)
+async def index_uploaded_files(request: FileUploadRequest) -> DataSourceIndexResponse:
+    """Index previously uploaded files."""
+    if not data_source_manager:
+        raise HTTPException(status_code=503, detail="Data source manager not available.")
+
+    try:
+        # Create file upload data source
+        from .data_sources.base import DataSourceConnection
+        from .data_sources.file_upload import FileUploadDataSource
+
+        connection = DataSourceConnection(
+            additional_config={"upload_path": request.upload_path}
+        )
+
+        file_source = FileUploadDataSource(connection)
+        file_source.set_upload_directory(request.upload_path)
+
+        # Start indexing job using the data source manager
+        indexing_config = {
+            "max_items": request.config.get("max_items", 1000),
+            "include_attachments": False,
+            "incremental": False,
+            "filters": request.config.get("filters", {})
+        }
+
+        job_id = await data_source_manager.start_indexing(
+            "file_upload",
+            {"upload_path": request.upload_path},
+            [],  # source_ids not needed for file upload
+            indexing_config
+        )
+
+        return DataSourceIndexResponse(
+            job_id=job_id,
+            status="started",
+            message="File indexing job started successfully"
+        )
+
+    except Exception as e:
+        print(f"Error starting file indexing: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to start file indexing: {e}")
 
 # --- Service Management Endpoints ---
 

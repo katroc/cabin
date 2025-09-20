@@ -17,6 +17,7 @@ class DataSourceType(str, Enum):
     NOTION = "notion"
     FILE_SYSTEM = "filesystem"
     WEB_CRAWLER = "web_crawler"
+    FILE_UPLOAD = "file_upload"
 
 class DataSourceCapability(str, Enum):
     """Capabilities that data sources can expose."""

@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import ConversationHistory from '../components/ConversationHistory'
 import ChatInterface from '../components/ChatInterface'
 import SettingsDrawer from '../components/SettingsDrawer'
-import ConfluenceIndexing from '../components/ConfluenceIndexing'
+import DataSourceSelector from '../components/DataSourceSelector'
 import { Settings, Database, MessageSquare, X } from 'lucide-react'
 
 interface Citation {
@@ -91,7 +91,7 @@ export default function Home() {
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null)
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
-  const [isIndexingOpen, setIsIndexingOpen] = useState(false)
+  const [isDataSourceSelectorOpen, setIsDataSourceSelectorOpen] = useState(false)
   const [isHydrated, setIsHydrated] = useState(false)
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
   const [settings, setSettings] = useState<SettingsData>({
@@ -382,9 +382,9 @@ export default function Home() {
             <MessageSquare size={20} />
           </button>
           <button
-            onClick={() => setIsIndexingOpen(true)}
+            onClick={() => setIsDataSourceSelectorOpen(true)}
             className="header-button p-2 rounded-lg transition-colors ui-text-secondary"
-            title="Confluence Indexing"
+            title="Add Data Source"
           >
             <Database size={20} />
           </button>
@@ -459,9 +459,9 @@ export default function Home() {
         onSave={handleSettingsSave}
       />
 
-      <ConfluenceIndexing
-        isOpen={isIndexingOpen}
-        onClose={() => setIsIndexingOpen(false)}
+      <DataSourceSelector
+        isOpen={isDataSourceSelectorOpen}
+        onClose={() => setIsDataSourceSelectorOpen(false)}
       />
     </main>
   )

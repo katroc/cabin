@@ -172,3 +172,16 @@ class DataSourceProgressResponse(BaseModel):
 class DataSourceInfoResponse(BaseModel):
     """Information about available data sources."""
     available_sources: List[Dict[str, Any]]
+
+class FileUploadRequest(BaseModel):
+    """Request for file upload operations."""
+    upload_path: str  # Path to directory containing uploaded files
+    config: Dict[str, Any] = Field(default_factory=dict)  # Upload configuration
+
+class FileUploadResponse(BaseModel):
+    """Response from file upload operations."""
+    success: bool
+    message: str
+    files_processed: int = 0
+    files_failed: int = 0
+    upload_id: Optional[str] = None
