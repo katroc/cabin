@@ -1,4 +1,4 @@
-"""HTTP client for the reranker sidecar with heuristic fallback."""
+"""HTTP client for the external Docker reranker with heuristic fallback."""
 
 from __future__ import annotations
 

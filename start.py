@@ -66,41 +66,17 @@ class ServiceManager:
         self.root_dir = Path(__file__).parent
         self.processes = {}
         self.running = True
-        self.reranker_url, self.reranker_port = self._resolve_reranker_endpoint(
-            os.environ.get("CABIN_RERANKER_URL") or os.environ.get("RERANKER_URL"),
-            os.environ.get("CABIN_RERANKER_PORT")
-        )
+        # Get reranker configuration from environment
+        self.reranker_url = os.environ.get("CABIN_RERANKER_URL") or os.environ.get("RERANKER_URL", "http://external-vllm:8002/rerank")
+        self.reranker_port = int(os.environ.get("CABIN_RERANKER_PORT", "8002"))
         self.reranker_api_key = os.environ.get("CABIN_RERANKER_API_KEY") or os.environ.get("RERANKER_API_KEY")
-
-        # Ensure downstream consumers see the resolved values
-        os.environ["CABIN_RERANKER_URL"] = self.reranker_url
-        os.environ["RERANKER_URL"] = self.reranker_url
-        os.environ["CABIN_RERANKER_PORT"] = str(self.reranker_port)
 
         # Service configurations
         self.services: dict[str, dict] = {}
         self.startup_sequence: list[str] = []
 
-        if self._is_local_endpoint(self.reranker_url):
-            self.services['reranker'] = {
-                'name': 'Reranker Service',
-                'cmd': [
-                    sys.executable, '-m', 'uvicorn',
-                    'app:app',
-                    '--host', '0.0.0.0',
-                    '--port', str(self.reranker_port),
-                    '--app-dir', 'services/reranker',
-                ],
-                'cwd': self.root_dir / 'packages' / 'backend-python',
-                'health_url': f'http://localhost:{self.reranker_port}/healthz',
-                'startup_delay': 8,
-                'env': {"RERANKER_API_KEY": self.reranker_api_key} if self.reranker_api_key else {},
-            }
-            self.startup_sequence.append('reranker')
-        else:
-            print_info(
-                f"External reranker detected at {self.reranker_url}; skipping local sidecar startup."
-            )
+        # Reranker runs in Docker - no local service needed
+        print_info(f"Using external reranker at {self.reranker_url}")
 
         self.services['backend'] = {
             'name': 'Python Backend',
@@ -133,68 +109,6 @@ class ServiceManager:
             'env': {},
         }
         self.startup_sequence.append('frontend')
-
-    @staticmethod
-    def _resolve_reranker_endpoint(url_override: Optional[str], port_override: Optional[str]) -> tuple[str, int]:
-        default_port = 8010
-
-        def parse_port(value: Optional[str]) -> Optional[int]:
-            if not value:
-                return None
-            try:
-                return int(value)
-            except ValueError:
-                print_warning(f"Invalid CABIN_RERANKER_PORT '{value}'. Using default {default_port}.")
-                return None
-
-        requested_port = parse_port(port_override) or default_port
-        local_hosts = {"localhost", "127.0.0.1", "0.0.0.0"}
-
-        if url_override:
-            cleaned = url_override.strip()
-            if cleaned:
-                cleaned = cleaned.rstrip('/')
-                parsed = urlsplit(cleaned)
-                if parsed.scheme and parsed.netloc:
-                    host = parsed.hostname or 'localhost'
-                    path = parsed.path or '/rerank'
-                    port_in_url = parsed.port
-
-                    if host not in local_hosts:
-                        rebuilt = urlunsplit((
-                            parsed.scheme,
-                            parsed.netloc,
-                            path,
-                            parsed.query,
-                            parsed.fragment,
-                        )).rstrip('/')
-                        return rebuilt, port_in_url or requested_port
-
-                    port = port_in_url or requested_port
-
-                    credentials = ''
-                    if parsed.username:
-                        credentials = parsed.username
-                        if parsed.password:
-                            credentials += f":{parsed.password}"
-                        credentials += '@'
-                    netloc = f"{credentials}{host}:{port}"
-                    rebuilt = urlunsplit((parsed.scheme, netloc, path, parsed.query, parsed.fragment)).rstrip('/')
-                    return rebuilt, port
-
-                print_warning(f"Invalid reranker URL '{url_override}'. Falling back to localhost.")
-
-        return f"http://localhost:{requested_port}/rerank", requested_port
-
-    @staticmethod
-    def _is_local_endpoint(url: str) -> bool:
-        try:
-            host = urlsplit(url).hostname
-        except Exception:
-            return True
-        if host is None:
-            return True
-        return host in {"localhost", "127.0.0.1", "0.0.0.0"}
 
     def check_health(self, service_name):
         """Check if a service is healthy"""
@@ -381,13 +295,8 @@ def main():
         print_error("npm not found. Please install Node.js")
         return 1
 
-    default_reranker_port = os.environ.get('CABIN_RERANKER_PORT', '8010')
-    default_reranker_url = os.environ.get('CABIN_RERANKER_URL', f'http://localhost:{default_reranker_port}/rerank')
-    print_info("Note: Make sure ChromaDB is running separately on localhost:8000")
-    print_info(
-        "Reranker sidecar will start locally unless CABIN_RERANKER_URL points elsewhere"
-    )
-    print_info(f"Current reranker target: {default_reranker_url} (port {default_reranker_port})")
+    print_info("Note: Make sure ChromaDB is running separately on localhost:8100")
+    print_info("Note: Make sure reranker is running in Docker on localhost:8002")
 
     # Start services
     manager = ServiceManager()

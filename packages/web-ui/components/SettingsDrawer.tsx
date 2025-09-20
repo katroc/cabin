@@ -386,7 +386,7 @@ export default function SettingsDrawer({ isOpen, onClose, settings, onSave }: Se
                   className="mr-2"
                 />
                 <label htmlFor="rerankerEnabled" className="label-inline">
-                  Use reranker sidecar
+                  Use Docker reranker
                 </label>
               </div>
               <div className="flex items-center">
