@@ -4,7 +4,6 @@ import React from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeRaw from 'rehype-raw';
-import { BookOpenCheck, HelpCircle, GitCompare, Wrench } from 'lucide-react';
 
 interface Citation {
   id: string;
@@ -25,38 +24,49 @@ interface SmartResponseProps {
 
 type QueryType = 'factual' | 'howto' | 'troubleshooting' | 'comparison' | 'general';
 
-const QUERY_TYPE_META: Record<Exclude<QueryType, 'general'>, {
-  label: string;
-  Icon: React.ComponentType<{ size?: number; strokeWidth?: number; className?: string }>;
-  badgeClass: string;
-}> = {
-  howto: {
-    label: 'How-to',
-    Icon: BookOpenCheck,
-    badgeClass: 'type-badge--howto'
-  },
-  troubleshooting: {
-    label: 'Troubleshooting',
-    Icon: Wrench,
-    badgeClass: 'type-badge--troubleshooting'
-  },
-  factual: {
-    label: 'Information',
-    Icon: HelpCircle,
-    badgeClass: 'type-badge--factual'
-  },
-  comparison: {
-    label: 'Comparison',
-    Icon: GitCompare,
-    badgeClass: 'type-badge--comparison'
-  }
-};
-
 interface ResponseSection {
   type: string;
   content: string;
   icon?: string;
 }
+
+const slugify = (value: string): string => {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, '')
+    .trim()
+    .replace(/\s+/g, '-');
+};
+
+const getNodeText = (node: any): string => {
+  if (!node) {
+    return '';
+  }
+
+  if (typeof node === 'string' || typeof node === 'number') {
+    return String(node);
+  }
+
+  if (Array.isArray(node)) {
+    return node.map(getNodeText).join('');
+  }
+
+  if (typeof node === 'object') {
+    if ('value' in node && typeof node.value !== 'undefined') {
+      return String(node.value);
+    }
+
+    if ('children' in node && Array.isArray((node as any).children)) {
+      return (node as any).children.map(getNodeText).join('');
+    }
+
+    if ('props' in node && (node as any).props?.children) {
+      return getNodeText((node as any).props.children);
+    }
+  }
+
+  return '';
+};
 
 const SmartResponse: React.FC<SmartResponseProps> = ({
   answer,
@@ -249,22 +259,121 @@ const SmartResponse: React.FC<SmartResponseProps> = ({
 
   const sections = parseResponse(displayedAnswer, queryType);
 
-  const typeMeta = queryType === 'general' ? null : QUERY_TYPE_META[queryType];
+  const headingCounterRef = React.useRef<Map<string, number>>(new Map());
+  const previousAnswerRef = React.useRef<string | null>(null);
+
+  if (previousAnswerRef.current !== displayedAnswer) {
+    headingCounterRef.current = new Map();
+    previousAnswerRef.current = displayedAnswer;
+  }
+
+  const getHeadingId = React.useCallback(
+    (text: string) => {
+      const map = headingCounterRef.current;
+      const base = slugify(text);
+      const count = map.get(base) ?? 0;
+      map.set(base, count + 1);
+      return count === 0 ? base : `${base}-${count}`;
+    },
+    []
+  );
+
+  const headings = React.useMemo(() => {
+    if (!displayedAnswer) return [] as { depth: number; text: string; id: string }[];
+    const headingRegex = /^(#{1,4})\s+(.+)$/gm;
+    const slugCounts = new Map<string, number>();
+    const collected: { depth: number; text: string; id: string }[] = [];
+    let match: RegExpExecArray | null;
+
+    while ((match = headingRegex.exec(displayedAnswer)) !== null) {
+      const hashes = match[1];
+      const text = match[2].trim();
+      if (!text) continue;
+
+      const depth = hashes.length;
+      const base = slugify(text);
+      const count = slugCounts.get(base) ?? 0;
+      slugCounts.set(base, count + 1);
+      const id = count === 0 ? base : `${base}-${count}`;
+      collected.push({ depth, text, id });
+    }
+
+    return collected;
+  }, [displayedAnswer]);
+
+  const headingComponents = {
+    h1: ({ node, children }: any) => {
+      const text = getNodeText(node);
+      const id = getHeadingId(text);
+      return (
+        <h1 id={id} className="response-h1">
+          {renderWithCitations(children)}
+        </h1>
+      );
+    },
+    h2: ({ node, children }: any) => {
+      const text = getNodeText(node);
+      const id = getHeadingId(text);
+      return (
+        <h2 id={id} className="response-h2">
+          {renderWithCitations(children)}
+        </h2>
+      );
+    },
+    h3: ({ node, children }: any) => {
+      const text = getNodeText(node);
+      const id = getHeadingId(text);
+      return (
+        <h3 id={id} className="response-h3">
+          {renderWithCitations(children)}
+        </h3>
+      );
+    },
+    h4: ({ node, children }: any) => {
+      const text = getNodeText(node);
+      const id = getHeadingId(text);
+      return (
+        <h4 id={id} className="response-h4">
+          {renderWithCitations(children)}
+        </h4>
+      );
+    }
+  };
+
+  const listComponents = {
+    ol: ({ children }: any) => <ol className="ordered-list">{renderWithCitations(children)}</ol>,
+    ul: ({ children }: any) => <ul className="unordered-list">{renderWithCitations(children)}</ul>,
+    li: ({ node, children }: any) => {
+      if (typeof (node as any)?.checked === 'boolean') {
+        const checked = Boolean((node as any).checked);
+        return (
+          <li className="checkbox-item">
+            <span className="checkbox-icon">{checked ? '✓' : ''}</span>
+            <span>{renderWithCitations(children)}</span>
+          </li>
+        );
+      }
+      return <li className="list-item">{renderWithCitations(children)}</li>;
+    }
+  };
 
   return (
     <div ref={containerRef} className={`smart-response ${getResponseClass(queryType)}`}>
-      {/* Query type indicator */}
-      {typeMeta && (
-        <div className="response-type-indicator">
-          <span className={`type-badge ${typeMeta.badgeClass}`}>
-            <typeMeta.Icon size={14} strokeWidth={2} />
-            <span>{typeMeta.label}</span>
-          </span>
-        </div>
-      )}
-
       {/* Main content */}
       <div className="response-content" onClick={onContentClick}>
+        {headings.length > 1 && (
+          <nav className="response-toc">
+            <div className="response-toc-title">On this page</div>
+            <div className="response-toc-list">
+              {headings.map((heading) => (
+                <a key={heading.id} href={`#${heading.id}`} data-depth={heading.depth}>
+                  <span>{heading.text}</span>
+                </a>
+              ))}
+            </div>
+          </nav>
+        )}
+
         {sections.map((section, index) => (
           <div key={index} className={`response-section section-${section.type}`}>
             {section.type !== 'main' && (
@@ -274,9 +383,19 @@ const SmartResponse: React.FC<SmartResponseProps> = ({
             )}
             <div className="section-body">
               <ReactMarkdown
+                className="markdown-body"
                 remarkPlugins={[remarkGfm]}
                 rehypePlugins={[rehypeRaw]}
                 components={{
+                  // Headings & structure
+                  ...headingComponents,
+
+                  // Paragraphs
+                  p: ({ children }) => <p>{renderWithCitations(children)}</p>,
+
+                  // Lists
+                  ...listComponents,
+
                   // Custom rendering for different elements
                   code: ({ children, className }) => {
                     const isInline = !className;
@@ -290,17 +409,6 @@ const SmartResponse: React.FC<SmartResponseProps> = ({
                       </div>
                     );
                   },
-
-                  // Enhanced list rendering
-                  ol: ({ children }) => <ol className="ordered-list">{renderWithCitations(children)}</ol>,
-                  ul: ({ children }) => <ul className="unordered-list">{renderWithCitations(children)}</ul>,
-                  li: ({ children }) => <li className="list-item">{renderWithCitations(children)}</li>,
-
-                  // Enhanced headings
-                  h1: ({ children }) => <h1 className="response-h1">{renderWithCitations(children)}</h1>,
-                  h2: ({ children }) => <h2 className="response-h2">{renderWithCitations(children)}</h2>,
-                  h3: ({ children }) => <h3 className="response-h3">{renderWithCitations(children)}</h3>,
-                  p: ({ children }) => <p>{renderWithCitations(children)}</p>,
 
                   // Enhanced emphasis
                   strong: ({ children }) => <strong className="text-bold">{children}</strong>,
@@ -329,6 +437,40 @@ const SmartResponse: React.FC<SmartResponseProps> = ({
                       </span>
                     </a>
                   ),
+
+                  table: ({ node, children }: any) => {
+                    const headerRow = node?.children?.[0];
+                    const headerLabels = headerRow?.children?.map((cell: any) => getNodeText(cell).toLowerCase()) ?? [];
+                    const metricIndex = headerLabels.indexOf('metric');
+                    const valueIndex = headerLabels.indexOf('value');
+                    if (metricIndex !== -1 && valueIndex !== -1 && node?.children?.length > 1) {
+                      const metricRows = node.children.slice(1);
+                      return (
+                        <div className="markdown-body metric-grid">
+                          {metricRows.map((row: any, rowIndex: number) => {
+                            const cells = row.children ?? [];
+                            const metricLabel = cells[metricIndex] ? getNodeText(cells[metricIndex]) : '';
+                            const metricValue = cells[valueIndex] ? getNodeText(cells[valueIndex]) : '';
+                            const captionCell = cells.find((_: any, idx: number) => idx !== metricIndex && idx !== valueIndex);
+                            const captionText = captionCell ? getNodeText(captionCell) : '';
+                            return (
+                              <div key={`metric-${rowIndex}`} className="metric-card">
+                                <div className="metric-card-title">{metricLabel}</div>
+                                <div className="metric-card-value">{metricValue}</div>
+                                {captionText && <div className="metric-card-caption">{captionText}</div>}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <div className="table-scroll">
+                        <table>{children}</table>
+                      </div>
+                    );
+                  },
                 }}
               >
                 {section.content}
