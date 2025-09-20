@@ -55,7 +55,7 @@
   --text-secondary: #c3c9d6;
   --text-muted: #9299aa;
   --text-faint: #757c8b;
-  --text-tile:var(--accent-hover)
+  --text-title: #5c50c0;
 
   /* Brand */
   --accent: #7468e8;
@@ -743,7 +743,7 @@ input[type="checkbox"] {
 }
 
 .form-section-title {
-  color: var(--text-primary);
+  color: var(--text-title);
   font-size: var(--text-base);
   font-weight: 600;
   margin-bottom: var(--space-4);

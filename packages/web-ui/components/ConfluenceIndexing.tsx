@@ -374,11 +374,11 @@ export default function ConfluenceIndexing({ isOpen, onClose }: ConfluenceIndexi
               </div>
 
               <div className="form-group">
-                <div className="flex items-start gap-3 mb-3">
-                  <label className="label-base pt-1">
+                <div className="mb-3">
+                  <label className="label-base">
                     Spaces to Index
                   </label>
-                  <div className="flex items-center">
+                  <div className="mt-2 flex items-center">
                     <input
                       type="checkbox"
                       id="indexAllSpaces"
