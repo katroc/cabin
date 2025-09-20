@@ -449,8 +449,8 @@ export default function ConfluenceIndexing({ isOpen, onClose }: ConfluenceIndexi
                 )}
               </div>
 
-              <div className="form-row items-end gap-4">
-                <div className="form-group flex-1">
+              <div className="space-y-3">
+                <div className="form-group">
                   <label className="label-base">
                     Max Pages: {config.maxPages}
                   </label>
@@ -464,16 +464,17 @@ export default function ConfluenceIndexing({ isOpen, onClose }: ConfluenceIndexi
                     className="w-full"
                   />
                 </div>
-                <div className="flex items-center justify-end gap-3">
-                  <label htmlFor="includeAttachments" className="label-inline ui-text-secondary">
-                    Include Attachments
-                  </label>
+                <div className="flex items-center">
                   <input
                     type="checkbox"
                     id="includeAttachments"
                     checked={config.includeAttachments}
                     onChange={(e) => setConfig(prev => ({ ...prev, includeAttachments: e.target.checked }))}
+                    className="mr-2"
                   />
+                  <label htmlFor="includeAttachments" className="label-inline">
+                    Include Attachments
+                  </label>
                 </div>
               </div>
             </div>
