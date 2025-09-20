@@ -324,7 +324,7 @@ export default function ChatInterface({
         </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-4 pb-10 pt-6 sm:px-10 min-h-0" style={{ scrollbarGutter: 'stable' }}>
+      <div className="flex-1 overflow-y-auto px-4 pb-10 pt-6 sm:px-10 min-h-0">
         <div className="mx-auto flex w-full max-w-[min(65vw,62rem)] flex-col gap-5">
           {!hasMessages && (
             <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
