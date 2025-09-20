@@ -50,6 +50,7 @@ export default function ChatInterface({
   const [input, setInput] = useState('')
   const [isProcessing, setIsProcessing] = useState(false)
   const [verifyingMessageId, setVerifyingMessageId] = useState<string | null>(null)
+  const [routingMessageId, setRoutingMessageId] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement | null>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
   const lastAssistantIdRef = useRef<string | null>(null)
@@ -60,6 +61,7 @@ export default function ChatInterface({
     setInput('')
     setIsProcessing(false)
     setVerifyingMessageId(null)
+    setRoutingMessageId(null)
     lastAssistantIdRef.current = null
     abortControllerRef.current?.abort()
     abortControllerRef.current = null
@@ -151,6 +153,7 @@ export default function ChatInterface({
     abortControllerRef.current = null
     setIsProcessing(false)
     setVerifyingMessageId(null)
+    setRoutingMessageId(null)
     lastAssistantIdRef.current = null
   }, [])
 
@@ -184,7 +187,9 @@ export default function ChatInterface({
 
     setInput('')
     setIsProcessing(true)
-    
+
+    // Show routing animation immediately
+    setRoutingMessageId(assistantMessageId)
 
     let streamedText = ''
     let streamingFailed = false
@@ -200,10 +205,18 @@ export default function ChatInterface({
     }
 
     try {
-      // Set verification state while fetching citations
-      setVerifyingMessageId(assistantMessageId)
-      // Always fetch full response for citations, but handle content differently
+      // Always fetch full response for metadata, but handle verification animation smartly
       const fullResponse = await requestFullResponse(question)
+
+      // Clear routing animation and show appropriate next state
+      setRoutingMessageId(null)
+
+      // Only show verification animation if response actually has citations
+      if (fullResponse.citations && fullResponse.citations.length > 0) {
+        setVerifyingMessageId(assistantMessageId)
+        // Brief delay to show the verification happened
+        await new Promise(resolve => setTimeout(resolve, 600))
+      }
 
       if (streamingFailed || !streamedText) {
         // If streaming failed, use the full response content
@@ -221,6 +234,7 @@ export default function ChatInterface({
           timestamp: new Date()
         }))
       }
+
       // Clear verification state
       setVerifyingMessageId(null)
     } catch (error) {
@@ -235,6 +249,8 @@ export default function ChatInterface({
       }))
       // Clear verification state on error
       setVerifyingMessageId(null)
+      // Clear routing state on error
+      setRoutingMessageId(null)
     } finally {
       setIsProcessing(false)
       abortControllerRef.current = null
@@ -275,6 +291,12 @@ export default function ChatInterface({
     const assistantMessage = messages.find(msg => msg.id === lastAssistantIdRef.current)
     return !assistantMessage?.content
   }, [isProcessing, messages])
+
+  const placeholderState = useMemo<"routing" | "streaming" | null>(() => {
+    if (routingMessageId) return 'routing'
+    if (streamingPlaceholderVisible) return 'streaming'
+    return null
+  }, [routingMessageId, streamingPlaceholderVisible])
 
   const hasMessages = messages.length > 0
   const canStop = isProcessing && Boolean(abortControllerRef.current)
@@ -377,20 +399,39 @@ export default function ChatInterface({
               )
             })}
 
-            {streamingPlaceholderVisible && (
+            {placeholderState && (
               <div className="flex justify-start">
                 <div className="w-full">
                   <div
-                    className="rounded-xl border px-4 py-5 text-center"
+                    className="rounded-xl border px-4 py-5"
                     style={{
                       background: 'var(--bg-secondary)',
                       borderColor: 'var(--border-faint)'
                     }}
                   >
-                    <Loader2 className="mx-auto animate-spin" style={{ color: 'var(--accent)' }} />
-                    <p className="mt-3 text-sm" style={{ color: 'var(--text-secondary)' }}>
-                      Generating response...
-                    </p>
+                    {placeholderState === 'routing' ? (
+                      <div className="routing-section">
+                        <div className="routing-animation">
+                          <svg
+                            width="16"
+                            height="16"
+                            viewBox="0 0 24 24"
+                            fill="currentColor"
+                            className="routing-icon routing-loading"
+                          >
+                            <path d="M12,4V2A10,10 0 0,0 2,12H4A8,8 0 0,1 12,4Z" />
+                          </svg>
+                          <span className="routing-text">Analyzing request...</span>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="text-center">
+                        <Loader2 className="mx-auto animate-spin" style={{ color: 'var(--accent)' }} />
+                        <p className="mt-3 text-sm" style={{ color: 'var(--text-secondary)' }}>
+                          Generating response...
+                        </p>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>

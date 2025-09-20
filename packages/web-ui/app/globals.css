@@ -928,6 +928,33 @@ input[type="checkbox"] {
   margin-top: var(--space-1);
 }
 
+/* Routing analysis animation */
+.routing-section {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.5rem 0;
+}
+
+.routing-animation {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.routing-icon {
+  color: var(--accent);
+}
+
+.routing-loading {
+  animation: spin 1s linear infinite;
+}
+
+.routing-text {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
 /* Source verification animation */
 .citation-verifying {
   opacity: 0.7;
