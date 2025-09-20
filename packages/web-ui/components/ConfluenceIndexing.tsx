@@ -272,8 +272,8 @@ export default function ConfluenceIndexing({ isOpen, onClose }: ConfluenceIndexi
       <div className="drawer-overlay" onClick={onClose} />
       <div className="drawer-panel relative ml-auto h-full w-[600px] overflow-y-auto">
         {/* Header */}
-        <div className="drawer-header">
-          <h2 className="drawer-title">
+        <div className="drawer-header ui-bg-secondary border-b ui-border-faint">
+          <h2 className="drawer-title ui-text-primary">
             <Database size={20} />
             Confluence Indexing
           </h2>
@@ -285,7 +285,7 @@ export default function ConfluenceIndexing({ isOpen, onClose }: ConfluenceIndexi
         <div className="p-6 space-y-6">
           {/* Configuration Section */}
           <div className="form-section">
-            <h3 className="form-section-title">
+            <h3 className="form-section-title ui-text-secondary">
               Configuration
             </h3>
 
@@ -464,17 +464,16 @@ export default function ConfluenceIndexing({ isOpen, onClose }: ConfluenceIndexi
                     className="w-full"
                   />
                 </div>
-                <div className="flex items-center">
+                <div className="flex items-center justify-between gap-3">
+                  <label htmlFor="includeAttachments" className="label-inline">
+                    Include Attachments
+                  </label>
                   <input
                     type="checkbox"
                     id="includeAttachments"
                     checked={config.includeAttachments}
                     onChange={(e) => setConfig(prev => ({ ...prev, includeAttachments: e.target.checked }))}
-                    className="mr-2"
                   />
-                  <label htmlFor="includeAttachments" className="label-inline">
-                    Include Attachments
-                  </label>
                 </div>
               </div>
             </div>
@@ -503,7 +502,7 @@ export default function ConfluenceIndexing({ isOpen, onClose }: ConfluenceIndexi
           {/* Jobs History */}
           {jobs.length > 0 && (
             <div>
-              <h3 className="form-section-title">
+              <h3 className="form-section-title ui-text-secondary">
                 Indexing History
               </h3>
 

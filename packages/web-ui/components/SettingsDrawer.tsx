@@ -162,8 +162,8 @@ export default function SettingsDrawer({ isOpen, onClose, settings, onSave }: Se
       <div className="drawer-overlay" onClick={onClose} />
       <div className="drawer-panel relative ml-auto h-full w-[600px] overflow-y-auto">
         {/* Header */}
-        <div className="drawer-header">
-          <h2 className="drawer-title">
+        <div className="drawer-header ui-bg-secondary border-b ui-border-faint">
+          <h2 className="drawer-title ui-text-primary">
             <Settings size={20} />
             Settings
           </h2>
@@ -175,7 +175,7 @@ export default function SettingsDrawer({ isOpen, onClose, settings, onSave }: Se
         <div className="p-6 space-y-6">
           {/* LLM Provider */}
           <div className="form-section">
-            <h3 className="form-section-title">LLM Provider</h3>
+            <h3 className="form-section-title ui-text-secondary">LLM Provider</h3>
             <div className="space-y-4">
               <div className="form-group">
                 <label className="label-base">LLM Base URL</label>
@@ -202,7 +202,7 @@ export default function SettingsDrawer({ isOpen, onClose, settings, onSave }: Se
                   )}
                 </select>
                 {llmModelsLoading && (
-                  <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+                  <p className="text-xs ui-text-secondary">
                     Loading models from provider…
                   </p>
                 )}
@@ -229,7 +229,7 @@ export default function SettingsDrawer({ isOpen, onClose, settings, onSave }: Se
 
           {/* Embedding Provider */}
           <div className="form-section">
-            <h3 className="form-section-title">Embedding Provider</h3>
+            <h3 className="form-section-title ui-text-secondary">Embedding Provider</h3>
             <div className="space-y-4">
               <div className="form-group">
                 <label className="label-base">Embedding Base URL</label>
@@ -256,7 +256,7 @@ export default function SettingsDrawer({ isOpen, onClose, settings, onSave }: Se
                   )}
                 </select>
                 {embeddingModelsLoading && (
-                  <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+                  <p className="text-xs ui-text-secondary">
                     Loading embedding models…
                   </p>
                 )}
