@@ -13,6 +13,8 @@ from .models import (
     DataSourceIndexRequest, DataSourceDiscoveryRequest, DataSourceTestRequest,
     DataSourceIndexResponse, DataSourceProgressResponse, DataSourceInfoResponse
 )
+from .conversation_memory import ConversationMemoryManager
+from .query_router import QueryRouter
 from .chunker import SemanticChunker
 from .vector_store import VectorStore
 from .generator import Generator
@@ -128,6 +130,8 @@ try:
     vector_store_service = VectorStore(overrides=current_overrides)
     generator_service = Generator(overrides=current_overrides)
     data_source_manager = DataSourceManager(chunker_service, vector_store_service)
+    conversation_memory = ConversationMemoryManager()
+    query_router = QueryRouter()
 except Exception as e:
     # If services fail to initialize (e.g., can't connect to ChromaDB),
     # log the error and prevent the app from starting gracefully.
@@ -138,6 +142,8 @@ except Exception as e:
     vector_store_service = None
     generator_service = None
     data_source_manager = None
+    conversation_memory = None
+    query_router = None
 
 
 def apply_ui_settings(payload: UISettingsPayload) -> None:
@@ -228,18 +234,86 @@ def clear_index():
 
 @app.post("/api/chat")
 def chat(request: ChatRequest) -> ChatResponse:
-    """Endpoint for standard, non-streaming chat."""
-    if not vector_store_service or not generator_service:
+    """Endpoint for standard, non-streaming chat with intelligent routing."""
+    if not vector_store_service or not generator_service or not conversation_memory or not query_router:
         raise HTTPException(status_code=503, detail="Chat service not available.")
 
     try:
-        context_chunks = vector_store_service.query(request.message, filters=request.filters)
-        logger.debug("Chat query '%s' retrieved %d context chunks", request.message, len(context_chunks))
-        if not context_chunks:
-            logger.warning("No context chunks found for query '%s'", request.message)
-        response = generator_service.ask(request.message, context_chunks)
-        if response.response == "Not found in docs.":
-            logger.warning("LLM returned fallback for query '%s'", request.message)
+        # Get or create conversation
+        conversation = conversation_memory.get_or_create_conversation(request.conversation_id)
+        conversation_id = conversation.conversation_id
+
+        # Add user message to conversation history
+        conversation_memory.add_user_message(conversation_id, request.message)
+
+        # Get conversation context for LLM
+        conversation_context = conversation_memory.get_conversation_context(conversation_id, max_messages=8)
+
+        # Decide if we need RAG retrieval using query router
+        corpus_sample = vector_store_service.get_corpus_sample_for_routing(sample_size=20)
+        should_use_rag, similarity_score, routing_reason = query_router.should_use_rag(
+            request.message,
+            conversation_context=conversation_context,
+            corpus_sample=corpus_sample
+        )
+
+        logger.debug(
+            "Query routing: '%s' -> RAG=%s (sim=%.3f, reason=%s)",
+            request.message[:50], should_use_rag, similarity_score, routing_reason
+        )
+
+        # Retrieve documents only if routing suggests we need them
+        if should_use_rag:
+            context_chunks = vector_store_service.query(request.message, filters=request.filters)
+            logger.debug("RAG retrieval: found %d context chunks", len(context_chunks))
+        else:
+            context_chunks = []
+            logger.debug("Conversational routing: skipping document retrieval")
+
+        # Generate response with conversation context
+        response = generator_service.ask(
+            request.message,
+            context_chunks,
+            conversation_id=conversation_id,
+            conversation_context=conversation_context,
+            enforce_provenance=should_use_rag  # False for conversational, True for RAG
+        )
+
+        # Add assistant response to conversation history
+        conversation_memory.add_assistant_message(
+            conversation_id,
+            response.response,
+            response.citations
+        )
+
+        # Handle case where RAG routing was used but LLM couldn't provide citations
+        # This indicates the query was likely conversational despite similarity to corpus
+        if "couldn't find" in response.response.lower() and should_use_rag:
+            logger.warning("RAG routing used but LLM returned fallback for query '%s'", request.message)
+
+            # Try conversational response as fallback
+            conversational_response = generator_service.ask(
+                request.message,
+                [],  # No context chunks for conversational mode
+                conversation_id=conversation_id,
+                conversation_context=conversation_context,
+                enforce_provenance=False  # Disable citation requirements
+            )
+
+            # Use conversational response if it's better than fallback
+            if "couldn't find" not in conversational_response.response.lower():
+                logger.info("Using conversational fallback for query '%s'", request.message)
+                response = conversational_response
+
+                # Update conversation history with the corrected response
+                conversation_memory.update_last_assistant_message(
+                    conversation_id,
+                    response.response,
+                    response.citations
+                )
+        elif not should_use_rag and len(response.response) > 50:  # Successful conversational response
+            logger.debug("Conversational routing successful for query '%s'", request.message[:50])
+
         return response
     except Exception as e:
         print(f"Error during chat: {e}")
@@ -248,16 +322,90 @@ def chat(request: ChatRequest) -> ChatResponse:
 @app.post("/api/chat/stream")
 def chat_stream(request: ChatRequest):
     """Endpoint for streaming chat responses."""
-    if not vector_store_service or not generator_service:
+    if not vector_store_service or not generator_service or not conversation_memory:
         raise HTTPException(status_code=503, detail="Chat service not available.")
 
     try:
-        context_chunks = vector_store_service.query(request.message, filters=request.filters)
-        logger.debug("Streaming chat query '%s' retrieved %d context chunks", request.message, len(context_chunks))
-        if not context_chunks:
-            logger.warning("No context chunks found for streaming query '%s'", request.message)
-        stream = generator_service.ask_stream(request.message, context_chunks)
-        return StreamingResponse(stream, media_type="text/plain")
+        # Get or create conversation
+        conversation = conversation_memory.get_or_create_conversation(request.conversation_id)
+        conversation_id = conversation.conversation_id
+
+        # Add user message to conversation history
+        conversation_memory.add_user_message(conversation_id, request.message)
+
+        # Get conversation context for LLM
+        conversation_context = conversation_memory.get_conversation_context(conversation_id, max_messages=8)
+
+        # Decide if we need RAG retrieval using query router
+        corpus_sample = vector_store_service.get_corpus_sample_for_routing(sample_size=20)
+        should_use_rag, similarity_score, routing_reason = query_router.should_use_rag(
+            request.message,
+            conversation_context=conversation_context,
+            corpus_sample=corpus_sample
+        )
+
+        logger.debug(
+            "Streaming query routing: '%s' -> RAG=%s (sim=%.3f, reason=%s)",
+            request.message[:50], should_use_rag, similarity_score, routing_reason
+        )
+
+        # Retrieve documents only if routing suggests we need them
+        if should_use_rag:
+            context_chunks = vector_store_service.query(request.message, filters=request.filters)
+            logger.debug("Streaming RAG retrieval: found %d context chunks", len(context_chunks))
+        else:
+            context_chunks = []
+            logger.debug("Streaming conversational routing: skipping document retrieval")
+
+        # Generate response - streaming uses the regular ask method since streaming is simplified
+        response = generator_service.ask(
+            request.message,
+            context_chunks,
+            conversation_id=conversation_id,
+            conversation_context=conversation_context,
+            enforce_provenance=should_use_rag  # False for conversational, True for RAG
+        )
+
+        # Add assistant response to conversation history
+        conversation_memory.add_assistant_message(
+            conversation_id,
+            response.response,
+            response.citations
+        )
+
+        # Handle case where RAG routing was used but LLM couldn't provide citations
+        # This indicates the query was likely conversational despite similarity to corpus
+        if "couldn't find" in response.response.lower() and should_use_rag:
+            logger.warning("Streaming RAG routing used but LLM returned fallback for query '%s'", request.message)
+
+            # Try conversational response as fallback
+            conversational_response = generator_service.ask(
+                request.message,
+                [],  # No context chunks for conversational mode
+                conversation_id=conversation_id,
+                conversation_context=conversation_context,
+                enforce_provenance=False  # Disable citation requirements
+            )
+
+            # Use conversational response if it's better than fallback
+            if "couldn't find" not in conversational_response.response.lower():
+                logger.info("Using conversational fallback for streaming query '%s'", request.message)
+                response = conversational_response
+
+                # Update conversation history with the corrected response
+                conversation_memory.update_last_assistant_message(
+                    conversation_id,
+                    response.response,
+                    response.citations
+                )
+        elif not should_use_rag and len(response.response) > 50:  # Successful conversational response
+            logger.debug("Streaming conversational routing successful for query '%s'", request.message[:50])
+
+        # Return as simple streaming response (just emit the final response)
+        def generate():
+            yield response.response
+
+        return StreamingResponse(generate(), media_type="text/plain")
     except Exception as e:
         print(f"Error during streaming chat: {e}")
         # Cannot return a standard HTTPException body in a streaming response that may have already started.
@@ -265,6 +413,83 @@ def chat_stream(request: ChatRequest):
         # Proper handling would involve a more complex setup.
         return StreamingResponse("Error processing request.", media_type="text/plain", status_code=500)
 
+# --- Conversation Management Endpoints ---
+
+@app.get("/api/conversations/{conversation_id}")
+def get_conversation_history(conversation_id: str):
+    """Get the full history of a conversation."""
+    if not conversation_memory:
+        raise HTTPException(status_code=503, detail="Conversation service not available.")
+
+    try:
+        history = conversation_memory.get_conversation_history(conversation_id)
+        if not history:
+            raise HTTPException(status_code=404, detail="Conversation not found")
+
+        return {
+            "conversation_id": history.conversation_id,
+            "created_at": history.created_at,
+            "updated_at": history.updated_at,
+            "messages": [
+                {
+                    "id": msg.id,
+                    "role": msg.role,
+                    "content": msg.content,
+                    "timestamp": msg.timestamp,
+                    "citations": msg.citations
+                }
+                for msg in history.messages
+            ]
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error getting conversation history: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get conversation history: {e}")
+
+@app.delete("/api/conversations/{conversation_id}")
+def delete_conversation(conversation_id: str):
+    """Delete a conversation and its history."""
+    if not conversation_memory:
+        raise HTTPException(status_code=503, detail="Conversation service not available.")
+
+    try:
+        success = conversation_memory.delete_conversation(conversation_id)
+        if not success:
+            raise HTTPException(status_code=404, detail="Conversation not found")
+
+        return {"success": True, "message": "Conversation deleted successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error deleting conversation: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to delete conversation: {e}")
+
+@app.get("/api/conversations/stats")
+def get_conversation_stats():
+    """Get conversation memory statistics."""
+    if not conversation_memory:
+        raise HTTPException(status_code=503, detail="Conversation service not available.")
+
+    try:
+        stats = conversation_memory.get_stats()
+        return stats
+    except Exception as e:
+        print(f"Error getting conversation stats: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get conversation stats: {e}")
+
+@app.get("/api/query-router/stats")
+def get_query_router_stats():
+    """Get query router statistics and configuration."""
+    if not query_router:
+        raise HTTPException(status_code=503, detail="Query router not available.")
+
+    try:
+        stats = query_router.get_stats()
+        return stats
+    except Exception as e:
+        print(f"Error getting query router stats: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get query router stats: {e}")
 
 @app.get("/api/settings")
 def get_runtime_settings():

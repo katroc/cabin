@@ -35,21 +35,40 @@ class Generator:
         query: str,
         context_chunks: List[ParentChunk],
         *,
+        conversation_id: str,
+        conversation_context: Optional[List[Dict[str, str]]] = None,
         enforce_provenance: Optional[bool] = None,
     ) -> ChatResponse:
         """Generates a standard, non-streaming response with enforced citations."""
         if not context_chunks:
-            return ChatResponse(response="I couldn't find any relevant information in the documentation to answer your question. You might want to try rephrasing your query or checking if the topic is covered in the available documents.", citations=[], rendered_citations=[])
+            # If provenance is explicitly disabled, generate a conversational response
+            if enforce_provenance is False:
+                return self._generate_conversational_response(query, conversation_id, conversation_context)
+
+            return ChatResponse(
+                response="I couldn't find any relevant information in the documentation to answer your question. You might want to try rephrasing your query or checking if the topic is covered in the available documents.",
+                conversation_id=conversation_id,
+                citations=[],
+                rendered_citations=[],
+                used_rag=True  # This was intended as RAG but failed
+            )
 
         provenance, context_blocks = self._build_provenance_context(context_chunks)
         prompt = build_generation_prompt(query, context_blocks, len(context_chunks))
 
+        # Build messages with conversation context
+        messages = [{"role": "system", "content": self._get_citation_system_prompt()}]
+
+        # Add conversation history if available
+        if conversation_context:
+            messages.extend(conversation_context)
+
+        # Add the current user query
+        messages.append({"role": "user", "content": prompt})
+
         response = self.llm_client.chat.completions.create(
             model=self.llm_model,
-            messages=[
-                {"role": "system", "content": self._get_citation_system_prompt()},
-                {"role": "user", "content": prompt}
-            ],
+            messages=messages,
             stream=False,
             temperature=self.temperature,
         )
@@ -59,7 +78,13 @@ class Generator:
         # Validate that we got a proper LLM response
         if not answer or answer.strip() == "":
             logger.warning("Empty response from LLM for query: %s", query[:100])
-            return ChatResponse(response="I couldn't generate a proper response for your question. Please try rephrasing it.", citations=[], rendered_citations=[])
+            return ChatResponse(
+                response="I couldn't generate a proper response for your question. Please try rephrasing it.",
+                conversation_id=conversation_id,
+                citations=[],
+                rendered_citations=[],
+                used_rag=True  # This was intended as RAG but failed
+            )
 
         # Check if response looks like raw documentation (simple heuristic)
         if self._looks_like_raw_docs(answer.strip()):
@@ -72,25 +97,50 @@ class Generator:
         if not provenance_required:
             sanitized = self._remove_free_urls(answer.strip())
             metrics.increment("generator.provenance_disabled")
-            return ChatResponse(response=sanitized, citations=[], rendered_citations=[])
-        return self._post_process(answer, provenance, query)
+            return ChatResponse(
+                response=sanitized,
+                conversation_id=conversation_id,
+                citations=[],
+                rendered_citations=[],
+                used_rag=False  # Provenance disabled, not using RAG
+            )
+        return self._post_process(answer, provenance, query, conversation_id)
 
-    def ask_stream(self, query: str, context_chunks: List[ParentChunk]) -> Iterator[str]:
+    def ask_stream(
+        self,
+        query: str,
+        context_chunks: List[ParentChunk],
+        *,
+        conversation_id: str,
+        conversation_context: Optional[List[Dict[str, str]]] = None
+    ) -> Iterator[str]:
         """Generates a streaming response (simplified: emits final answer once)."""
-        response = self.ask(query, context_chunks)
+        response = self.ask(
+            query,
+            context_chunks,
+            conversation_id=conversation_id,
+            conversation_context=conversation_context
+        )
         yield response.response
 
     def _get_citation_system_prompt(self) -> str:
         """Returns the system prompt that enforces natural response generation with citations."""
         max_citations = settings.app_config.generation.max_citations
         quote_limit = settings.app_config.generation.quote_max_words
-        return f"""You are a knowledgeable assistant that provides helpful, natural responses based on documentation.
+        return f"""You are a knowledgeable assistant that provides helpful, natural responses based on documentation with full conversation awareness.
+
+CONVERSATION HANDLING:
+- You have access to previous conversation history to understand context and follow-up questions
+- When users ask follow-up questions, reference previous discussion appropriately
+- If users question accuracy ("are you sure?"), acknowledge their concern and re-examine the information
+- For clarification requests, build upon what was already discussed
 
 RESPONSE STYLE:
 - Write in a natural, conversational tone as if explaining to a colleague
 - Synthesize and rephrase information rather than copying text verbatim
 - Provide comprehensive, well-structured answers
 - Use clear markdown formatting with headings and lists when helpful
+- Maintain conversation flow by referencing previous topics when relevant
 
 CITATION REQUIREMENTS:
 - Support factual claims with citations using [1], [2] format
@@ -98,7 +148,7 @@ CITATION REQUIREMENTS:
 - Include direct quotes of at most {quote_limit} words for each citation
 - Only cite information that directly supports your statements
 
-IMPORTANT: Always process information through your reasoning and provide a natural response. Avoid returning raw documentation text.
+IMPORTANT: Always process information through your reasoning and provide a natural response. Use conversation history to better understand the user's intent and provide contextually appropriate answers.
 """
 
     def _build_provenance_context(self, context_chunks: List[ParentChunk]) -> Tuple[Dict[str, Dict[str, Any]], str]:
@@ -135,9 +185,16 @@ IMPORTANT: Always process information through your reasoning and provide a natur
         response: str,
         provenance: Dict[str, Dict[str, Any]],
         query: Optional[str] = None,
+        conversation_id: Optional[str] = None,
     ) -> ChatResponse:
         if not provenance:
-            return ChatResponse(response="I couldn't find reliable citations for this information in the available documentation. Please try rephrasing your question or checking if the topic is covered in the docs.", citations=[], rendered_citations=[])
+            return ChatResponse(
+                response="I couldn't find reliable citations for this information in the available documentation. Please try rephrasing your question or checking if the topic is covered in the docs.",
+                conversation_id=conversation_id or "unknown",
+                citations=[],
+                rendered_citations=[],
+                used_rag=True  # This was RAG processing but failed
+            )
 
         cleaned = self._remove_free_urls(response.strip())
         cleaned = cleaned.replace('【', '[').replace('】', ']')
@@ -154,7 +211,13 @@ IMPORTANT: Always process information through your reasoning and provide a natur
                 log_ctx,
             )
             metrics.increment("generator.citation_fallback", reason="no_markers")
-            return ChatResponse(response="I couldn't find reliable citations for this information in the available documentation. Please try rephrasing your question or checking if the topic is covered in the docs.", citations=[], rendered_citations=[])
+            return ChatResponse(
+                response="I couldn't find reliable citations for this information in the available documentation. Please try rephrasing your question or checking if the topic is covered in the docs.",
+                conversation_id=conversation_id or "unknown",
+                citations=[],
+                rendered_citations=[],
+                used_rag=True  # This was RAG processing but failed
+            )
 
         seen: List[str] = []
         for idx in indices:
@@ -236,10 +299,22 @@ IMPORTANT: Always process information through your reasoning and provide a natur
         if not citations:
             logger.warning("No valid citations remained; returning fallback | %s", log_ctx)
             metrics.increment("generator.citation_fallback", reason="no_valid_citations")
-            return ChatResponse(response="I couldn't find reliable citations for this information in the available documentation. Please try rephrasing your question or checking if the topic is covered in the docs.", citations=[], rendered_citations=[])
+            return ChatResponse(
+                response="I couldn't find reliable citations for this information in the available documentation. Please try rephrasing your question or checking if the topic is covered in the docs.",
+                conversation_id=conversation_id or "unknown",
+                citations=[],
+                rendered_citations=[],
+                used_rag=True  # This was RAG processing but failed
+            )
 
         rendered = render_citation_payloads(citations)
-        return ChatResponse(response=cleaned, citations=citations, rendered_citations=rendered)
+        return ChatResponse(
+            response=cleaned,
+            conversation_id=conversation_id or "unknown",
+            citations=citations,
+            rendered_citations=rendered,
+            used_rag=True  # Successful RAG response with citations
+        )
 
     def _extract_quote(self, text: str, index: str) -> Optional[str]:
         patterns = [
@@ -321,6 +396,62 @@ Make it sound like you're explaining this to a colleague in a helpful, natural w
             logger.warning("Failed to rephrase response: %s", e)
 
         return None
+
+    def _generate_conversational_response(
+        self,
+        query: str,
+        conversation_id: str,
+        conversation_context: Optional[List[Dict[str, str]]] = None
+    ) -> ChatResponse:
+        """Generate a conversational response without requiring citations."""
+        try:
+            # Build conversational system prompt
+            system_prompt = """You are a helpful assistant having a natural conversation.
+You have access to conversation history to understand context and provide relevant responses.
+Be conversational, helpful, and natural. You don't need to cite sources for this response.
+If the user is asking follow-up questions like "ok thanks, and that's it?" or similar,
+provide a natural conversational response acknowledging their question."""
+
+            # Build messages with conversation context
+            messages = [{"role": "system", "content": system_prompt}]
+
+            # Add conversation history if available
+            if conversation_context:
+                messages.extend(conversation_context)
+
+            # Add the current user query
+            messages.append({"role": "user", "content": query})
+
+            response = self.llm_client.chat.completions.create(
+                model=self.llm_model,
+                messages=messages,
+                stream=False,
+                temperature=self.temperature,
+            )
+
+            answer = response.choices[0].message.content
+            if not answer or answer.strip() == "":
+                # Even conversational mode failed, return a generic response
+                answer = "I'm here to help! Is there anything specific you'd like to know or discuss?"
+
+            return ChatResponse(
+                response=answer.strip(),
+                conversation_id=conversation_id,
+                citations=[],
+                rendered_citations=[],
+                used_rag=False  # This is a conversational response
+            )
+
+        except Exception as e:
+            logger.warning("Failed to generate conversational response: %s", e)
+            # Fallback to a simple acknowledgment
+            return ChatResponse(
+                response="I'm here to help! Is there anything else you'd like to know?",
+                conversation_id=conversation_id,
+                citations=[],
+                rendered_citations=[],
+                used_rag=False  # This is a conversational fallback
+            )
 
     @staticmethod
     def _remove_free_urls(text: str) -> str:

@@ -562,3 +562,61 @@ class VectorStore:
     def last_lexical_rankings(self) -> List[Dict[str, Any]]:
         """Return lexical rankings from the most recent query call."""
         return list(self._last_lexical_rankings)
+
+    def get_corpus_sample(self, sample_size: int = 50) -> List[str]:
+        """
+        Get a representative sample of documents from the corpus for similarity comparison.
+
+        Args:
+            sample_size: Number of documents to sample
+
+        Returns:
+            List of document texts for similarity comparison
+        """
+        try:
+            if not self.chroma:
+                logger.warning("ChromaDB not available for corpus sampling")
+                return []
+
+            # Get a random sample of documents from the collection
+            collection = self.chroma.collection
+            if not collection:
+                logger.warning("No collection available for corpus sampling")
+                return []
+
+            # Get collection count
+            count = collection.count()
+            if count == 0:
+                logger.warning("Empty collection for corpus sampling")
+                return []
+
+            # Sample documents - use peek for random sampling
+            actual_sample_size = min(sample_size, count)
+
+            # Get random sample of documents
+            results = collection.peek(limit=actual_sample_size)
+
+            if not results or not results.get('documents'):
+                logger.warning("No documents returned from corpus sampling")
+                return []
+
+            documents = results['documents']
+            logger.debug("Sampled %d documents from corpus (requested %d)", len(documents), sample_size)
+
+            return documents
+
+        except Exception as e:
+            logger.error("Error sampling corpus: %s", e)
+            return []
+
+    def get_corpus_sample_for_routing(self, sample_size: int = 20) -> List[str]:
+        """
+        Get a small, fast sample of corpus for query routing decisions.
+
+        Args:
+            sample_size: Number of documents to sample (kept small for speed)
+
+        Returns:
+            List of document texts for routing similarity checks
+        """
+        return self.get_corpus_sample(sample_size)

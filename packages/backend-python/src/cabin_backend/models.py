@@ -1,6 +1,7 @@
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
 from datetime import datetime
+import uuid
 
 
 def _default_list() -> List[str]:
@@ -59,10 +60,6 @@ class IngestRequest(BaseModel):
     document_id: Optional[str] = None
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
-class ChatRequest(BaseModel):
-    message: str
-    filters: Optional[Dict[str, Any]] = None
-
 class Citation(BaseModel):
     """A citation with source information."""
     id: str  # Unique citation ID (e.g., "C1", "C2")
@@ -77,11 +74,53 @@ class Citation(BaseModel):
     quote: Optional[str] = None  # Exact quote snippet used in the response
     last_modified: Optional[str] = None
 
+# Conversation Memory Models
+class ConversationMessage(BaseModel):
+    """A single message in a conversation."""
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    role: str  # "user" or "assistant"
+    content: str
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    citations: List[Citation] = Field(default_factory=list)
+
+class ConversationHistory(BaseModel):
+    """Complete conversation history for a conversation ID."""
+    conversation_id: str
+    messages: List[ConversationMessage] = Field(default_factory=list)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+    def add_message(self, role: str, content: str, citations: List[Citation] = None) -> ConversationMessage:
+        """Add a new message to the conversation."""
+        message = ConversationMessage(
+            role=role,
+            content=content,
+            citations=citations or []
+        )
+        self.messages.append(message)
+        self.updated_at = datetime.utcnow()
+        return message
+
+    def get_context_for_llm(self, max_messages: int = 10) -> List[Dict[str, str]]:
+        """Get recent conversation context formatted for LLM."""
+        recent_messages = self.messages[-max_messages:] if len(self.messages) > max_messages else self.messages
+        return [
+            {"role": msg.role, "content": msg.content}
+            for msg in recent_messages
+        ]
+
+class ChatRequest(BaseModel):
+    message: str
+    conversation_id: Optional[str] = None  # If None, creates new conversation
+    filters: Optional[Dict[str, Any]] = None
+
 class ChatResponse(BaseModel):
     response: str
+    conversation_id: str
     citations: List[Citation] = Field(default_factory=list)
     rendered_citations: List[dict] = Field(default_factory=list)
     system: str = "python-gold-standard-rag"
+    used_rag: bool = False  # Indicates whether RAG retrieval was used for this response
 
 
 class CitationPayload(BaseModel):
