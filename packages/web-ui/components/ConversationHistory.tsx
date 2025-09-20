@@ -103,7 +103,7 @@ export default function ConversationHistory({
             placeholder="Search conversations..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full bg-transparent rounded-full pr-8 py-2 pl-10 border ui-border-light ui-text-primary focus:outline-none focus:ring-2 focus:ring-[var(--accent)] transition text-sm"
+            className="w-full bg-transparent rounded-full pr-8 py-2 pl-12 border ui-border-light ui-text-primary focus:outline-none focus:ring-2 focus:ring-[var(--accent)] transition text-sm"
           />
           {searchTerm && (
             <button
