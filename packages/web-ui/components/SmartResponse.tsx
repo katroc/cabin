@@ -4,6 +4,7 @@ import React from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeRaw from 'rehype-raw';
+import { BookOpenCheck, HelpCircle, GitCompare, Wrench } from 'lucide-react';
 
 interface Citation {
   id: string;
@@ -23,6 +24,33 @@ interface SmartResponseProps {
 }
 
 type QueryType = 'factual' | 'howto' | 'troubleshooting' | 'comparison' | 'general';
+
+const QUERY_TYPE_META: Record<Exclude<QueryType, 'general'>, {
+  label: string;
+  Icon: React.ComponentType<{ size?: number; strokeWidth?: number; className?: string }>;
+  badgeClass: string;
+}> = {
+  howto: {
+    label: 'How-to',
+    Icon: BookOpenCheck,
+    badgeClass: 'type-badge--howto'
+  },
+  troubleshooting: {
+    label: 'Troubleshooting',
+    Icon: Wrench,
+    badgeClass: 'type-badge--troubleshooting'
+  },
+  factual: {
+    label: 'Information',
+    Icon: HelpCircle,
+    badgeClass: 'type-badge--factual'
+  },
+  comparison: {
+    label: 'Comparison',
+    Icon: GitCompare,
+    badgeClass: 'type-badge--comparison'
+  }
+};
 
 interface ResponseSection {
   type: string;
@@ -221,43 +249,19 @@ const SmartResponse: React.FC<SmartResponseProps> = ({
 
   const sections = parseResponse(displayedAnswer, queryType);
 
+  const typeMeta = queryType === 'general' ? null : QUERY_TYPE_META[queryType];
+
   return (
     <div ref={containerRef} className={`smart-response ${getResponseClass(queryType)}`}>
       {/* Query type indicator */}
-      <div className="response-type-indicator">
-        {queryType === 'howto' && (
-          <span className="type-badge">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/>
-            </svg>
-            <span>How-to</span>
+      {typeMeta && (
+        <div className="response-type-indicator">
+          <span className={`type-badge ${typeMeta.badgeClass}`}>
+            <typeMeta.Icon size={14} strokeWidth={2} />
+            <span>{typeMeta.label}</span>
           </span>
-        )}
-        {queryType === 'troubleshooting' && (
-          <span className="type-badge">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M22.7 19l-9.1-9.1c.9-2.3.4-5-1.5-6.9-2-2-5-2.4-7.4-1.3L9 6 6 9 1.6 4.7C.4 7.1.9 10.1 2.9 12.1c1.9 1.9 4.6 2.4 6.9 1.5l9.1 9.1c.4.4 1 .4 1.4 0l2.3-2.3c.5-.4.5-1.1.1-1.4z"/>
-            </svg>
-            <span>Troubleshooting</span>
-          </span>
-        )}
-        {queryType === 'factual' && (
-          <span className="type-badge">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/>
-            </svg>
-            <span>Information</span>
-          </span>
-        )}
-        {queryType === 'comparison' && (
-          <span className="type-badge">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zM7 13.5c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zm5 0c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zm5 0c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5z"/>
-            </svg>
-            <span>Comparison</span>
-          </span>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* Main content */}
       <div className="response-content" onClick={onContentClick}>

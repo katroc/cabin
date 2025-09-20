@@ -4,6 +4,11 @@ import './globals.css'
 export const metadata: Metadata = {
   title: 'Cabin',
   description: 'Intelligent Confluence documentation assistant',
+  icons: {
+    icon: [
+      { rel: 'icon', url: '/favicon.png', type: 'image/png', sizes: '512x512' },
+    ],
+  },
 }
 
 export default function RootLayout({

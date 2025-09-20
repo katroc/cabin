@@ -1,5 +1,6 @@
 'use client'
 
+import Image from 'next/image'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import ConversationHistory from '../components/ConversationHistory'
 import ChatInterface from '../components/ChatInterface'
@@ -359,11 +360,18 @@ export default function Home() {
   return (
     <main className="h-[100dvh] grid grid-rows-[auto,1fr] ui-bg-primary overflow-hidden">
       <header
-        className="flex items-center justify-between border-b px-4 py-3 sm:px-6 sm:py-4 ui-bg-secondary border-[color:var(--border-faint)]"
+        className="relative flex items-center justify-between border-b px-4 py-3 sm:px-6 sm:py-3 ui-bg-secondary border-[color:var(--border-faint)]"
       >
-        <h1 className="text-xl font-semibold ui-text-primary">
-          Cabin
-        </h1>
+        <div className="flex items-center">
+          <Image
+            src="/cabin_logo.png"
+            alt="Cabin logo"
+            width={144}
+            height={48}
+            priority
+            className="h-12 w-36"
+          />
+        </div>
         <div className="flex items-center gap-2">
           <button
             onClick={() => setIsSidebarOpen(true)}
