@@ -374,8 +374,8 @@ export default function ConfluenceIndexing({ isOpen, onClose }: ConfluenceIndexi
               </div>
 
               <div className="form-group">
-                <div className="flex items-center justify-between mb-3">
-                  <label className="label-base">
+                <div className="flex items-start gap-3 mb-3">
+                  <label className="label-base pt-1">
                     Spaces to Index
                   </label>
                   <div className="flex items-center">

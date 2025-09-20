@@ -55,6 +55,7 @@
   --text-secondary: #c3c9d6;
   --text-muted: #9299aa;
   --text-faint: #757c8b;
+  --text-tile:var(--accent-hover)
 
   /* Brand */
   --accent: #7468e8;
