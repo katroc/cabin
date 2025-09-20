@@ -325,7 +325,7 @@ export default function ChatInterface({
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 pb-10 pt-6 sm:px-10 min-h-0" style={{ scrollbarGutter: 'stable' }}>
-        <div className="mx-auto flex w-full max-w-[min(65vw,48rem)] flex-col gap-5">
+        <div className="mx-auto flex w-full max-w-[min(65vw,68rem)] flex-col gap-5">
           {!hasMessages && (
             <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
               <h3 className="text-lg font-medium ui-text-primary">
@@ -405,12 +405,12 @@ export default function ChatInterface({
       </div>
 
       <footer
-        className="px-4 py-4 sm:px-10"
+        className="px-4 pb-4 sm:px-10 pt-0 bg-transparent"
         style={{
           paddingBottom: 'max(1rem, calc(1rem + env(safe-area-inset-bottom, 0)))'
         }}
       >
-        <form onSubmit={handleSubmit} className="mx-auto max-w-[min(65vw,48rem)]">
+        <form onSubmit={handleSubmit} className="mx-auto max-w-[min(65vw,68rem)]">
           <div
             className="rounded-2xl border px-4 py-2.5 sm:px-5 ui-bg-secondary ui-border-light ui-shadow-elevated"
           >
