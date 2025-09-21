@@ -73,6 +73,9 @@ Thumbs.db
 *.db
 *.sqlite
 *.sqlite3
+*.db-journal
+*.db-wal
+*.db-shm
 
 # Logs
 *.log
@@ -85,3 +88,9 @@ logs/
 .tmp/
 temp/
 tmp/
+
+# Claude Code
+.claude/
+
+# Virtual environments
+cabin-venv/
