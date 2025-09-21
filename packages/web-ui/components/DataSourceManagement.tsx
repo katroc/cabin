@@ -185,7 +185,7 @@ export default function DataSourceManagement({ isOpen, onClose, onBack }: DataSo
 
   return (
     <div className="drawer-overlay">
-      <div className="drawer-panel fixed right-0 top-0 h-full w-full max-w-4xl overflow-hidden">
+      <div className="drawer-panel fixed right-0 top-0 h-full w-full max-w-2xl overflow-hidden">
         {/* Header */}
         <div className="drawer-header">
           <div className="flex items-center gap-3">
