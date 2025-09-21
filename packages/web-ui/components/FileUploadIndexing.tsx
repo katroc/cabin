@@ -1,11 +1,13 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { Upload, File, Trash2, Play, CheckCircle, AlertCircle, Clock, X } from 'lucide-react'
 
 interface UploadedFile {
   file: File
   id: string
+  name: string
+  size: number
   status: 'pending' | 'uploading' | 'uploaded' | 'failed'
   progress: number
   error?: string
@@ -29,12 +31,18 @@ interface FileUploadIndexingProps {
 }
 
 export default function FileUploadIndexing({ isOpen, onClose }: FileUploadIndexingProps) {
+  const [mounted, setMounted] = useState(false)
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([])
   const [isDragOver, setIsDragOver] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
   const [jobs, setJobs] = useState<IndexingJob[]>([])
   const [isIndexing, setIsIndexing] = useState(false)
   const [uploadId, setUploadId] = useState<string | null>(null)
+
+  // Ensure this component only renders on the client
+  useEffect(() => {
+    setMounted(true)
+  }, [])
 
   // Supported file types
   const supportedTypes = [
@@ -65,47 +73,59 @@ export default function FileUploadIndexing({ isOpen, onClose }: FileUploadIndexi
     setIsDragOver(false)
   }, [])
 
+  const addFiles = useCallback((files: File[]) => {
+    try {
+      const newFiles = files.map(file => ({
+        file,
+        id: `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        name: file.name,
+        size: file.size,
+        status: 'pending' as const,
+        progress: 0
+      }))
+
+      // Filter out unsupported files and show warning
+      const supportedFiles = newFiles.filter(f => isFileTypeSupported(f.file.name))
+      const unsupportedFiles = newFiles.filter(f => !isFileTypeSupported(f.file.name))
+
+      if (unsupportedFiles.length > 0) {
+        setTimeout(() => {
+          alert(`${unsupportedFiles.length} files were skipped (unsupported format). Supported: ${supportedTypes.join(', ')}`)
+        }, 100)
+      }
+
+      // Check file size (50MB limit)
+      const validFiles = supportedFiles.filter(f => f.file.size <= 50 * 1024 * 1024)
+      const oversizedFiles = supportedFiles.filter(f => f.file.size > 50 * 1024 * 1024)
+
+      if (oversizedFiles.length > 0) {
+        setTimeout(() => {
+          alert(`${oversizedFiles.length} files were skipped (over 50MB limit)`)
+        }, 200)
+      }
+
+      if (validFiles.length > 0) {
+        setUploadedFiles(prev => [...prev, ...validFiles])
+      }
+    } catch (error) {
+      console.error('Error adding files:', error)
+    }
+  }, [])
+
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault()
     setIsDragOver(false)
 
     const files = Array.from(e.dataTransfer.files)
     addFiles(files)
-  }, [])
+  }, [addFiles])
 
   const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
       const files = Array.from(e.target.files)
       addFiles(files)
     }
-  }, [])
-
-  const addFiles = (files: File[]) => {
-    const newFiles = files.map(file => ({
-      file,
-      id: Math.random().toString(36).substr(2, 9),
-      status: 'pending' as const,
-      progress: 0
-    }))
-
-    // Filter out unsupported files and show warning
-    const supportedFiles = newFiles.filter(f => isFileTypeSupported(f.file.name))
-    const unsupportedFiles = newFiles.filter(f => !isFileTypeSupported(f.file.name))
-
-    if (unsupportedFiles.length > 0) {
-      alert(`${unsupportedFiles.length} files were skipped (unsupported format). Supported: ${supportedTypes.join(', ')}`)
-    }
-
-    // Check file size (50MB limit)
-    const validFiles = supportedFiles.filter(f => f.file.size <= 50 * 1024 * 1024)
-    const oversizedFiles = supportedFiles.filter(f => f.file.size > 50 * 1024 * 1024)
-
-    if (oversizedFiles.length > 0) {
-      alert(`${oversizedFiles.length} files were skipped (over 50MB limit)`)
-    }
-
-    setUploadedFiles(prev => [...prev, ...validFiles])
-  }
+  }, [addFiles])
 
   const removeFile = (id: string) => {
     setUploadedFiles(prev => prev.filter(f => f.id !== id))
@@ -116,24 +136,28 @@ export default function FileUploadIndexing({ isOpen, onClose }: FileUploadIndexi
     setUploadId(null)
   }
 
-  const uploadFiles = async () => {
+  const uploadFiles = useCallback(async () => {
     if (uploadedFiles.length === 0) return
 
     setIsUploading(true)
 
     try {
+      // Update file statuses to uploading
+      setUploadedFiles(prev => prev.map(f => ({ ...f, status: 'uploading' as const })))
+
       const formData = new FormData()
       uploadedFiles.forEach(({ file }) => {
         formData.append('files', file)
       })
 
-      // Update file statuses to uploading
-      setUploadedFiles(prev => prev.map(f => ({ ...f, status: 'uploading' as const })))
-
-      const response = await fetch('/api/files/upload', {
+      const response = await fetch('http://localhost:8788/api/files/upload', {
         method: 'POST',
         body: formData
       })
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
 
       const result = await response.json()
 
@@ -141,25 +165,22 @@ export default function FileUploadIndexing({ isOpen, onClose }: FileUploadIndexi
         setUploadId(result.upload_id)
         setUploadedFiles(prev => prev.map(f => ({ ...f, status: 'uploaded' as const, progress: 100 })))
       } else {
-        setUploadedFiles(prev => prev.map(f => ({
-          ...f,
-          status: 'failed' as const,
-          error: result.message
-        })))
+        throw new Error(result.message || 'Upload failed')
       }
     } catch (error) {
       console.error('Upload failed:', error)
+      const errorMessage = error instanceof Error ? error.message : 'Upload failed'
       setUploadedFiles(prev => prev.map(f => ({
         ...f,
         status: 'failed' as const,
-        error: 'Upload failed'
+        error: errorMessage
       })))
     } finally {
       setIsUploading(false)
     }
-  }
+  }, [uploadedFiles])
 
-  const startIndexing = async () => {
+  const startIndexing = useCallback(async () => {
     if (!uploadId) {
       await uploadFiles()
       return
@@ -168,51 +189,52 @@ export default function FileUploadIndexing({ isOpen, onClose }: FileUploadIndexi
     setIsIndexing(true)
 
     try {
-      const response = await fetch('/api/files/index', {
+      const response = await fetch('http://localhost:8788/api/files/index', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          upload_path: `/tmp/cabin_upload_${uploadId}`,
+          upload_path: uploadId,  // uploadId is already the full path
           config: {
             max_items: 1000
           }
         })
       })
 
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+
       const result = await response.json()
 
-      if (response.ok) {
-        const newJob: IndexingJob = {
-          id: result.job_id,
-          status: 'running',
-          progress: 0,
-          totalFiles: uploadedFiles.length,
-          processedFiles: 0,
-          startedAt: new Date(),
-          uploadId
-        }
-
-        setJobs(prev => [newJob, ...prev])
-
-        // Start polling for progress
-        pollJobProgress(result.job_id)
-      } else {
-        throw new Error(result.detail || 'Failed to start indexing')
+      const newJob: IndexingJob = {
+        id: result.job_id,
+        status: 'running',
+        progress: 0,
+        totalFiles: uploadedFiles.length,
+        processedFiles: 0,
+        startedAt: new Date(),
+        uploadId
       }
+
+      setJobs(prev => [newJob, ...prev])
+
+      // Start polling for progress
+      pollJobProgress(result.job_id)
     } catch (error) {
       console.error('Indexing failed:', error)
-      alert('Failed to start indexing: ' + (error as Error).message)
+      const errorMessage = error instanceof Error ? error.message : 'Failed to start indexing'
+      alert('Failed to start indexing: ' + errorMessage)
     } finally {
       setIsIndexing(false)
     }
-  }
+  }, [uploadId, uploadedFiles.length, uploadFiles])
 
   const pollJobProgress = async (jobId: string) => {
     const pollInterval = setInterval(async () => {
       try {
-        const response = await fetch(`/api/data-sources/jobs/${jobId}`)
+        const response = await fetch(`http://localhost:8788/api/data-sources/jobs/${jobId}`)
         const progress = await response.json()
 
         setJobs(prev => prev.map(job =>
@@ -248,7 +270,8 @@ export default function FileUploadIndexing({ isOpen, onClose }: FileUploadIndexi
     }
   }
 
-  if (!isOpen) return null
+  // Don't render until mounted (prevents SSR issues)
+  if (!mounted || !isOpen) return null
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
@@ -314,13 +337,13 @@ export default function FileUploadIndexing({ isOpen, onClose }: FileUploadIndexi
                 </div>
 
                 <div className="space-y-2 max-h-40 overflow-y-auto">
-                  {uploadedFiles.map(({ file, id, status, error }) => (
+                  {uploadedFiles.map(({ file, id, name, size, status, error }) => (
                     <div key={id} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
                       <div className="flex items-center space-x-3 flex-1 min-w-0">
                         <File className="w-4 h-4 text-blue-500 flex-shrink-0" />
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium truncate">{file.name}</p>
-                          <p className="text-xs text-gray-500">{formatFileSize(file.size)}</p>
+                          <p className="text-sm font-medium truncate">{name}</p>
+                          <p className="text-xs text-gray-500">{formatFileSize(size)}</p>
                           {error && <p className="text-xs text-red-500">{error}</p>}
                         </div>
                       </div>

@@ -85,23 +85,57 @@ class VectorStore:
         if not chunks:
             return
 
-        ids = [chunk.id for chunk in chunks]
-        documents = [chunk.text for chunk in chunks]
-        metadatas = []
-        for chunk in chunks:
-            metadata = (
-                chunk.metadata.model_dump()
-                if hasattr(chunk.metadata, "model_dump")
-                else chunk.metadata.dict()
-            )
-            metadata["parent_chunk_text"] = chunk.parent_chunk_text
-            metadatas.append(self._sanitize_metadata(metadata))
+        # Process chunks in smaller batches to avoid ChromaDB payload size limits
+        batch_size = 50  # Reduced batch size to prevent 413 Payload Too Large errors
 
-        # Note: ChromaDB automatically handles embedding generation if an embedding function
-        # is associated with the collection. However, managing it explicitly gives more control.
-        embeddings = self._get_embeddings(documents)
+        for i in range(0, len(chunks), batch_size):
+            batch_chunks = chunks[i:i + batch_size]
+            logger.info(f"Processing batch {i // batch_size + 1}/{(len(chunks) + batch_size - 1) // batch_size} ({len(batch_chunks)} chunks)")
 
-        self.chroma.add(ids=ids, embeddings=embeddings, documents=documents, metadatas=metadatas)
+            ids = [chunk.id for chunk in batch_chunks]
+            documents = [chunk.text for chunk in batch_chunks]
+            metadatas = []
+            for chunk in batch_chunks:
+                metadata = (
+                    chunk.metadata.model_dump()
+                    if hasattr(chunk.metadata, "model_dump")
+                    else chunk.metadata.dict()
+                )
+                metadata["parent_chunk_text"] = chunk.parent_chunk_text
+                metadatas.append(self._sanitize_metadata(metadata))
+
+            # Note: ChromaDB automatically handles embedding generation if an embedding function
+            # is associated with the collection. However, managing it explicitly gives more control.
+            embeddings = self._get_embeddings(documents)
+
+            try:
+                self.chroma.add(ids=ids, embeddings=embeddings, documents=documents, metadatas=metadatas)
+                logger.info(f"Successfully added batch of {len(batch_chunks)} chunks")
+            except Exception as e:
+                logger.error(f"Failed to add batch of {len(batch_chunks)} chunks: {e}")
+                # Try with even smaller batch if this one fails
+                if len(batch_chunks) > 1:
+                    logger.info("Retrying with individual chunks...")
+                    for chunk in batch_chunks:
+                        try:
+                            single_metadata = (
+                                chunk.metadata.model_dump()
+                                if hasattr(chunk.metadata, "model_dump")
+                                else chunk.metadata.dict()
+                            )
+                            single_metadata["parent_chunk_text"] = chunk.parent_chunk_text
+                            single_embedding = self._get_embeddings([chunk.text])
+                            self.chroma.add(
+                                ids=[chunk.id],
+                                embeddings=single_embedding,
+                                documents=[chunk.text],
+                                metadatas=[self._sanitize_metadata(single_metadata)]
+                            )
+                            logger.info(f"Successfully added individual chunk: {chunk.id}")
+                        except Exception as single_e:
+                            logger.error(f"Failed to add individual chunk {chunk.id}: {single_e}")
+                else:
+                    raise e
 
     @staticmethod
     def _sanitize_metadata(metadata: Dict[str, Any]) -> Dict[str, Any]:

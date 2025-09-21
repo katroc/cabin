@@ -71,6 +71,7 @@ class Generator:
             messages=messages,
             stream=False,
             temperature=self.temperature,
+            max_tokens=1000,  # Limit response length to prevent context overflow
         )
 
         answer = response.choices[0].message.content
@@ -387,6 +388,7 @@ Make it sound like you're explaining this to a colleague in a helpful, natural w
                 messages=[{"role": "user", "content": rephrase_prompt}],
                 stream=False,
                 temperature=0.3,  # Lower temperature for consistency
+                max_tokens=1500,  # Allow more tokens for rephrasing
             )
 
             rephrased = response.choices[0].message.content
@@ -427,6 +429,7 @@ provide a natural conversational response acknowledging their question."""
                 messages=messages,
                 stream=False,
                 temperature=self.temperature,
+                max_tokens=1000,  # Limit response length to prevent context overflow
             )
 
             answer = response.choices[0].message.content

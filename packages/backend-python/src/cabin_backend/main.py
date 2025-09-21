@@ -711,7 +711,7 @@ async def upload_files(files: List[UploadFile] = File(...)) -> FileUploadRespons
             message=f"Successfully uploaded {len(uploaded_files)} files",
             files_processed=len(uploaded_files),
             files_failed=len(failed_files),
-            upload_id=os.path.basename(upload_dir)
+            upload_id=upload_dir  # Return full path instead of just basename
         )
 
     except Exception as e:
@@ -725,17 +725,6 @@ async def index_uploaded_files(request: FileUploadRequest) -> DataSourceIndexRes
         raise HTTPException(status_code=503, detail="Data source manager not available.")
 
     try:
-        # Create file upload data source
-        from .data_sources.base import DataSourceConnection
-        from .data_sources.file_upload import FileUploadDataSource
-
-        connection = DataSourceConnection(
-            additional_config={"upload_path": request.upload_path}
-        )
-
-        file_source = FileUploadDataSource(connection)
-        file_source.set_upload_directory(request.upload_path)
-
         # Start indexing job using the data source manager
         indexing_config = {
             "max_items": request.config.get("max_items", 1000),
@@ -746,7 +735,7 @@ async def index_uploaded_files(request: FileUploadRequest) -> DataSourceIndexRes
 
         job_id = await data_source_manager.start_indexing(
             "file_upload",
-            {"upload_path": request.upload_path},
+            {"additional_config": {"upload_path": request.upload_path}},
             [],  # source_ids not needed for file upload
             indexing_config
         )

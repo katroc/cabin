@@ -175,8 +175,8 @@ class Settings(BaseSettings):
     llm_model: str = Field("local-model", description="The model name to use for chat completions")
 
     # Embedding Provider Configuration
-    embedding_base_url: str = Field(description="Base URL for the embedding API. Defaults to llm_base_url if not set.")
-    embedding_api_key: str = Field(description="API key for the embedding API. Defaults to llm_api_key if not set.")
+    embedding_base_url: str = Field(default="", description="Base URL for the embedding API. Defaults to llm_base_url if not set.")
+    embedding_api_key: str = Field(default="", description="API key for the embedding API. Defaults to llm_api_key if not set.")
     embedding_model: str = Field("text-embedding-bge-m3", description="The model name to use for generating embeddings")
     embedding_dimensions: int = Field(256, description="The dimension of the embeddings")
     embedding_batch_size: int = Field(16, description="Batch size for embedding requests")

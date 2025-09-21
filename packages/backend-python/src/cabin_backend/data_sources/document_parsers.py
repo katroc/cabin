@@ -464,10 +464,15 @@ class DocumentParserRegistry:
 
     def parse_document(self, file_path: Path) -> Tuple[str, DocumentMetadata]:
         """Parse a document using the appropriate parser."""
+        logger.info(f"[DEBUG] Attempting to parse document: {file_path}")
         parser = self.get_parser(file_path)
         if parser:
-            return parser.parse(file_path)
+            logger.info(f"[DEBUG] Using parser: {parser.__class__.__name__}")
+            result = parser.parse(file_path)
+            logger.info(f"[DEBUG] Parser returned content length: {len(result[0]) if result[0] else 0}")
+            return result
         else:
+            logger.warning(f"[DEBUG] No suitable parser found for {file_path}")
             # Fallback to text parser for unknown formats
             metadata = DocumentMetadata()
             metadata.filename = file_path.name

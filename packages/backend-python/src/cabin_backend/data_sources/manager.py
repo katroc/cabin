@@ -100,9 +100,17 @@ class DataSourceManager:
         """Start an indexing job."""
         try:
             # Create data source instance
+            logger.info(f"[DEBUG] DataSourceManager.start_indexing called")
+            logger.info(f"[DEBUG] source_type: {source_type}")
+            logger.info(f"[DEBUG] connection_config: {connection_config}")
+
             source_type_enum = DataSourceType(source_type)
             connection = DataSourceConnection(**connection_config)
+            logger.info(f"[DEBUG] Created DataSourceConnection: {connection}")
+            logger.info(f"[DEBUG] connection.additional_config: {connection.additional_config}")
+
             source = data_source_registry.create_source(source_type_enum, connection)
+            logger.info(f"[DEBUG] Created data source instance id: {id(source) if source else None}")
 
             if not source:
                 raise ValueError(f"Unknown source type: {source_type}")

@@ -9,9 +9,29 @@ from ..config import settings
 
 def build_context_blocks(chunks: List[dict]) -> str:
     blocks = []
+    total_chars = 0
+    max_context_chars = 50000  # Limit total context to ~50k characters to prevent token overflow
+
     for index, chunk in enumerate(chunks, start=1):
-        block_lines = [f"[{index}]", chunk["text"], f"SOURCE: {chunk['source']}"]
-        blocks.append("\n".join(block_lines))
+        chunk_text = chunk["text"]
+
+        # Truncate individual chunks if they're too long
+        if len(chunk_text) > 5000:
+            chunk_text = chunk_text[:5000] + "... [truncated]"
+
+        block_lines = [f"[{index}]", chunk_text, f"SOURCE: {chunk['source']}"]
+        block_text = "\n".join(block_lines)
+
+        # Check if adding this block would exceed the limit
+        if total_chars + len(block_text) > max_context_chars:
+            # Add a note about truncation if we're stopping early
+            if index < len(chunks):
+                blocks.append(f"[Note: {len(chunks) - index + 1} additional sources omitted due to length limits]")
+            break
+
+        blocks.append(block_text)
+        total_chars += len(block_text) + 2  # +2 for the "\n\n" separator
+
     return "\n\n".join(blocks)
 
 

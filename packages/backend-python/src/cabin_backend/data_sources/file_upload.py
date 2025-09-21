@@ -43,6 +43,15 @@ class FileUploadDataSource(DataSource):
         self._progress: Optional[IndexingProgress] = None
         self._uploaded_files: List[Path] = []
 
+        logger.info(f"[DEBUG] FileUploadDataSource.__init__ called, instance id: {id(self)}")
+        logger.info(f"[DEBUG] connection.additional_config: {connection.additional_config}")
+
+        # Auto-set upload directory from connection config if provided
+        upload_path = connection.additional_config.get("upload_path")
+        if upload_path:
+            logger.info(f"[DEBUG] Auto-setting upload directory from connection config: {upload_path}")
+            self.set_upload_directory(upload_path)
+
     def get_info(self) -> DataSourceInfo:
         """Return information about the file upload data source."""
         return DataSourceInfo(
@@ -129,12 +138,22 @@ class FileUploadDataSource(DataSource):
     def set_upload_directory(self, upload_dir: str) -> None:
         """Set the directory containing uploaded files."""
         self._upload_dir = Path(upload_dir)
+        logger.info(f"[DEBUG] set_upload_directory called on instance {id(self)} with upload_dir: {self._upload_dir}")
+        logger.info(f"[DEBUG] Current _uploaded_files before update: {len(self._uploaded_files)} files")
+
         if self._upload_dir.exists():
             # Discover all files in the upload directory
             self._uploaded_files = []
+            logger.info(f"[DEBUG] Directory exists, scanning for files...")
             for file_path in self._upload_dir.rglob("*"):
                 if file_path.is_file() and not file_path.name.startswith('.'):
                     self._uploaded_files.append(file_path)
+                    logger.info(f"[DEBUG] Added file: {file_path}")
+            logger.info(f"[DEBUG] Found {len(self._uploaded_files)} files in upload directory: {[f.name for f in self._uploaded_files]}")
+            logger.info(f"[DEBUG] self._uploaded_files after update: {[str(f) for f in self._uploaded_files]}")
+        else:
+            logger.warning(f"[DEBUG] Upload directory does not exist: {self._upload_dir}")
+            self._uploaded_files = []
 
     def add_uploaded_file(self, file_path: Path) -> bool:
         """
@@ -186,9 +205,17 @@ class FileUploadDataSource(DataSource):
         config: IndexingConfig
     ) -> AsyncGenerator[ExtractedDocument, None]:
         """Extract documents from uploaded files."""
+        logger.info(f"[DEBUG] extract_documents called on instance {id(self)}")
+        logger.info(f"[DEBUG] Starting document extraction from {len(self._uploaded_files)} uploaded files")
+        logger.info(f"[DEBUG] source_ids parameter: {source_ids}")
+        logger.info(f"[DEBUG] config.max_items: {config.max_items}")
+        logger.info(f"[DEBUG] self._uploaded_files: {[str(f) for f in self._uploaded_files]}")
+        logger.info(f"[DEBUG] self._upload_dir: {self._upload_dir}")
+
         try:
             # Initialize progress tracking
             if self._job_id:
+                logger.info(f"[DEBUG] Initializing progress tracking for job_id: {self._job_id}")
                 self._progress = IndexingProgress(
                     job_id=self._job_id,
                     status="running",
@@ -200,29 +227,46 @@ class FileUploadDataSource(DataSource):
 
             # If source_ids provided, filter files
             files_to_process = self._uploaded_files
+            logger.info(f"[DEBUG] Initial files_to_process: {len(files_to_process)} files")
+
             if source_ids:
+                logger.info(f"[DEBUG] Filtering files based on source_ids: {source_ids}")
                 source_paths = {Path(source_id) for source_id in source_ids}
+                logger.info(f"[DEBUG] source_paths: {[str(p) for p in source_paths]}")
                 files_to_process = [f for f in self._uploaded_files if f in source_paths]
+                logger.info(f"[DEBUG] Filtered to {len(files_to_process)} files based on source_ids: {source_ids}")
+            else:
+                logger.info(f"[DEBUG] Processing all {len(files_to_process)} uploaded files (no source_ids filter)")
+
+            logger.info(f"[DEBUG] Final files_to_process: {[str(f) for f in files_to_process]}")
 
             # Process each file
             for file_path in files_to_process:
+                logger.info(f"[DEBUG] Starting processing of file: {file_path}")
                 if processed_count >= config.max_items:
+                    logger.info(f"[DEBUG] Reached max_items limit ({config.max_items}), breaking")
                     break
 
                 try:
                     # Update progress
                     if self._progress:
+                        logger.info(f"[DEBUG] Updating progress for {file_path.name}")
                         self._progress.processed_items = processed_count
                         self._progress.current_item = file_path.name
 
                     # Parse document
+                    logger.info(f"[DEBUG] Parsing document: {file_path}")
                     content, file_metadata = document_parser_registry.parse_document(file_path)
+                    logger.info(f"[DEBUG] Extracted {len(content)} characters from {file_path}")
+                    logger.info(f"[DEBUG] file_metadata.parser_used: {file_metadata.parser_used}")
+                    logger.info(f"[DEBUG] file_metadata.title: {file_metadata.title}")
 
                     if not content.strip():
-                        logger.warning(f"No content extracted from {file_path}")
+                        logger.warning(f"[DEBUG] No content extracted from {file_path}, skipping")
                         continue
 
                     # Create document source
+                    logger.info(f"[DEBUG] Creating document source for {file_path}")
                     source = DocumentSource(
                         source_type=DataSourceType.FILE_UPLOAD,
                         source_id="uploaded_files",
@@ -234,6 +278,7 @@ class FileUploadDataSource(DataSource):
 
                     # Create document ID
                     document_id = f"file_upload_{file_path.stem}_{uuid.uuid4().hex[:8]}"
+                    logger.info(f"[DEBUG] Created document_id: {document_id}")
 
                     # Prepare metadata for the document
                     doc_metadata = {
@@ -281,11 +326,18 @@ class FileUploadDataSource(DataSource):
 
                     # Handle large documents by splitting if needed
                     max_chars = 500_000  # From config max_html_chars
+                    logger.info(f"[DEBUG] Content length: {len(content)}, max_chars: {max_chars}")
+
                     if len(content) > max_chars:
+                        logger.info(f"[DEBUG] Content too large, splitting into chunks")
                         # Split into multiple documents
                         chunks = self._split_large_content(content, max_chars)
+                        logger.info(f"[DEBUG] Split into {len(chunks)} chunks")
+
                         for i, chunk in enumerate(chunks):
                             chunk_doc_id = f"{document_id}_part_{i + 1}"
+                            logger.info(f"[DEBUG] Creating chunk {i + 1}/{len(chunks)}: {chunk_doc_id}")
+
                             chunk_metadata = doc_metadata.copy()
                             chunk_metadata.update({
                                 "document_id": chunk_doc_id,
@@ -304,6 +356,7 @@ class FileUploadDataSource(DataSource):
                                 metadata=chunk_metadata
                             )
 
+                            logger.info(f"[DEBUG] Yielding chunk document: {chunk_doc_id}")
                             yield ExtractedDocument(
                                 id=chunk_doc_id,
                                 title=f"{file_metadata.title or file_path.stem} (Part {i + 1})",
@@ -313,6 +366,7 @@ class FileUploadDataSource(DataSource):
                             )
                     else:
                         # Single document
+                        logger.info(f"[DEBUG] Yielding single document for {file_path}")
                         yield ExtractedDocument(
                             id=document_id,
                             title=file_metadata.title or file_path.stem,
@@ -322,22 +376,24 @@ class FileUploadDataSource(DataSource):
                         )
 
                     processed_count += 1
-                    logger.info(f"Successfully processed {file_path}")
+                    logger.info(f"[DEBUG] Successfully processed {file_path}, total processed: {processed_count}")
 
                 except Exception as e:
-                    logger.error(f"Failed to process file {file_path}: {e}")
+                    logger.error(f"[DEBUG] Failed to process file {file_path}: {e}")
                     if self._progress:
                         if not self._progress.error_message:
                             self._progress.error_message = f"Failed to process {file_path.name}: {e}"
 
             # Mark as completed
+            logger.info(f"[DEBUG] Finished processing all files. Total processed: {processed_count}")
             if self._progress:
+                logger.info(f"[DEBUG] Updating progress status to completed")
                 self._progress.status = "completed"
                 self._progress.completed_at = datetime.now()
                 self._progress.processed_items = processed_count
 
         except Exception as e:
-            logger.error(f"Document extraction failed: {e}")
+            logger.error(f"[DEBUG] Document extraction failed: {e}")
             if self._progress:
                 self._progress.status = "failed"
                 self._progress.error_message = str(e)
