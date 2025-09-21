@@ -285,9 +285,9 @@ export default function FileUploadIndexing({ isOpen, onClose }: FileUploadIndexi
   if (!mounted || !isOpen) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-50 flex">
       <div className="drawer-overlay" onClick={onClose} />
-      <div className="drawer-panel relative h-full w-full max-w-4xl overflow-y-auto">
+      <div className="drawer-panel fixed left-0 top-0 h-full w-full max-w-4xl overflow-y-auto">
         {/* Header */}
         <div className="drawer-header ui-bg-secondary border-b ui-border-faint">
           <h2 className="drawer-title ui-text-primary">
