@@ -232,13 +232,14 @@ export function usePerformanceDashboardState() {
     })
   }, [])
 
-  // Helper function to get cached data or default value
-  const getCachedDataOrDefault = useCallback(<T>(
-    cachedData: CachedData<T> | null,
-    defaultValue: T
-  ): T => {
-    return cachedData && isCacheValid(cachedData) ? cachedData.data : defaultValue
-  }, [])
+
+
+  // Compute valid data once to avoid repeated cache validity checks
+  const validSummary = summary && isCacheValid(summary) ? summary.data : null
+  const validComponentStats = componentStats && isCacheValid(componentStats) ? componentStats.data : {}
+  const validVllmMetrics = vllmMetrics && isCacheValid(vllmMetrics) ? vllmMetrics.data : null
+  const validVllmHealth = vllmHealth && isCacheValid(vllmHealth) ? vllmHealth.data : {}
+  const validRecentMetrics = recentMetrics && isCacheValid(recentMetrics) ? recentMetrics.data : []
 
   return {
     // User preferences
@@ -247,12 +248,12 @@ export function usePerformanceDashboardState() {
     autoRefresh,
     setAutoRefresh: setAutoRefreshState,
 
-    // Cached data getters (with real-time validation)
-    summary: getCachedDataOrDefault(summary, null as PerformanceSummary | null),
-    componentStats: getCachedDataOrDefault(componentStats, {} as Record<string, ComponentStats>),
-    vllmMetrics: getCachedDataOrDefault(vllmMetrics, null as VLLMMetrics | null),
-    vllmHealth: getCachedDataOrDefault(vllmHealth, {} as VLLMHealth),
-    recentMetrics: getCachedDataOrDefault(recentMetrics, [] as RAGPerformanceMetrics[]),
+    // Cached data (pre-computed to avoid repeated validity checks)
+    summary: validSummary,
+    componentStats: validComponentStats,
+    vllmMetrics: validVllmMetrics,
+    vllmHealth: validVllmHealth,
+    recentMetrics: validRecentMetrics,
 
     // Cache validity checkers (return functions, not call results)
     isSummaryValid,
