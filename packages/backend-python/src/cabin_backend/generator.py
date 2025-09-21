@@ -113,16 +113,96 @@ class Generator:
         context_chunks: List[ParentChunk],
         *,
         conversation_id: str,
+        conversation_context: Optional[List[Dict[str, str]]] = None,
+        enforce_provenance: Optional[bool] = None,
+    ) -> Iterator[str]:
+        """Generates a real streaming response with token-by-token output."""
+        if not context_chunks:
+            # If provenance is explicitly disabled, generate a streaming conversational response
+            if enforce_provenance is False:
+                yield from self._generate_streaming_conversational_response(query, conversation_id, conversation_context)
+                return
+
+            # No context chunks and provenance required - return fallback message
+            yield "I couldn't find any relevant information in the documentation to answer your question. You might want to try rephrasing your query or checking if the topic is covered in the available documents."
+            return
+
+        # Build context and prompt for RAG response
+        provenance, context_blocks = self._build_provenance_context(context_chunks)
+        prompt = build_generation_prompt(query, context_blocks, len(context_chunks))
+
+        # Prepare conversation messages
+        messages = [{"role": "system", "content": self._get_citation_system_prompt()}]
+
+        # Add conversation context
+        if conversation_context:
+            messages.extend(conversation_context)
+
+        # Add the current user query
+        messages.append({"role": "user", "content": prompt})
+
+        # Stream the response
+        try:
+            response_stream = self.llm_client.chat.completions.create(
+                model=self.llm_model,
+                messages=messages,
+                stream=True,  # Enable streaming
+                temperature=self.temperature,
+                max_tokens=1000,
+            )
+
+            collected_content = ""
+            for chunk in response_stream:
+                if chunk.choices[0].delta.content is not None:
+                    content = chunk.choices[0].delta.content
+                    collected_content += content
+                    yield content
+
+        except Exception as e:
+            logger.error("Error during streaming generation: %s", str(e))
+            yield f"Error generating response: {str(e)}"
+
+    def _generate_streaming_conversational_response(
+        self,
+        query: str,
+        conversation_id: str,
         conversation_context: Optional[List[Dict[str, str]]] = None
     ) -> Iterator[str]:
-        """Generates a streaming response (simplified: emits final answer once)."""
-        response = self.ask(
-            query,
-            context_chunks,
-            conversation_id=conversation_id,
-            conversation_context=conversation_context
-        )
-        yield response.response
+        """Generate a streaming conversational response without RAG context."""
+        # Prepare conversation messages
+        messages = [{"role": "system", "content": self._get_conversational_system_prompt()}]
+
+        # Add conversation context
+        if conversation_context:
+            messages.extend(conversation_context)
+
+        # Add the current user query
+        messages.append({"role": "user", "content": query})
+
+        try:
+            response_stream = self.llm_client.chat.completions.create(
+                model=self.llm_model,
+                messages=messages,
+                stream=True,  # Enable streaming
+                temperature=self.temperature,
+                max_tokens=1000,
+            )
+
+            for chunk in response_stream:
+                if chunk.choices[0].delta.content is not None:
+                    yield chunk.choices[0].delta.content
+
+        except Exception as e:
+            logger.error("Error during streaming conversational generation: %s", str(e))
+            yield f"Error generating response: {str(e)}"
+
+    def _get_conversational_system_prompt(self) -> str:
+        """Returns the system prompt for conversational responses without citations."""
+        return """You are a helpful assistant having a natural conversation.
+You have access to conversation history to understand context and provide relevant responses.
+Be conversational, helpful, and natural. You don't need to cite sources for this response.
+If the user is asking follow-up questions like "ok thanks, and that's it?" or similar,
+provide a natural conversational response acknowledging their question."""
 
     def _get_citation_system_prompt(self) -> str:
         """Returns the system prompt that enforces natural response generation with citations."""

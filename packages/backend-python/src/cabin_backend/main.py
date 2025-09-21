@@ -521,53 +521,32 @@ def chat_stream(request: ChatRequest):
             context_chunks = []
             logger.debug("Streaming conversational routing: skipping document retrieval")
 
-        # Generate response - streaming uses the regular ask method since streaming is simplified
-        response = generator_service.ask(
-            request.message,
-            context_chunks,
-            conversation_id=conversation_id,
-            conversation_context=conversation_context,
-            enforce_provenance=should_use_rag  # False for conversational, True for RAG
-        )
-
-        # Add assistant response to conversation history
-        conversation_memory.add_assistant_message(
-            conversation_id,
-            response.response,
-            response.citations
-        )
-
-        # Handle case where RAG routing was used but LLM couldn't provide citations
-        # This indicates the query was likely conversational despite similarity to corpus
-        if "couldn't find" in response.response.lower() and should_use_rag:
-            logger.warning("Streaming RAG routing used but LLM returned fallback for query '%s'", request.message)
-
-            # Try conversational response as fallback
-            conversational_response = generator_service.ask(
-                request.message,
-                [],  # No context chunks for conversational mode
-                conversation_id=conversation_id,
-                conversation_context=conversation_context,
-                enforce_provenance=False  # Disable citation requirements
-            )
-
-            # Use conversational response if it's better than fallback
-            if "couldn't find" not in conversational_response.response.lower():
-                logger.info("Using conversational fallback for streaming query '%s'", request.message)
-                response = conversational_response
-
-                # Update conversation history with the corrected response
-                conversation_memory.update_last_assistant_message(
-                    conversation_id,
-                    response.response,
-                    response.citations
-                )
-        elif not should_use_rag and len(response.response) > 50:  # Successful conversational response
-            logger.debug("Streaming conversational routing successful for query '%s'", request.message[:50])
-
-        # Return as simple streaming response (just emit the final response)
+        # Generate real streaming response
         def generate():
-            yield response.response
+            collected_response = ""
+            try:
+                for chunk in generator_service.ask_stream(
+                    request.message,
+                    context_chunks,
+                    conversation_id=conversation_id,
+                    conversation_context=conversation_context,
+                    enforce_provenance=should_use_rag
+                ):
+                    collected_response += chunk
+                    yield chunk
+
+                # Add assistant response to conversation history after streaming is complete
+                conversation_memory.add_assistant_message(
+                    conversation_id,
+                    collected_response,
+                    []  # No citations available during streaming
+                )
+
+                logger.info("Streaming response completed for conversation %s", conversation_id)
+
+            except Exception as e:
+                logger.error("Error during streaming: %s", str(e))
+                yield f"Error: {str(e)}"
 
         return StreamingResponse(generate(), media_type="text/plain")
     except Exception as e:
@@ -677,27 +656,32 @@ def chat_direct_stream(request: ChatRequest):
 
         logger.debug("Direct LLM streaming mode: bypassing RAG for query '%s'", request.message[:50])
 
-        # Generate response directly - no context chunks, no provenance enforcement
-        response = generator_service.ask(
-            request.message,
-            [],  # No context chunks for direct LLM mode
-            conversation_id=conversation_id,
-            conversation_context=conversation_context,
-            enforce_provenance=False  # Never enforce citations in direct mode
-        )
-
-        # Add assistant response to conversation history
-        conversation_memory.add_assistant_message(
-            conversation_id,
-            response.response,
-            response.citations
-        )
-
-        logger.info("Direct LLM streaming response completed for conversation %s", conversation_id)
-
-        # Return as simple streaming response
+        # Generate real streaming response directly - no context chunks, no provenance enforcement
         def generate():
-            yield response.response
+            collected_response = ""
+            try:
+                for chunk in generator_service.ask_stream(
+                    request.message,
+                    [],  # No context chunks for direct LLM mode
+                    conversation_id=conversation_id,
+                    conversation_context=conversation_context,
+                    enforce_provenance=False  # Never enforce citations in direct mode
+                ):
+                    collected_response += chunk
+                    yield chunk
+
+                # Add assistant response to conversation history after streaming is complete
+                conversation_memory.add_assistant_message(
+                    conversation_id,
+                    collected_response,
+                    []  # No citations in direct mode
+                )
+
+                logger.info("Direct LLM streaming response completed for conversation %s", conversation_id)
+
+            except Exception as e:
+                logger.error("Error during direct streaming: %s", str(e))
+                yield f"Error: {str(e)}"
 
         return StreamingResponse(generate(), media_type="text/plain")
 
