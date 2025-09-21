@@ -83,7 +83,7 @@ class QueryRouter:
             if corpus_sample and len(corpus_sample) > 0:
                 max_similarity = self._compute_max_similarity(query_embedding, corpus_sample)
 
-                should_rag = max_similarity >= self.similarity_threshold
+                should_rag = bool(max_similarity >= self.similarity_threshold)
                 reasoning = f"Max similarity: {max_similarity:.3f} vs threshold {self.similarity_threshold}"
 
                 heuristic_signal = None

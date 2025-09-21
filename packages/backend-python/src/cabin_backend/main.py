@@ -2,6 +2,7 @@ import logging
 import os
 import time
 import mimetypes
+import numpy as np
 from urllib.parse import urlparse
 from pathlib import Path
 from collections import defaultdict
@@ -83,6 +84,21 @@ def _parse_port_from_url(url: str, default: int = 8000) -> int:
     except Exception:
         pass
     return default
+
+
+def _convert_numpy_types(obj):
+    """Recursively convert numpy types to Python types for JSON serialization."""
+    if hasattr(obj, 'item'):  # numpy scalar
+        return obj.item()
+    elif isinstance(obj, dict):
+        return {key: _convert_numpy_types(value) for key, value in obj.items()}
+    elif isinstance(obj, (list, tuple)):
+        return [_convert_numpy_types(item) for item in obj]
+    elif 'numpy' in str(type(obj)):
+        # Handle numpy bools and other numpy types
+        return bool(obj) if isinstance(obj, (bool, np.bool_)) else str(obj)
+    else:
+        return obj
 
 
 def load_default_ui_settings() -> UISettingsPayload:
@@ -359,7 +375,7 @@ def chat(request: ChatRequest) -> ChatResponse:
         })
 
         # Store routing metadata
-        metrics.used_rag = should_use_rag
+        metrics.used_rag = bool(should_use_rag)  # Convert numpy bool to Python bool
         metrics.query_type = "rag" if should_use_rag else "conversational"
         metrics.routing_similarity_score = similarity_score
         metrics.routing_reason = routing_reason
@@ -396,7 +412,7 @@ def chat(request: ChatRequest) -> ChatResponse:
         )
         generation_duration = (time.time() - generation_start) * 1000
         metrics.add_timing("response_generation", generation_duration, metadata={
-            "enforce_provenance": should_use_rag,
+            "enforce_provenance": bool(should_use_rag),
             "num_citations": len(response.citations),
             "response_length": len(response.response)
         })
@@ -1254,7 +1270,7 @@ def get_performance_metrics(request: PerformanceStatsRequest) -> dict:
                     "duration_ms": timing.duration_ms,
                     "success": bool(timing.success),  # Explicit bool conversion
                     "error_message": timing.error_message,
-                    "metadata": timing.metadata
+                    "metadata": _convert_numpy_types(timing.metadata)
                 }
                 metric_dict["component_timings"].append(timing_dict)
 

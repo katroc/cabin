@@ -71,6 +71,7 @@ interface VLLMMetrics {
     gpu_memory_usage: number
     model_name: string
     timestamp: string
+    metrics_available: boolean
   }
 }
 
@@ -93,10 +94,12 @@ export default function PerformanceDashboard({ isOpen, onClose }: PerformanceDas
   const [timeRange, setTimeRange] = useState('1h')
   const [autoRefresh, setAutoRefresh] = useState(true)
 
-  const fetchPerformanceData = async () => {
+  const fetchPerformanceData = async (showLoading = true) => {
     if (!isOpen) return
 
-    setLoading(true)
+    if (showLoading) {
+      setLoading(true)
+    }
     try {
       // Fetch summary data
       const summaryResponse = await fetch(`http://localhost:8788/api/performance/summary`)
@@ -137,11 +140,11 @@ export default function PerformanceDashboard({ isOpen, onClose }: PerformanceDas
       // Fetch vLLM metrics
       try {
         const vllmMetricsResponse = await fetch(`http://localhost:8788/api/performance/vllm`)
-        if (vllmMetricsResponse.ok) {
-          const vllmData = await vllmMetricsResponse.json()
-          console.log('vLLM metrics received:', vllmData)
-          setVllmMetrics(vllmData)
-        }
+         if (vllmMetricsResponse.ok) {
+           const vllmData = await vllmMetricsResponse.json()
+           console.log('vLLM metrics received:', vllmData)
+           setVllmMetrics(vllmData.metrics)
+         }
       } catch (error) {
         console.warn('Error fetching vLLM metrics:', error)
       }
@@ -173,7 +176,7 @@ export default function PerformanceDashboard({ isOpen, onClose }: PerformanceDas
   useEffect(() => {
     if (!autoRefresh || !isOpen) return
 
-    const interval = setInterval(fetchPerformanceData, 5000) // Refresh every 5 seconds
+    const interval = setInterval(() => fetchPerformanceData(false), 5000) // Refresh every 5 seconds without loading state
     return () => clearInterval(interval)
   }, [autoRefresh, isOpen])
 
@@ -208,6 +211,13 @@ export default function PerformanceDashboard({ isOpen, onClose }: PerformanceDas
               <option value="24h">Last 24 Hours</option>
               <option value="7d">Last 7 Days</option>
             </select>
+            <button
+              onClick={() => fetchPerformanceData(true)}
+              className="btn-secondary"
+              title="Refresh data"
+            >
+              <RefreshCw className="w-4 h-4" />
+            </button>
             <button onClick={onClose} className="btn-close">
               <X className="w-4 h-4" />
             </button>
@@ -219,7 +229,7 @@ export default function PerformanceDashboard({ isOpen, onClose }: PerformanceDas
           {loading && (
             <div className="flex items-center justify-center py-12">
               <RefreshCw className="w-6 h-6 animate-spin" style={{ color: 'var(--accent)' }} />
-              <span className="ml-2 ui-text-secondary">Loading performance data...</span>
+              <span className="ml-2 ui-text-secondary">Refreshing performance data...</span>
             </div>
           )}
 
@@ -275,8 +285,8 @@ export default function PerformanceDashboard({ isOpen, onClose }: PerformanceDas
                     <h3 className="text-sm font-medium ui-text-secondary">vLLM Status</h3>
                   </div>
                   <div className="text-lg font-bold ui-text-primary">
-                    {vllmHealth ?
-                      `${Object.values(vllmHealth).filter(Boolean).length}/${Object.keys(vllmHealth).length} Healthy` :
+                    {vllmMetrics ?
+                      `${Object.entries(vllmMetrics).filter(([, metrics]) => metrics.metrics_available).length} Service${Object.entries(vllmMetrics).filter(([, metrics]) => metrics.metrics_available).length !== 1 ? 's' : ''} Available` :
                       'Checking...'
                     }
                   </div>
@@ -335,41 +345,101 @@ export default function PerformanceDashboard({ isOpen, onClose }: PerformanceDas
                 </h3>
                 {vllmMetrics && Object.keys(vllmMetrics).length > 0 ? (
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {Object.entries(vllmMetrics).map(([serviceName, metrics]) => (
-                      <div key={serviceName} className="ui-bg-secondary p-4 rounded border ui-border-light">
-                        <div className="flex items-center gap-2 mb-3">
-                          <div className={`w-2 h-2 rounded-full`} style={{
-                            backgroundColor: vllmHealth?.[serviceName] ? 'var(--success)' : 'var(--error)'
-                          }} />
-                          <h4 className="font-medium ui-text-primary capitalize">{serviceName}</h4>
+                    <h3 className="font-medium ui-text-primary col-span-full mb-4">Models Loaded</h3>
+                    {Object.entries(vllmMetrics)
+                      .map(([serviceName, metrics]) => (
+                        <div key={serviceName} className="ui-bg-secondary p-4 rounded-lg border ui-border-light">
+                          <div className="flex items-center gap-2 mb-3">
+                            <div className={`w-2 h-2 rounded-full`} style={{
+                              backgroundColor: metrics.metrics_available ? 'var(--success)' : 'var(--warning)'
+                            }} />
+                            <h4 className="font-medium ui-text-primary capitalize">{serviceName}</h4>
+                             {metrics.metrics_available ? (
+                               <span className="text-xs px-2 py-1 rounded-full" style={{
+                                 backgroundColor: 'color-mix(in oklab, var(--success) 20%, var(--surface))',
+                                 color: 'var(--success)',
+                                 border: '1px solid color-mix(in oklab, var(--success) 40%, transparent)'
+                               }}>Active</span>
+                             ) : (
+                               <span className="text-xs px-2 py-1 rounded-full" style={{
+                                 backgroundColor: 'color-mix(in oklab, var(--warning) 20%, var(--surface))',
+                                 color: 'var(--warning)',
+                                 border: '1px solid color-mix(in oklab, var(--warning) 40%, transparent)'
+                               }}>Model Loaded</span>
+                             )}
+                          </div>
+
+                          {/* Model Information */}
+                          <div className="space-y-2 text-sm mb-3">
+                             {metrics.model_name && metrics.model_name !== serviceName ? (
+                               <div>
+                                 <span className="text-xs ui-text-muted">Model:</span>
+                                 <div className="mt-1 p-3 rounded-lg border text-sm font-medium ui-shadow-floating transition-all duration-200 hover:ui-shadow-elevated" style={{
+                                   background: 'linear-gradient(135deg, color-mix(in oklab, var(--accent) 8%, var(--bg-tertiary)) 0%, color-mix(in oklab, var(--accent) 12%, var(--bg-secondary)) 100%)',
+                                   borderColor: 'color-mix(in oklab, var(--accent) 25%, var(--border-light))',
+                                   color: 'var(--text-primary)'
+                                 }}>
+                                   {metrics.model_name}
+                                 </div>
+                               </div>
+                             ) : (
+                               <div>
+                                 <span className="text-xs ui-text-muted">Model:</span>
+                                 <div className="mt-1 p-3 rounded-lg border text-sm ui-text-muted ui-shadow-floating" style={{
+                                   backgroundColor: 'var(--bg-tertiary)',
+                                   borderColor: 'var(--border-faint)'
+                                 }}>
+                                   No model information
+                                 </div>
+                               </div>
+                             )}
+                             {metrics.timestamp && (
+                               <div>
+                                 <span className="text-xs ui-text-muted">Last Updated:</span>
+                                 <div className="mt-1 p-2 rounded-md border text-xs ui-text-secondary" style={{
+                                   backgroundColor: 'color-mix(in oklab, var(--bg-tertiary) 80%, transparent)',
+                                   borderColor: 'color-mix(in oklab, var(--border-light) 60%, transparent)'
+                                 }}>
+                                   {new Date(metrics.timestamp).toLocaleString()}
+                                 </div>
+                               </div>
+                             )}
+                          </div>
+
+                           {/* Performance Metrics (only show if available) */}
+                           {metrics.metrics_available && (
+                             <div className="space-y-2 text-sm border-t pt-3" style={{
+                               borderTopColor: 'color-mix(in oklab, var(--border-light) 40%, transparent)'
+                             }}>
+                              <div className="flex justify-between">
+                                <span className="ui-text-muted">Requests:</span>
+                                <span className="ui-text-primary">{(metrics.num_requests_running || 0) + (metrics.num_requests_waiting || 0)}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="ui-text-muted">Tokens/sec:</span>
+                                <span className="ui-text-primary">{(metrics.tokens_per_second || 0).toFixed(1)}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="ui-text-muted">GPU Cache:</span>
+                                <span className="ui-text-primary">{(metrics.gpu_cache_usage_perc || 0).toFixed(1)}%</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="ui-text-muted">Avg Latency:</span>
+                                <span className="ui-text-primary">{((metrics.e2e_request_latency_seconds || 0) * 1000).toFixed(0)}ms</span>
+                              </div>
+                            </div>
+                          )}
                         </div>
-                        <div className="space-y-2 text-sm">
-                          <div className="flex justify-between">
-                            <span className="ui-text-muted">Requests Running:</span>
-                            <span className="ui-text-primary">{metrics.num_requests_running || 0}</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="ui-text-muted">Requests Waiting:</span>
-                            <span className="ui-text-primary">{metrics.num_requests_waiting || 0}</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="ui-text-muted">GPU Cache Usage:</span>
-                            <span className="ui-text-primary">{(metrics.gpu_cache_usage_perc || 0).toFixed(1)}%</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="ui-text-muted">Tokens/sec:</span>
-                            <span className="ui-text-primary">{(metrics.tokens_per_second || 0).toFixed(1)}</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="ui-text-muted">Avg Latency:</span>
-                            <span className="ui-text-primary">{((metrics.e2e_request_latency_seconds || 0) * 1000).toFixed(0)}ms</span>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
+                      ))}
                   </div>
                 ) : (
-                  <p className="ui-text-muted text-center py-8">No vLLM metrics available</p>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 py-8">
+                    <div className="ui-bg-secondary p-6 rounded-lg border ui-border-light col-span-full">
+                      <Server className="w-12 h-12 mx-auto mb-4" style={{ color: 'var(--muted)' }} />
+                      <p className="ui-text-muted text-center mb-2">No Models Loaded</p>
+                      <p className="text-sm ui-text-muted text-center">vLLM models will appear here when services are running</p>
+                    </div>
+                  </div>
                 )}
               </div>
 
@@ -401,14 +471,17 @@ export default function PerformanceDashboard({ isOpen, onClose }: PerformanceDas
                               {metric.total_duration_ms.toFixed(0)}ms
                             </td>
                             <td className="py-2">
-                              <span className={`px-2 py-1 rounded text-xs ${
-                                metric.used_rag ? 'ui-bg-secondary' : 'ui-bg-tertiary'
-                              }`} style={{
-                                color: metric.used_rag ? 'var(--success)' : 'var(--accent)',
-                                border: `1px solid ${metric.used_rag ? 'var(--success)' : 'var(--accent)'}`
-                              }}>
-                                {metric.used_rag ? 'RAG' : 'Direct'}
-                              </span>
+                                <span className="px-2 py-1 rounded text-xs" style={{
+                                  backgroundColor: metric.used_rag
+                                    ? 'color-mix(in oklab, var(--success) 20%, var(--surface))'
+                                    : 'color-mix(in oklab, var(--accent) 20%, var(--surface))',
+                                  color: metric.used_rag ? 'var(--success)' : 'var(--accent)',
+                                  border: `1px solid ${metric.used_rag
+                                    ? 'color-mix(in oklab, var(--success) 40%, transparent)'
+                                    : 'color-mix(in oklab, var(--accent) 40%, transparent)'}`
+                                }}>
+                                  {metric.used_rag ? 'RAG' : 'Direct'}
+                                </span>
                             </td>
                             <td className="py-2 ui-text-muted">
                               {metric.component_timings?.length || 0}

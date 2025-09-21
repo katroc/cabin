@@ -225,8 +225,12 @@ class ComponentTiming(BaseModel):
     @classmethod
     def validate_success(cls, v):
         """Convert numpy bool to Python bool."""
+        # Handle numpy bools and other numpy types
         if hasattr(v, 'item'):  # numpy scalar
             return bool(v.item())
+        # Handle numpy bool directly
+        if 'numpy' in str(type(v)):
+            return bool(v)
         return bool(v)
 
 class RAGPerformanceMetrics(BaseModel):
@@ -241,6 +245,18 @@ class RAGPerformanceMetrics(BaseModel):
     # High-level metrics
     used_rag: bool
     num_context_chunks: int = 0
+
+    @field_validator('used_rag', mode='before')
+    @classmethod
+    def validate_used_rag(cls, v):
+        """Convert numpy bool to Python bool."""
+        # Handle numpy bools and other numpy types
+        if hasattr(v, 'item'):  # numpy scalar
+            return bool(v.item())
+        # Handle numpy bool directly
+        if 'numpy' in str(type(v)):
+            return bool(v)
+        return bool(v)
     routing_similarity_score: Optional[float] = None
     routing_reason: Optional[str] = None
 

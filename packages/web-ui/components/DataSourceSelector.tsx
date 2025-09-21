@@ -11,7 +11,7 @@ interface DataSource {
   name: string
   description: string
   icon: React.ComponentType<{ className?: string }>
-  component: React.ComponentType<{ isOpen: boolean; onClose: () => void }>
+  component: React.ComponentType<{ isOpen: boolean; onClose: () => void; onBack?: () => void }>
   available: boolean
   category: 'files' | 'web' | 'cloud'
 }

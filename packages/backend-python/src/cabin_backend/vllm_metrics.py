@@ -4,6 +4,7 @@ import re
 import time
 import logging
 from typing import Dict, List, Optional, Any
+from datetime import datetime
 from dataclasses import dataclass
 from datetime import datetime
 import aiohttp
@@ -36,7 +37,7 @@ class VLLMMetrics:
 
     # Model info
     model_name: str = ""
-    timestamp: datetime = None
+    timestamp: Optional[datetime] = None
 
     def __post_init__(self):
         if self.timestamp is None:
@@ -88,7 +89,24 @@ class VLLMMetricsCollector:
                     return None
 
                 text = await response.text()
-                return self._parse_prometheus_metrics(text, service_name)
+                metrics = self._parse_prometheus_metrics(text, service_name)
+
+                # Try to get model info from /v1/models endpoint if model name is still generic
+                if metrics.model_name == service_name:
+                    try:
+                        models_url = f"{base_url}/v1/models"
+                        async with self.session.get(models_url) as models_response:
+                            if models_response.status == 200:
+                                models_data = await models_response.json()
+                                if models_data.get("data") and len(models_data["data"]) > 0:
+                                    model_id = models_data["data"][0].get("id", "")
+                                    if model_id and model_id != service_name:
+                                        metrics.model_name = model_id
+                    except Exception:
+                        # Ignore errors when trying to fetch model info
+                        pass
+
+                return metrics
 
         except asyncio.TimeoutError:
             logger.warning(f"Timeout fetching metrics from {metrics_url}")
@@ -111,6 +129,30 @@ class VLLMMetricsCollector:
     def _parse_prometheus_metrics(self, metrics_text: str, service_name: str) -> VLLMMetrics:
         """Parse prometheus metrics text into VLLMMetrics object."""
         metrics = VLLMMetrics(model_name=service_name)
+
+        # Try to extract model name from vLLM metrics
+        # Look for model info in various vLLM metrics
+        model_patterns = [
+            r'vllm:model_name\{[^}]*model="([^"]*)"[^}]*\}\s+([\d.e+-]+)',  # Direct model label
+            r'vllm:.*\{[^}]*model="([^"]*)"[^}]*\}\s+([\d.e+-]+)',  # Any metric with model label
+        ]
+
+        for pattern in model_patterns:
+            model_match = re.search(pattern, metrics_text, re.MULTILINE)
+            if model_match:
+                try:
+                    model_name = model_match.group(1)
+                    # Only use if it's a real model name (not just numbers or empty)
+                    if model_name and not model_name.replace('-', '').replace('_', '').replace('/', '').isdigit():
+                        metrics.model_name = model_name
+                        break
+                except (ValueError, AttributeError, IndexError):
+                    continue
+
+        # Check if vLLM-specific metrics are available
+        if 'vllm:' not in metrics_text:
+            logger.debug(f"No vLLM metrics found for {service_name}, service may not be configured for metrics")
+            return metrics
 
         # Define metric patterns - use gauge patterns for current values and histogram _sum/_count for averages
         gauge_patterns = {
@@ -161,17 +203,14 @@ class VLLMMetricsCollector:
                 except (ValueError, AttributeError, ZeroDivisionError):
                     logger.debug(f"Failed to parse histogram {metric_name}")
 
-        # Calculate tokens per second from totals and average latency
-        if metrics.prompt_tokens_total > 0 or metrics.generation_tokens_total > 0:
-            total_tokens = metrics.prompt_tokens_total + metrics.generation_tokens_total
-
-            # Use average e2e latency if available, otherwise use time per output token
-            if metrics.e2e_request_latency_seconds > 0:
-                metrics.tokens_per_second = total_tokens / metrics.e2e_request_latency_seconds
-            elif metrics.time_per_output_token_seconds > 0:
-                # Rough estimate: total generation tokens / average time per token
-                if metrics.generation_tokens_total > 0:
-                    metrics.tokens_per_second = 1.0 / metrics.time_per_output_token_seconds
+        # Calculate tokens per second - use time_per_output_token_seconds for generation throughput
+        if metrics.time_per_output_token_seconds > 0:
+            # This is the most accurate metric for generation tokens per second
+            metrics.tokens_per_second = 1.0 / metrics.time_per_output_token_seconds
+        elif metrics.e2e_request_latency_seconds > 0 and metrics.generation_tokens_total > 0:
+            # Fallback: estimate based on generation tokens and e2e latency
+            # This is less accurate but better than the previous incorrect calculation
+            metrics.tokens_per_second = metrics.generation_tokens_total / metrics.e2e_request_latency_seconds
 
         return metrics
 
@@ -223,7 +262,15 @@ async def get_vllm_metrics() -> Dict[str, Any]:
                 "gpu_cache_usage_perc": service_metrics.gpu_cache_usage_perc,
                 "gpu_memory_usage": service_metrics.gpu_memory_usage,
                 "model_name": service_metrics.model_name,
-                "timestamp": service_metrics.timestamp.isoformat()
+                "timestamp": service_metrics.timestamp.isoformat() if service_metrics.timestamp else None,
+                "metrics_available": any([
+                    service_metrics.num_requests_running > 0,
+                    service_metrics.num_requests_waiting > 0,
+                    service_metrics.time_to_first_token_seconds > 0,
+                    service_metrics.prompt_tokens_total > 0,
+                    service_metrics.generation_tokens_total > 0,
+                    service_metrics.tokens_per_second > 0
+                ])
             }
 
         return result
