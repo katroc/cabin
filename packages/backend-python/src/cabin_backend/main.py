@@ -1,8 +1,12 @@
 import logging
 import os
+import time
+import mimetypes
 from urllib.parse import urlparse
+from pathlib import Path
+from collections import defaultdict
 
-from fastapi import FastAPI, HTTPException, File, UploadFile
+from fastapi import FastAPI, HTTPException, File, UploadFile, Request
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.responses import StreamingResponse
 from typing import List
@@ -110,6 +114,68 @@ current_overrides = current_ui_settings.to_overrides()
 setup_logging(current_ui_settings.log_level)
 metrics.configure(enabled=settings.app_config.telemetry.metrics_enabled)
 logger = logging.getLogger(__name__)
+
+# Rate limiting for uploads (simple in-memory implementation)
+upload_attempts = defaultdict(list)
+MAX_UPLOADS_PER_HOUR = 20  # Reasonable limit for file uploads
+RATE_LIMIT_WINDOW = 3600  # 1 hour in seconds
+
+def check_rate_limit(client_ip: str) -> bool:
+    """Check if client has exceeded upload rate limit."""
+    current_time = time.time()
+
+    # Clean old entries
+    upload_attempts[client_ip] = [
+        timestamp for timestamp in upload_attempts[client_ip]
+        if current_time - timestamp < RATE_LIMIT_WINDOW
+    ]
+
+    # Check if under limit
+    if len(upload_attempts[client_ip]) >= MAX_UPLOADS_PER_HOUR:
+        return False
+
+    # Add current attempt
+    upload_attempts[client_ip].append(current_time)
+    return True
+
+def validate_file_content(file_path: Path, expected_extension: str) -> bool:
+    """Validate file content matches expected type based on file signatures."""
+    try:
+        with open(file_path, 'rb') as f:
+            # Read first 64 bytes for file signature detection
+            header = f.read(64)
+
+        # File signatures (magic bytes) for validation
+        signatures = {
+            '.pdf': [b'%PDF-'],
+            '.docx': [b'PK\x03\x04'],  # ZIP file signature (DOCX is ZIP-based)
+            '.docm': [b'PK\x03\x04'],  # Same as DOCX
+            '.txt': [],  # Text files have no specific signature
+            '.md': [],   # Markdown is text
+            '.markdown': [],  # Same as .md
+            '.mdown': [],     # Same as .md
+            '.mkd': [],       # Same as .md
+            '.html': [b'<!DOCTYPE html', b'<html', b'<!DOCTYPE HTML'],
+            '.htm': [b'<!DOCTYPE html', b'<html', b'<!DOCTYPE HTML'],
+            '.log': [],  # Log files are text
+            '.csv': [],  # CSV files are text
+        }
+
+        expected_sigs = signatures.get(expected_extension.lower(), [])
+        if not expected_sigs:
+            # For text-based files, we can't easily validate content
+            # Just check that it's not binary that could be dangerous
+            return True
+
+        # Check if file starts with any expected signature
+        for sig in expected_sigs:
+            if header.startswith(sig):
+                return True
+
+        return False
+
+    except Exception:
+        return False
 
 # --- App Initialization ---
 app = FastAPI(
@@ -776,7 +842,7 @@ def delete_documents(request: DeleteDocumentsRequest) -> dict:
 # --- File Upload Endpoints ---
 
 @app.post("/api/files/upload")
-async def upload_files(files: List[UploadFile] = File(...)) -> FileUploadResponse:
+async def upload_files(request: Request, files: List[UploadFile] = File(...)) -> FileUploadResponse:
     """Upload files for indexing."""
     import tempfile
     import os
@@ -784,6 +850,14 @@ async def upload_files(files: List[UploadFile] = File(...)) -> FileUploadRespons
 
     if not data_source_manager:
         raise HTTPException(status_code=503, detail="Data source manager not available.")
+
+    # Rate limiting check
+    client_ip = request.client.host if request.client else "unknown"
+    if not check_rate_limit(client_ip):
+        raise HTTPException(
+            status_code=429,
+            detail="Upload rate limit exceeded. Please try again later."
+        )
 
     try:
         # Create temporary directory for uploads
@@ -801,23 +875,75 @@ async def upload_files(files: List[UploadFile] = File(...)) -> FileUploadRespons
                     failed_files.append({"name": "unknown", "error": "No filename provided"})
                     continue
 
-                file_path = upload_path / file.filename
+                # Sanitize filename to prevent path traversal attacks
+                import re
+                from pathlib import Path
 
-                # Check file extension
-                if file_path.suffix.lower() not in {'.pdf', '.docx', '.docm', '.md', '.markdown', '.mdown', '.mkd', '.html', '.htm', '.txt', '.text', '.log', '.csv'}:
+                # Remove any path separators and dangerous characters
+                safe_filename = re.sub(r'[<>:"/\\|?*\x00-\x1f]', '', file.filename)
+                # Remove path traversal attempts
+                safe_filename = re.sub(r'\.\.+', '.', safe_filename)
+                # Ensure filename is not empty after sanitization
+                if not safe_filename.strip():
+                    safe_filename = f"unnamed_file_{len(uploaded_files) + len(failed_files)}"
+
+                # Limit filename length to prevent issues
+                name_part, ext_part = Path(safe_filename).stem, Path(safe_filename).suffix
+                if len(name_part) > 100:
+                    name_part = name_part[:100]
+                safe_filename = name_part + ext_part.lower()
+
+                file_path = upload_path / safe_filename
+
+                # Check file extension (case-insensitive)
+                allowed_extensions = {'.pdf', '.docx', '.docm', '.md', '.markdown', '.mdown', '.mkd', '.html', '.htm', '.txt', '.text', '.log', '.csv'}
+                if file_path.suffix.lower() not in allowed_extensions:
                     failed_files.append({"name": file.filename, "error": "Unsupported file type"})
                     continue
 
-                # Save file
-                content = await file.read()
+                # Save file with streaming size validation
+                MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB limit (reduced from 50MB)
+                bytes_written = 0
+                file_too_large = False
 
-                # Check file size (50MB limit)
-                if len(content) > 50 * 1024 * 1024:
-                    failed_files.append({"name": file.filename, "error": "File too large (max 50MB)"})
+                try:
+                    with open(file_path, "wb") as f:
+                        # Read file in chunks to prevent memory exhaustion
+                        chunk_size = 64 * 1024  # 64KB chunks
+                        while bytes_written < MAX_FILE_SIZE:
+                            chunk = await file.read(chunk_size)
+                            if not chunk:
+                                break
+
+                            # Check size limit during streaming
+                            bytes_written += len(chunk)
+                            if bytes_written > MAX_FILE_SIZE:
+                                file_too_large = True
+                                break
+
+                            f.write(chunk)
+
+                    if file_too_large:
+                        # Remove partial file
+                        if file_path.exists():
+                            file_path.unlink()
+                        failed_files.append({"name": file.filename, "error": "File too large (max 10MB)"})
+                    else:
+                        # Validate file content after successful upload
+                        if not validate_file_content(file_path, file_path.suffix):
+                            # Remove invalid file
+                            file_path.unlink()
+                            failed_files.append({"name": file.filename, "error": "File content does not match expected type"})
+                        else:
+                            uploaded_files.append(file.filename)
+
+                except Exception as e:
+                    # Clean up partial file on error
+                    if file_path.exists():
+                        file_path.unlink()
+                    logger.error(f"Error processing file {file.filename}: {e}")
+                    failed_files.append({"name": file.filename, "error": "Failed to process file"})
                     continue
-
-                with open(file_path, "wb") as f:
-                    f.write(content)
 
                 uploaded_files.append(file.filename)
 
@@ -842,8 +968,36 @@ async def upload_files(files: List[UploadFile] = File(...)) -> FileUploadRespons
         )
 
     except Exception as e:
-        print(f"Error uploading files: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to upload files: {e}")
+        logger.error(f"Error uploading files: {e}")
+        raise HTTPException(status_code=500, detail="Upload failed")
+
+# Background cleanup task for temporary files (runs periodically)
+def cleanup_temp_files():
+    """Clean up old temporary upload directories."""
+    import tempfile
+    import shutil
+    from datetime import datetime, timedelta
+
+    try:
+        temp_dir = Path(tempfile.gettempdir())
+        cutoff_time = datetime.now() - timedelta(hours=24)  # Clean files older than 24 hours
+
+        for item in temp_dir.glob("cabin_upload_*"):
+            if item.is_dir():
+                try:
+                    # Check if directory is old enough to clean up
+                    stat = item.stat()
+                    if datetime.fromtimestamp(stat.st_mtime) < cutoff_time:
+                        shutil.rmtree(item)
+                        print(f"Cleaned up old temp directory: {item}")
+                except Exception as e:
+                    print(f"Failed to clean up {item}: {e}")
+
+    except Exception as e:
+        print(f"Error during temp file cleanup: {e}")
+
+# Run cleanup on startup
+cleanup_temp_files()
 
 @app.post("/api/files/index", status_code=202)
 async def index_uploaded_files(request: FileUploadRequest) -> DataSourceIndexResponse:

@@ -90,14 +90,14 @@ export default function FileUploadIndexing({ isOpen, onClose, onBack }: FileUplo
         }, 100)
       }
 
-      // Check file size (50MB limit)
-      const validFiles = supportedFiles.filter(f => f.file.size <= 50 * 1024 * 1024)
-      const oversizedFiles = supportedFiles.filter(f => f.file.size > 50 * 1024 * 1024)
+      // Check file size (10MB limit)
+      const validFiles = supportedFiles.filter(f => f.file.size <= 10 * 1024 * 1024)
+      const oversizedFiles = supportedFiles.filter(f => f.file.size > 10 * 1024 * 1024)
 
       if (oversizedFiles.length > 0) {
         setTimeout(() => {
           // Use a more user-friendly notification instead of alert
-          console.warn(`${oversizedFiles.length} files were skipped (over 50MB limit)`)
+          console.warn(`${oversizedFiles.length} files were skipped (over 10MB limit)`)
         }, 200)
       }
 
