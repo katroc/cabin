@@ -1318,3 +1318,68 @@ input[type="checkbox"] {
     transform: scale(1);
   }
 }
+
+/* Smooth Streaming Animation */
+.streaming-content {
+  overflow: hidden;
+  transition: all 0.15s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+.streaming-content .markdown-body {
+  animation: fadeInUpward 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  transform-origin: bottom;
+}
+
+@keyframes fadeInUpward {
+  from {
+    transform: translateY(4px) scale(0.98);
+    opacity: 0.9;
+  }
+  to {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+}
+
+/* Enhanced scrolling behavior for streaming */
+.streaming-content {
+  scroll-behavior: smooth;
+}
+
+/* Subtle highlight effect on new content */
+.streaming-content .markdown-body p:last-child,
+.streaming-content .markdown-body li:last-child {
+  animation: newContentGlow 0.3s ease-out;
+}
+
+@keyframes newContentGlow {
+  0% {
+    background: rgba(116, 104, 232, 0.1);
+    border-radius: 4px;
+  }
+  100% {
+    background: transparent;
+  }
+}
+
+/* Enhanced streaming cursor */
+.streaming-cursor {
+  display: inline-block;
+  width: 2px;
+  height: 1.2em;
+  background: var(--accent);
+  margin-left: 2px;
+  animation: streamingBlink 1s infinite;
+  vertical-align: text-bottom;
+}
+
+@keyframes streamingBlink {
+  0%, 50% {
+    opacity: 1;
+    background: var(--accent);
+  }
+  51%, 100% {
+    opacity: 0.3;
+    background: var(--text-muted);
+  }
+}

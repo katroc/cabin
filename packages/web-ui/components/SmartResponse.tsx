@@ -20,6 +20,7 @@ interface SmartResponseProps {
   citations?: Citation[];
   animate?: boolean;
   isVerifyingSources?: boolean;
+  isStreaming?: boolean;
 }
 
 type QueryType = 'factual' | 'howto' | 'troubleshooting' | 'comparison' | 'general';
@@ -73,7 +74,8 @@ const SmartResponse: React.FC<SmartResponseProps> = ({
   query,
   citations = [],
   animate = false,
-  isVerifyingSources = false
+  isVerifyingSources = false,
+  isStreaming = false
 }) => {
   const [displayedAnswer, setDisplayedAnswer] = React.useState(animate ? '' : answer);
   const [isAnimating, setIsAnimating] = React.useState(animate);
@@ -360,7 +362,7 @@ const SmartResponse: React.FC<SmartResponseProps> = ({
   return (
     <div ref={containerRef} className={`smart-response ${getResponseClass(queryType)}`}>
       {/* Main content */}
-      <div className="response-content" onClick={onContentClick}>
+      <div className={`response-content ${isStreaming ? 'streaming-content' : ''}`} onClick={onContentClick}>
         {headings.length > 1 && (
           <nav className="response-toc">
             <div className="response-toc-title">On this page</div>
@@ -475,8 +477,8 @@ const SmartResponse: React.FC<SmartResponseProps> = ({
               >
                 {section.content}
               </ReactMarkdown>
-              {isAnimating && index === sections.length - 1 && (
-                <span className="typewriter-cursor">▊</span>
+              {(isAnimating || isStreaming) && index === sections.length - 1 && (
+                <span className="streaming-cursor"></span>
               )}
             </div>
           </div>

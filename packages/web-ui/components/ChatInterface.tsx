@@ -56,6 +56,7 @@ export default function ChatInterface({
   const [isProcessing, setIsProcessing] = useState(false)
   const [verifyingMessageId, setVerifyingMessageId] = useState<string | null>(null)
   const [routingMessageId, setRoutingMessageId] = useState<string | null>(null)
+  const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null)
   const [chatMode, setChatMode] = useState<ChatMode>('rag')
   const messagesEndRef = useRef<HTMLDivElement | null>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
@@ -68,6 +69,7 @@ export default function ChatInterface({
     setIsProcessing(false)
     setVerifyingMessageId(null)
     setRoutingMessageId(null)
+    setStreamingMessageId(null)
     lastAssistantIdRef.current = null
     abortControllerRef.current?.abort()
     abortControllerRef.current = null
@@ -101,6 +103,8 @@ export default function ChatInterface({
     async (prompt: string, assistantId: string): Promise<string> => {
       const controller = new AbortController()
       abortControllerRef.current = controller
+      setStreamingMessageId(assistantId)
+
       const endpoint = chatMode === 'rag' ? CHAT_STREAM_ENDPOINT : CHAT_DIRECT_STREAM_ENDPOINT
       const response = await fetch(endpoint, {
         method: 'POST',
@@ -112,28 +116,42 @@ export default function ChatInterface({
       })
 
       if (!response.ok || !response.body) {
+        setStreamingMessageId(null)
         throw new Error('Streaming not available')
       }
 
       const reader = response.body.getReader()
       const decoder = new TextDecoder()
       let aggregated = ''
+      let lastUpdate = 0
 
       while (true) {
         const { value, done } = await reader.read()
         if (done) break
-        aggregated += decoder.decode(value, { stream: true })
-        const currentText = aggregated
-        updateAssistantMessage(assistantId, message => ({
-          ...message,
-          content: currentText
-        }))
+
+        const chunk = decoder.decode(value, { stream: true })
+        aggregated += chunk
+
+        // Throttle updates for smoother streaming - update at most every 50ms
+        const now = Date.now()
+        if (now - lastUpdate > 50 || done) {
+          const currentText = aggregated
+          updateAssistantMessage(assistantId, message => ({
+            ...message,
+            content: currentText
+          }))
+          lastUpdate = now
+
+          // Small delay to create smoother visual flow
+          await new Promise(resolve => setTimeout(resolve, 8))
+        }
       }
 
+      setStreamingMessageId(null)
       abortControllerRef.current = null
       return aggregated
     },
-    [chatMode]
+    [chatMode, updateAssistantMessage]
   )
 
   const requestFullResponse = useCallback(async (prompt: string) => {
@@ -162,6 +180,7 @@ export default function ChatInterface({
     setIsProcessing(false)
     setVerifyingMessageId(null)
     setRoutingMessageId(null)
+    setStreamingMessageId(null)
     lastAssistantIdRef.current = null
   }, [])
 
@@ -206,6 +225,7 @@ export default function ChatInterface({
       streamedText = await streamResponse(question, assistantMessageId)
     } catch (error) {
       streamingFailed = true
+      setStreamingMessageId(null)
       if ((error as Error).name === 'AbortError') {
         return
       }
@@ -261,6 +281,7 @@ export default function ChatInterface({
       setRoutingMessageId(null)
     } finally {
       setIsProcessing(false)
+      setStreamingMessageId(null)
       abortControllerRef.current = null
       lastAssistantIdRef.current = null
     }
@@ -349,6 +370,7 @@ export default function ChatInterface({
                         query={messages[index - 1]?.content || ''}
                         citations={message.citations || []}
                         isVerifyingSources={verifyingMessageId === message.id}
+                        isStreaming={streamingMessageId === message.id}
                       />
                     )}
                   </div>
