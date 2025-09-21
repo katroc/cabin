@@ -232,6 +232,14 @@ export function usePerformanceDashboardState() {
     })
   }, [])
 
+  // Helper function to get cached data or default value
+  const getCachedDataOrDefault = useCallback(<T>(
+    cachedData: CachedData<T> | null,
+    defaultValue: T
+  ): T => {
+    return cachedData && isCacheValid(cachedData) ? cachedData.data : defaultValue
+  }, [])
+
   return {
     // User preferences
     timeRange,
@@ -240,18 +248,18 @@ export function usePerformanceDashboardState() {
     setAutoRefresh: setAutoRefreshState,
 
     // Cached data getters (with real-time validation)
-    summary: summary && isCacheValid(summary) ? summary.data : null,
-    componentStats: componentStats && isCacheValid(componentStats) ? componentStats.data : {},
-    vllmMetrics: vllmMetrics && isCacheValid(vllmMetrics) ? vllmMetrics.data : null,
-    vllmHealth: vllmHealth && isCacheValid(vllmHealth) ? vllmHealth.data : {},
-    recentMetrics: recentMetrics && isCacheValid(recentMetrics) ? recentMetrics.data : [],
+    summary: getCachedDataOrDefault(summary, null as PerformanceSummary | null),
+    componentStats: getCachedDataOrDefault(componentStats, {} as Record<string, ComponentStats>),
+    vllmMetrics: getCachedDataOrDefault(vllmMetrics, null as VLLMMetrics | null),
+    vllmHealth: getCachedDataOrDefault(vllmHealth, {} as VLLMHealth),
+    recentMetrics: getCachedDataOrDefault(recentMetrics, [] as RAGPerformanceMetrics[]),
 
-    // Cache validity checkers
-    isSummaryValid: isSummaryValid(),
-    isComponentStatsValid: isComponentStatsValid(),
-    isVllmMetricsValid: isVllmMetricsValid(),
-    isVllmHealthValid: isVllmHealthValid(),
-    isRecentMetricsValid: isRecentMetricsValid(),
+    // Cache validity checkers (return functions, not call results)
+    isSummaryValid,
+    isComponentStatsValid,
+    isVllmMetricsValid,
+    isVllmHealthValid,
+    isRecentMetricsValid,
 
     // Cache management
     cacheSummary,
