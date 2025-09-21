@@ -12,6 +12,7 @@ import {
   Server,
   TrendingUp
 } from 'lucide-react'
+import { usePerformanceDashboardState } from '../app/hooks/usePerformanceDashboardState'
 
 interface ComponentTiming {
   component: string
@@ -85,27 +86,45 @@ interface PerformanceDashboardProps {
 }
 
 export default function PerformanceDashboard({ isOpen, onClose }: PerformanceDashboardProps) {
-  const [summary, setSummary] = useState<PerformanceSummary | null>(null)
-  const [recentMetrics, setRecentMetrics] = useState<RAGPerformanceMetrics[]>([])
-  const [componentStats, setComponentStats] = useState<Record<string, ComponentStats>>({})
-  const [vllmMetrics, setVllmMetrics] = useState<VLLMMetrics | null>(null)
-  const [vllmHealth, setVllmHealth] = useState<VLLMHealth | null>(null)
   const [loading, setLoading] = useState(false)
-  const [timeRange, setTimeRange] = useState('1h')
-  const [autoRefresh, setAutoRefresh] = useState(true)
 
-  const fetchPerformanceData = async (showLoading = true) => {
+  // Use the new persistent state hook
+  const {
+    timeRange,
+    setTimeRange,
+    autoRefresh,
+    setAutoRefresh,
+    summary,
+    componentStats,
+    vllmMetrics,
+    vllmHealth,
+    recentMetrics,
+    cacheSummary,
+    cacheComponentStats,
+    cacheVllmMetrics,
+    cacheVllmHealth,
+    cacheRecentMetrics,
+    clearCache
+  } = usePerformanceDashboardState()
+
+  const fetchPerformanceData = async (showLoading = true, forceRefresh = false) => {
     if (!isOpen) return
 
     if (showLoading) {
       setLoading(true)
     }
+
+    // Clear cache if force refresh is requested
+    if (forceRefresh) {
+      clearCache()
+    }
+
     try {
       // Fetch summary data
       const summaryResponse = await fetch(`http://localhost:8788/api/performance/summary`)
       if (summaryResponse.ok) {
         const summaryData = await summaryResponse.json()
-        setSummary(summaryData)
+        cacheSummary(summaryData)
       }
 
       // Fetch recent metrics
@@ -117,7 +136,7 @@ export default function PerformanceDashboard({ isOpen, onClose }: PerformanceDas
         })
         if (metricsResponse.ok) {
           const metricsData = await metricsResponse.json()
-          setRecentMetrics(metricsData.metrics || [])
+          cacheRecentMetrics(metricsData.metrics || [])
         } else {
           console.warn('Failed to fetch performance metrics:', metricsResponse.status)
         }
@@ -131,7 +150,7 @@ export default function PerformanceDashboard({ isOpen, onClose }: PerformanceDas
         const componentResponse = await fetch(`http://localhost:8788/api/performance/components`)
         if (componentResponse.ok) {
           const componentData = await componentResponse.json()
-          setComponentStats(componentData.components || {})
+          cacheComponentStats(componentData.components || {})
         }
       } catch (error) {
         console.warn('Error fetching component stats:', error)
@@ -143,7 +162,7 @@ export default function PerformanceDashboard({ isOpen, onClose }: PerformanceDas
          if (vllmMetricsResponse.ok) {
            const vllmData = await vllmMetricsResponse.json()
            console.log('vLLM metrics received:', vllmData)
-           setVllmMetrics(vllmData.metrics)
+           cacheVllmMetrics(vllmData.metrics)
          }
       } catch (error) {
         console.warn('Error fetching vLLM metrics:', error)
@@ -154,7 +173,7 @@ export default function PerformanceDashboard({ isOpen, onClose }: PerformanceDas
         const healthResponse = await fetch(`http://localhost:8788/api/performance/vllm/health`)
         if (healthResponse.ok) {
           const healthData = await healthResponse.json()
-          setVllmHealth(healthData)
+          cacheVllmHealth(healthData)
         }
       } catch (error) {
         console.warn('Error fetching vLLM health:', error)
@@ -211,13 +230,13 @@ export default function PerformanceDashboard({ isOpen, onClose }: PerformanceDas
               <option value="24h">Last 24 Hours</option>
               <option value="7d">Last 7 Days</option>
             </select>
-            <button
-              onClick={() => fetchPerformanceData(true)}
-              className="btn-secondary"
-              title="Refresh data"
-            >
-              <RefreshCw className="w-4 h-4" />
-            </button>
+             <button
+               onClick={() => fetchPerformanceData(true, true)}
+               className="btn-secondary"
+               title="Refresh data"
+             >
+               <RefreshCw className="w-4 h-4" />
+             </button>
             <button onClick={onClose} className="btn-close">
               <X className="w-4 h-4" />
             </button>
