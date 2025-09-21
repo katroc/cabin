@@ -232,8 +232,6 @@ export function usePerformanceDashboardState() {
     })
   }, [])
 
-
-
   // Compute valid data once to avoid repeated cache validity checks
   const validSummary = summary && isCacheValid(summary) ? summary.data : null
   const validComponentStats = componentStats && isCacheValid(componentStats) ? componentStats.data : {}
