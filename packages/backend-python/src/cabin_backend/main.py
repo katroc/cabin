@@ -464,6 +464,10 @@ def chat(request: ChatRequest) -> ChatResponse:
         metrics.total_duration_ms = total_duration
         metrics.filters_applied = request.filters
 
+        # Update used_rag based on actual response outcome, not routing decision
+        # If response has citations, it was actually RAG; otherwise it was conversational
+        metrics.used_rag = len(response.citations) > 0
+
         # Store performance data
         store_performance_metrics(metrics)
 
