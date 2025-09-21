@@ -9,7 +9,7 @@ from collections import defaultdict
 from fastapi import FastAPI, HTTPException, File, UploadFile, Request
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.responses import StreamingResponse
-from typing import List
+from typing import List, Optional
 
 from pydantic import BaseModel, Field
 
@@ -17,7 +17,8 @@ from .models import (
     IngestRequest, ChatRequest, ChatResponse,
     DataSourceIndexRequest, DataSourceDiscoveryRequest, DataSourceTestRequest,
     DataSourceIndexResponse, DataSourceProgressResponse, DataSourceInfoResponse,
-    FileUploadRequest, FileUploadResponse
+    FileUploadRequest, FileUploadResponse,
+    RAGPerformanceMetrics, PerformanceSummary, PerformanceStatsRequest
 )
 from .conversation_memory import ConversationMemoryManager
 from .query_router import QueryRouter
@@ -28,6 +29,7 @@ from .data_sources.manager import DataSourceManager
 from .data_sources.confluence import ConfluenceDataSource  # Import to register
 from .data_sources.file_upload import FileUploadDataSource  # Import to register
 from .config import settings
+from .vllm_metrics import get_vllm_metrics, check_vllm_health
 from .runtime import RuntimeOverrides
 from .telemetry import setup_logging, metrics
 
@@ -214,6 +216,18 @@ except Exception as e:
     conversation_memory = None
     query_router = None
 
+# --- Performance Tracking Storage ---
+# In-memory storage for performance metrics (consider Redis/DB for production)
+performance_metrics: List[RAGPerformanceMetrics] = []
+MAX_STORED_METRICS = 10000  # Keep last 10k requests
+
+def store_performance_metrics(metrics: RAGPerformanceMetrics) -> None:
+    """Store performance metrics with size limit."""
+    global performance_metrics
+    performance_metrics.append(metrics)
+    if len(performance_metrics) > MAX_STORED_METRICS:
+        performance_metrics = performance_metrics[-MAX_STORED_METRICS:]
+
 
 def apply_ui_settings(payload: UISettingsPayload) -> None:
     global current_ui_settings, current_overrides
@@ -303,88 +317,148 @@ def clear_index():
 
 @app.post("/api/chat")
 def chat(request: ChatRequest) -> ChatResponse:
-    """Endpoint for standard, non-streaming chat with intelligent routing."""
+    """Endpoint for standard, non-streaming chat with intelligent routing and performance tracking."""
     if not vector_store_service or not generator_service or not conversation_memory or not query_router:
         raise HTTPException(status_code=503, detail="Chat service not available.")
 
+    # Initialize performance tracking
+    start_time = time.time()
+    metrics = RAGPerformanceMetrics(
+        conversation_id="",  # Will be set once we get/create conversation
+        query=request.message,
+        query_type="",  # Will be determined by routing
+        total_duration_ms=0,
+        used_rag=False
+    )
+
     try:
-        # Get or create conversation
+        # Conversation setup timing
+        setup_start = time.time()
         conversation = conversation_memory.get_or_create_conversation(request.conversation_id)
         conversation_id = conversation.conversation_id
+        metrics.conversation_id = conversation_id
 
-        # Add user message to conversation history
         conversation_memory.add_user_message(conversation_id, request.message)
-
-        # Get conversation context for LLM
         conversation_context = conversation_memory.get_conversation_context(conversation_id, max_messages=8)
+        setup_duration = (time.time() - setup_start) * 1000
+        metrics.add_timing("conversation_setup", setup_duration)
 
-        # Decide if we need RAG retrieval using query router
+        # Query routing timing
+        routing_start = time.time()
         corpus_sample = vector_store_service.get_corpus_sample_for_routing(sample_size=20)
         should_use_rag, similarity_score, routing_reason = query_router.should_use_rag(
             request.message,
             conversation_context=conversation_context,
             corpus_sample=corpus_sample
         )
+        routing_duration = (time.time() - routing_start) * 1000
+        metrics.add_timing("query_routing", routing_duration, metadata={
+            "similarity_score": similarity_score,
+            "routing_reason": routing_reason,
+            "corpus_sample_size": len(corpus_sample)
+        })
+
+        # Store routing metadata
+        metrics.used_rag = should_use_rag
+        metrics.query_type = "rag" if should_use_rag else "conversational"
+        metrics.routing_similarity_score = similarity_score
+        metrics.routing_reason = routing_reason
 
         logger.debug(
             "Query routing: '%s' -> RAG=%s (sim=%.3f, reason=%s)",
             request.message[:50], should_use_rag, similarity_score, routing_reason
         )
 
-        # Retrieve documents only if routing suggests we need them
+        # Document retrieval timing (only if using RAG)
+        context_chunks = []
         if should_use_rag:
+            retrieval_start = time.time()
             context_chunks = vector_store_service.query(request.message, filters=request.filters)
+            retrieval_duration = (time.time() - retrieval_start) * 1000
+            metrics.add_timing("document_retrieval", retrieval_duration, metadata={
+                "num_chunks_retrieved": len(context_chunks),
+                "filters_applied": request.filters
+            })
+            metrics.num_context_chunks = len(context_chunks)
             logger.debug("RAG retrieval: found %d context chunks", len(context_chunks))
         else:
-            context_chunks = []
+            metrics.add_timing("document_retrieval", 0, metadata={"skipped": True})
             logger.debug("Conversational routing: skipping document retrieval")
 
-        # Generate response with conversation context
+        # Response generation timing
+        generation_start = time.time()
         response = generator_service.ask(
             request.message,
             context_chunks,
             conversation_id=conversation_id,
             conversation_context=conversation_context,
-            enforce_provenance=should_use_rag  # False for conversational, True for RAG
+            enforce_provenance=should_use_rag
         )
+        generation_duration = (time.time() - generation_start) * 1000
+        metrics.add_timing("response_generation", generation_duration, metadata={
+            "enforce_provenance": should_use_rag,
+            "num_citations": len(response.citations),
+            "response_length": len(response.response)
+        })
 
-        # Add assistant response to conversation history
+        # Memory storage timing
+        memory_start = time.time()
         conversation_memory.add_assistant_message(
             conversation_id,
             response.response,
             response.citations
         )
+        memory_duration = (time.time() - memory_start) * 1000
+        metrics.add_timing("memory_storage", memory_duration)
 
-        # Handle case where RAG routing was used but LLM couldn't provide citations
-        # This indicates the query was likely conversational despite similarity to corpus
+        # Handle fallback logic (if needed)
+        fallback_used = False
         if "couldn't find" in response.response.lower() and should_use_rag:
             logger.warning("RAG routing used but LLM returned fallback for query '%s'", request.message)
 
-            # Try conversational response as fallback
+            fallback_start = time.time()
             conversational_response = generator_service.ask(
                 request.message,
-                [],  # No context chunks for conversational mode
+                [],
                 conversation_id=conversation_id,
                 conversation_context=conversation_context,
-                enforce_provenance=False  # Disable citation requirements
+                enforce_provenance=False
             )
+            fallback_duration = (time.time() - fallback_start) * 1000
 
-            # Use conversational response if it's better than fallback
             if "couldn't find" not in conversational_response.response.lower():
                 logger.info("Using conversational fallback for query '%s'", request.message)
                 response = conversational_response
+                fallback_used = True
 
-                # Update conversation history with the corrected response
                 conversation_memory.update_last_assistant_message(
                     conversation_id,
                     response.response,
                     response.citations
                 )
-        elif not should_use_rag and len(response.response) > 50:  # Successful conversational response
+
+            metrics.add_timing("fallback_generation", fallback_duration, metadata={
+                "fallback_used": fallback_used
+            })
+        elif not should_use_rag and len(response.response) > 50:
             logger.debug("Conversational routing successful for query '%s'", request.message[:50])
+
+        # Calculate total duration and store metrics
+        total_duration = (time.time() - start_time) * 1000
+        metrics.total_duration_ms = total_duration
+        metrics.filters_applied = request.filters
+
+        # Store performance data
+        store_performance_metrics(metrics)
 
         return response
     except Exception as e:
+        # Track errors in performance metrics
+        error_duration = (time.time() - start_time) * 1000
+        metrics.total_duration_ms = error_duration
+        metrics.add_timing("error", 0, success=False, error_message=str(e))
+        store_performance_metrics(metrics)
+
         print(f"Error during chat: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to process chat request: {e}")
 
@@ -1059,3 +1133,324 @@ def get_services_status() -> dict:
         "services": status,
         "overall_health": all(status.values())
     }
+
+# --- Performance Tracking API Endpoints ---
+
+@app.get("/api/performance/summary")
+def get_performance_summary(
+    start_time: Optional[str] = None,
+    end_time: Optional[str] = None,
+    query_type_filter: Optional[str] = None
+) -> PerformanceSummary:
+    """Get aggregated performance statistics."""
+    from datetime import datetime, timedelta
+    import statistics
+
+    # Parse time filters
+    end_dt = datetime.fromisoformat(end_time.replace('Z', '+00:00')) if end_time else datetime.utcnow()
+    start_dt = datetime.fromisoformat(start_time.replace('Z', '+00:00')) if start_time else end_dt - timedelta(hours=24)
+
+    # Filter metrics by time range and query type
+    filtered_metrics = [
+        m for m in performance_metrics
+        if start_dt <= m.timestamp <= end_dt
+        and (not query_type_filter or m.query_type == query_type_filter)
+    ]
+
+    if not filtered_metrics:
+        return PerformanceSummary(
+            total_requests=0,
+            avg_total_duration_ms=0,
+            avg_component_durations={},
+            rag_request_percentage=0,
+            time_period_start=start_dt,
+            time_period_end=end_dt
+        )
+
+    # Calculate aggregate statistics
+    total_requests = len(filtered_metrics)
+    avg_total_duration = statistics.mean([m.total_duration_ms for m in filtered_metrics])
+    rag_requests = sum(1 for m in filtered_metrics if m.used_rag)
+    rag_percentage = (rag_requests / total_requests) * 100 if total_requests > 0 else 0
+
+    # Calculate average durations per component
+    component_durations = defaultdict(list)
+    for metric in filtered_metrics:
+        for timing in metric.component_timings:
+            component_durations[timing.component].append(timing.duration_ms)
+
+    avg_component_durations = {
+        component: statistics.mean(durations)
+        for component, durations in component_durations.items()
+    }
+
+    # Find bottlenecks
+    slowest_component = max(avg_component_durations.items(), key=lambda x: x[1])[0] if avg_component_durations else None
+
+    # Find most common bottleneck (component that's slowest most often)
+    bottleneck_counts = defaultdict(int)
+    for metric in filtered_metrics:
+        if metric.component_timings:
+            slowest = max(metric.component_timings, key=lambda x: x.duration_ms)
+            bottleneck_counts[slowest.component] += 1
+
+    most_common_bottleneck = max(bottleneck_counts.items(), key=lambda x: x[1])[0] if bottleneck_counts else None
+
+    return PerformanceSummary(
+        total_requests=total_requests,
+        avg_total_duration_ms=avg_total_duration,
+        avg_component_durations=avg_component_durations,
+        rag_request_percentage=rag_percentage,
+        most_common_bottleneck=most_common_bottleneck,
+        slowest_component_avg=slowest_component,
+        time_period_start=start_dt,
+        time_period_end=end_dt
+    )
+
+@app.post("/api/performance/metrics")
+def get_performance_metrics(request: PerformanceStatsRequest) -> dict:
+    """Get detailed performance metrics for individual requests."""
+    try:
+        from datetime import datetime, timedelta
+
+        # Parse time filters
+        end_dt = request.end_time or datetime.utcnow()
+        start_dt = request.start_time or end_dt - timedelta(hours=24)
+
+        # Filter and limit results
+        filtered_metrics = [
+            m for m in performance_metrics
+            if start_dt <= m.timestamp <= end_dt
+            and (not request.query_type_filter or m.query_type == request.query_type_filter)
+        ]
+
+        # Sort by timestamp (newest first) and limit
+        filtered_metrics.sort(key=lambda x: x.timestamp, reverse=True)
+        limited_metrics = filtered_metrics[:request.limit]
+
+        # Convert to dict to ensure proper serialization
+        result = []
+        for metric in limited_metrics:
+            metric_dict = {
+                "request_id": metric.request_id,
+                "conversation_id": metric.conversation_id,
+                "query": metric.query,
+                "query_type": metric.query_type,
+                "total_duration_ms": metric.total_duration_ms,
+                "used_rag": bool(metric.used_rag),
+                "num_context_chunks": metric.num_context_chunks,
+                "routing_similarity_score": metric.routing_similarity_score,
+                "routing_reason": metric.routing_reason,
+                "timestamp": metric.timestamp.isoformat(),
+                "user_agent": metric.user_agent,
+                "filters_applied": metric.filters_applied,
+                "component_timings": []
+            }
+
+            # Convert component timings with explicit type conversion
+            for timing in metric.component_timings:
+                timing_dict = {
+                    "component": timing.component,
+                    "duration_ms": timing.duration_ms,
+                    "success": bool(timing.success),  # Explicit bool conversion
+                    "error_message": timing.error_message,
+                    "metadata": timing.metadata
+                }
+                metric_dict["component_timings"].append(timing_dict)
+
+            result.append(metric_dict)
+
+        return {"metrics": result}
+    except Exception as e:
+        logger.error(f"Error in get_performance_metrics: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get performance metrics: {e}")
+
+@app.get("/api/performance/trends")
+def get_performance_trends(
+    hours: int = 24,
+    bucket_size_minutes: int = 60,
+    component: Optional[str] = None
+) -> dict:
+    """Get performance trends over time with time-series data."""
+    from datetime import datetime, timedelta
+    import math
+
+    end_time = datetime.utcnow()
+    start_time = end_time - timedelta(hours=hours)
+    bucket_size = timedelta(minutes=bucket_size_minutes)
+
+    # Create time buckets
+    num_buckets = math.ceil(hours * 60 / bucket_size_minutes)
+    buckets = []
+    for i in range(num_buckets):
+        bucket_start = start_time + (bucket_size * i)
+        bucket_end = bucket_start + bucket_size
+        buckets.append({
+            "start_time": bucket_start.isoformat(),
+            "end_time": bucket_end.isoformat(),
+            "total_requests": 0,
+            "avg_duration_ms": 0,
+            "rag_requests": 0,
+            "conversational_requests": 0,
+            "avg_component_duration": 0 if component else None
+        })
+
+    # Fill buckets with data
+    for metric in performance_metrics:
+        if start_time <= metric.timestamp <= end_time:
+            # Find appropriate bucket
+            bucket_index = int((metric.timestamp - start_time) / bucket_size)
+            if 0 <= bucket_index < len(buckets):
+                bucket = buckets[bucket_index]
+                bucket["total_requests"] += 1
+
+                if metric.used_rag:
+                    bucket["rag_requests"] += 1
+                else:
+                    bucket["conversational_requests"] += 1
+
+                # Update running average for total duration
+                current_avg = bucket["avg_duration_ms"]
+                current_count = bucket["total_requests"]
+                bucket["avg_duration_ms"] = ((current_avg * (current_count - 1)) + metric.total_duration_ms) / current_count
+
+                # Update component-specific average if requested
+                if component:
+                    component_timing = next(
+                        (t for t in metric.component_timings if t.component == component),
+                        None
+                    )
+                    if component_timing:
+                        current_comp_avg = bucket["avg_component_duration"] or 0
+                        bucket["avg_component_duration"] = ((current_comp_avg * (current_count - 1)) + component_timing.duration_ms) / current_count
+
+    return {
+        "time_series": buckets,
+        "metadata": {
+            "start_time": start_time.isoformat(),
+            "end_time": end_time.isoformat(),
+            "bucket_size_minutes": bucket_size_minutes,
+            "component_filter": component,
+            "total_data_points": len([m for m in performance_metrics if start_time <= m.timestamp <= end_time])
+        }
+    }
+
+@app.get("/api/performance/components")
+def get_component_breakdown() -> dict:
+    """Get detailed breakdown of performance by component."""
+    if not performance_metrics:
+        return {"components": {}, "total_requests": 0}
+
+    component_stats = defaultdict(lambda: {
+        "total_calls": 0,
+        "total_duration_ms": 0,
+        "avg_duration_ms": 0,
+        "min_duration_ms": float('inf'),
+        "max_duration_ms": 0,
+        "success_rate": 0,
+        "error_count": 0
+    })
+
+    for metric in performance_metrics:
+        for timing in metric.component_timings:
+            stats = component_stats[timing.component]
+            stats["total_calls"] += 1
+            stats["total_duration_ms"] += timing.duration_ms
+            stats["min_duration_ms"] = min(stats["min_duration_ms"], timing.duration_ms)
+            stats["max_duration_ms"] = max(stats["max_duration_ms"], timing.duration_ms)
+
+            if timing.success:
+                stats["success_rate"] += 1
+            else:
+                stats["error_count"] += 1
+
+    # Calculate averages and success rates
+    for component, stats in component_stats.items():
+        if stats["total_calls"] > 0:
+            stats["avg_duration_ms"] = stats["total_duration_ms"] / stats["total_calls"]
+            stats["success_rate"] = (stats["success_rate"] / stats["total_calls"]) * 100
+        if stats["min_duration_ms"] == float('inf'):
+            stats["min_duration_ms"] = 0
+
+    return {
+        "components": dict(component_stats),
+        "total_requests": len(performance_metrics)
+    }
+
+@app.get("/api/performance/vllm")
+async def get_vllm_performance_metrics() -> dict:
+    """Get current vLLM performance metrics from all services."""
+    try:
+        metrics = await get_vllm_metrics()
+        return {
+            "success": True,
+            "metrics": metrics,
+            "services_count": len(metrics)
+        }
+    except Exception as e:
+        logger.error(f"Failed to fetch vLLM metrics: {e}")
+        return {
+            "success": False,
+            "error": str(e),
+            "metrics": {}
+        }
+
+@app.get("/api/performance/vllm/health")
+async def get_vllm_health_status() -> dict:
+    """Check health status of all vLLM services."""
+    try:
+        health_status = await check_vllm_health()
+        all_healthy = all(health_status.values())
+        return {
+            "success": True,
+            "all_healthy": all_healthy,
+            "services": health_status
+        }
+    except Exception as e:
+        logger.error(f"Failed to check vLLM health: {e}")
+        return {
+            "success": False,
+            "error": str(e),
+            "services": {}
+        }
+
+@app.get("/api/performance/vllm/debug/{service_name}")
+async def debug_vllm_metrics(service_name: str) -> dict:
+    """Debug endpoint to show raw vLLM metrics for troubleshooting."""
+    from .vllm_metrics import VLLMMetricsCollector
+
+    try:
+        async with VLLMMetricsCollector() as collector:
+            base_url = collector.services.get(service_name)
+            if not base_url:
+                return {"error": f"Service {service_name} not configured"}
+
+            import aiohttp
+            async with collector.session.get(f"{base_url}/metrics") as response:
+                if response.status != 200:
+                    return {"error": f"HTTP {response.status}"}
+
+                raw_metrics = await response.text()
+
+                # Parse metrics
+                parsed_metrics = collector._parse_prometheus_metrics(raw_metrics, service_name)
+
+                # Return both raw and parsed for debugging
+                return {
+                    "service": service_name,
+                    "base_url": base_url,
+                    "parsed_metrics": {
+                        "num_requests_running": parsed_metrics.num_requests_running,
+                        "num_requests_waiting": parsed_metrics.num_requests_waiting,
+                        "time_to_first_token_seconds": parsed_metrics.time_to_first_token_seconds,
+                        "time_per_output_token_seconds": parsed_metrics.time_per_output_token_seconds,
+                        "e2e_request_latency_seconds": parsed_metrics.e2e_request_latency_seconds,
+                        "prompt_tokens_total": parsed_metrics.prompt_tokens_total,
+                        "generation_tokens_total": parsed_metrics.generation_tokens_total,
+                        "tokens_per_second": parsed_metrics.tokens_per_second,
+                        "gpu_cache_usage_perc": parsed_metrics.gpu_cache_usage_perc,
+                    },
+                    "raw_vllm_lines": [line for line in raw_metrics.split('\n') if 'vllm:' in line][:20]  # First 20 vLLM lines
+                }
+    except Exception as e:
+        return {"error": str(e)}

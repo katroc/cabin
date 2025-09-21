@@ -6,7 +6,8 @@ import ConversationHistory from '../components/ConversationHistory'
 import ChatInterface from '../components/ChatInterface'
 import SettingsDrawer from '../components/SettingsDrawer'
 import DataSourceSelector from '../components/DataSourceSelector'
-import { Settings, Database, MessageSquare, X } from 'lucide-react'
+import PerformanceDashboard from '../components/PerformanceDashboard'
+import { Settings, Database, MessageSquare, X, Activity } from 'lucide-react'
 
 interface Citation {
   id: string
@@ -92,6 +93,7 @@ export default function Home() {
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null)
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [isDataSourceSelectorOpen, setIsDataSourceSelectorOpen] = useState(false)
+  const [isPerformanceDashboardOpen, setIsPerformanceDashboardOpen] = useState(false)
   const [isHydrated, setIsHydrated] = useState(false)
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
   const [settings, setSettings] = useState<SettingsData>({
@@ -389,6 +391,13 @@ export default function Home() {
             <Database size={20} />
           </button>
           <button
+            onClick={() => setIsPerformanceDashboardOpen(true)}
+            className="header-button p-2 rounded-lg transition-colors ui-text-secondary"
+            title="Performance Dashboard"
+          >
+            <Activity size={20} />
+          </button>
+          <button
             onClick={() => setIsSettingsOpen(true)}
             className="header-button p-2 rounded-lg transition-colors ui-text-secondary"
             title="Settings"
@@ -462,6 +471,11 @@ export default function Home() {
       <DataSourceSelector
         isOpen={isDataSourceSelectorOpen}
         onClose={() => setIsDataSourceSelectorOpen(false)}
+      />
+
+      <PerformanceDashboard
+        isOpen={isPerformanceDashboardOpen}
+        onClose={() => setIsPerformanceDashboardOpen(false)}
       />
     </main>
   )

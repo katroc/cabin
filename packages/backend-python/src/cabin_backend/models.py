@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 import uuid
@@ -211,3 +211,69 @@ class FileUploadResponse(BaseModel):
     files_processed: int = 0
     files_failed: int = 0
     upload_id: Optional[str] = None
+
+# Performance Tracking Models
+class ComponentTiming(BaseModel):
+    """Timing data for a specific RAG pipeline component."""
+    component: str  # "query_routing", "document_retrieval", "response_generation", etc.
+    duration_ms: float
+    success: bool = True
+    error_message: Optional[str] = None
+    metadata: Dict[str, Any] = Field(default_factory=dict)  # Component-specific data
+
+    @field_validator('success', mode='before')
+    @classmethod
+    def validate_success(cls, v):
+        """Convert numpy bool to Python bool."""
+        if hasattr(v, 'item'):  # numpy scalar
+            return bool(v.item())
+        return bool(v)
+
+class RAGPerformanceMetrics(BaseModel):
+    """Complete performance metrics for a single RAG request."""
+    request_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    conversation_id: str
+    query: str  # User's original query
+    query_type: str  # "rag" or "conversational"
+    total_duration_ms: float
+    component_timings: List[ComponentTiming] = Field(default_factory=list)
+
+    # High-level metrics
+    used_rag: bool
+    num_context_chunks: int = 0
+    routing_similarity_score: Optional[float] = None
+    routing_reason: Optional[str] = None
+
+    # Request metadata
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    user_agent: Optional[str] = None
+    filters_applied: Optional[Dict[str, Any]] = None
+
+    def add_timing(self, component: str, duration_ms: float, success: bool = True,
+                   error_message: Optional[str] = None, **metadata) -> None:
+        """Add timing data for a pipeline component."""
+        self.component_timings.append(ComponentTiming(
+            component=component,
+            duration_ms=duration_ms,
+            success=success,
+            error_message=error_message,
+            metadata=metadata
+        ))
+
+class PerformanceSummary(BaseModel):
+    """Aggregated performance statistics."""
+    total_requests: int
+    avg_total_duration_ms: float
+    avg_component_durations: Dict[str, float]  # component -> avg duration
+    rag_request_percentage: float
+    most_common_bottleneck: Optional[str] = None
+    slowest_component_avg: Optional[str] = None
+    time_period_start: datetime
+    time_period_end: datetime
+
+class PerformanceStatsRequest(BaseModel):
+    """Request for performance statistics."""
+    start_time: Optional[datetime] = None
+    end_time: Optional[datetime] = None
+    query_type_filter: Optional[str] = None  # "rag", "conversational", or None for all
+    limit: int = Field(default=1000, ge=1, le=10000)
