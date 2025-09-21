@@ -462,8 +462,8 @@ export default function PerformanceDashboard({ isOpen, onClose }: PerformanceDas
                 )}
               </div>
 
-              {/* Recent Requests */}
-              {recentMetrics.length > 0 && (
+               {/* Recent Requests */}
+               {recentMetrics && recentMetrics.length > 0 && (
                 <div className="ui-bg-tertiary p-6 rounded-lg border ui-border-faint">
                   <h3 className="text-lg font-semibold ui-text-primary mb-4 flex items-center gap-2">
                     <TrendingUp className="w-5 h-5" style={{ color: 'var(--accent)' }} />
