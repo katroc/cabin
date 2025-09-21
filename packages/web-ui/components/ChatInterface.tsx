@@ -41,6 +41,10 @@ interface ChatInterfaceProps {
 
 const CHAT_ENDPOINT = 'http://localhost:8788/api/chat'
 const CHAT_STREAM_ENDPOINT = 'http://localhost:8788/api/chat/stream'
+const CHAT_DIRECT_ENDPOINT = 'http://localhost:8788/api/chat/direct'
+const CHAT_DIRECT_STREAM_ENDPOINT = 'http://localhost:8788/api/chat/direct/stream'
+
+type ChatMode = 'rag' | 'llm'
 
 export default function ChatInterface({
   conversation,
@@ -52,6 +56,7 @@ export default function ChatInterface({
   const [isProcessing, setIsProcessing] = useState(false)
   const [verifyingMessageId, setVerifyingMessageId] = useState<string | null>(null)
   const [routingMessageId, setRoutingMessageId] = useState<string | null>(null)
+  const [chatMode, setChatMode] = useState<ChatMode>('rag')
   const messagesEndRef = useRef<HTMLDivElement | null>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
   const lastAssistantIdRef = useRef<string | null>(null)
@@ -96,7 +101,8 @@ export default function ChatInterface({
     async (prompt: string, assistantId: string): Promise<string> => {
       const controller = new AbortController()
       abortControllerRef.current = controller
-      const response = await fetch(CHAT_STREAM_ENDPOINT, {
+      const endpoint = chatMode === 'rag' ? CHAT_STREAM_ENDPOINT : CHAT_DIRECT_STREAM_ENDPOINT
+      const response = await fetch(endpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -127,13 +133,14 @@ export default function ChatInterface({
       abortControllerRef.current = null
       return aggregated
     },
-    [updateAssistantMessage]
+    [updateAssistantMessage, chatMode]
   )
 
   const requestFullResponse = useCallback(async (prompt: string) => {
     const controller = new AbortController()
     // Don't overwrite the main abortControllerRef during streaming
-    const response = await fetch(CHAT_ENDPOINT, {
+    const endpoint = chatMode === 'rag' ? CHAT_ENDPOINT : CHAT_DIRECT_ENDPOINT
+    const response = await fetch(endpoint, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -147,7 +154,7 @@ export default function ChatInterface({
     }
 
     return response.json()
-  }, [])
+  }, [chatMode])
 
   const handleStopGeneration = useCallback(() => {
     abortControllerRef.current?.abort()
@@ -427,10 +434,46 @@ export default function ChatInterface({
                     Stop
                   </button>
                 )}
+
+                {/* RAG/LLM Toggle */}
+                <div
+                  className="relative flex items-center bg-[var(--bg-tertiary)] rounded-full border ui-border-light p-1 cursor-pointer"
+                  onClick={() => setChatMode(chatMode === 'rag' ? 'llm' : 'rag')}
+                >
+                  {/* Sliding background indicator */}
+                  <div
+                    className={`absolute top-1 bottom-1 w-1/2 rounded-full transition-all duration-200 ease-in-out ${
+                      chatMode === 'rag' ? 'left-1 bg-[var(--accent)]' : 'left-1/2 bg-orange-500'
+                    }`}
+                  />
+
+                  {/* Toggle options */}
+                  <div
+                    className={`relative z-10 px-3 py-1.5 text-xs font-medium rounded-full transition-colors duration-200 ${
+                      chatMode === 'rag'
+                        ? 'text-white'
+                        : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                    }`}
+                  >
+                    RAG
+                  </div>
+                  <div
+                    className={`relative z-10 px-3 py-1.5 text-xs font-medium rounded-full transition-colors duration-200 ${
+                      chatMode === 'llm'
+                        ? 'text-white'
+                        : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                    }`}
+                  >
+                    LLM
+                  </div>
+                </div>
+
                 <button
                   type="submit"
                   disabled={!input.trim()}
-                  className="flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition disabled:opacity-50 bg-[var(--accent)] text-white ui-shadow-elevated"
+                  className={`flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition-all duration-200 disabled:opacity-50 text-white ui-shadow-elevated ${
+                    chatMode === 'rag' ? 'bg-[var(--accent)] hover:bg-[var(--accent-hover)]' : 'bg-orange-500 hover:bg-orange-600'
+                  }`}
                 >
                   <Send size={16} />
                   Send

@@ -577,6 +577,135 @@ def chat_stream(request: ChatRequest):
         # Proper handling would involve a more complex setup.
         return StreamingResponse("Error processing request.", media_type="text/plain", status_code=500)
 
+@app.post("/api/chat/direct")
+def chat_direct(request: ChatRequest) -> ChatResponse:
+    """Endpoint for direct LLM chat, bypassing all RAG components."""
+    if not generator_service or not conversation_memory:
+        raise HTTPException(status_code=503, detail="Chat service not available.")
+
+    # Initialize performance tracking for direct LLM mode
+    start_time = time.time()
+    metrics = RAGPerformanceMetrics(
+        conversation_id="",  # Will be set once we get/create conversation
+        query=request.message,
+        query_type="direct_llm",
+        total_duration_ms=0,
+        used_rag=False
+    )
+
+    try:
+        # Conversation setup timing
+        setup_start = time.time()
+        conversation = conversation_memory.get_or_create_conversation(request.conversation_id)
+        conversation_id = conversation.conversation_id
+        metrics.conversation_id = conversation_id
+
+        conversation_memory.add_user_message(conversation_id, request.message)
+        conversation_context = conversation_memory.get_conversation_context(conversation_id, max_messages=8)
+        setup_duration = (time.time() - setup_start) * 1000
+        metrics.add_timing("conversation_setup", setup_duration)
+
+        # Skip routing and retrieval - go directly to LLM
+        metrics.add_timing("query_routing", 0, metadata={"mode": "direct_llm", "skipped": True})
+        metrics.add_timing("document_retrieval", 0, metadata={"mode": "direct_llm", "skipped": True})
+
+        logger.debug("Direct LLM mode: bypassing RAG for query '%s'", request.message[:50])
+
+        # Response generation timing - no context chunks, no provenance enforcement
+        generation_start = time.time()
+        response = generator_service.ask(
+            request.message,
+            [],  # No context chunks for direct LLM mode
+            conversation_id=conversation_id,
+            conversation_context=conversation_context,
+            enforce_provenance=False  # Never enforce citations in direct mode
+        )
+        generation_duration = (time.time() - generation_start) * 1000
+        metrics.add_timing("response_generation", generation_duration, metadata={
+            "response_length": len(response.response),
+            "num_citations": len(response.citations) if response.citations else 0,
+            "mode": "direct_llm"
+        })
+
+        # Add assistant response to conversation history
+        conversation_memory.add_assistant_message(
+            conversation_id,
+            response.response,
+            response.citations
+        )
+
+        # Complete performance tracking
+        total_duration = (time.time() - start_time) * 1000
+        metrics.total_duration_ms = total_duration
+
+        # Log performance metrics
+        logger.info(
+            "Direct LLM chat completed in %.2fms (setup=%.1f, generation=%.1f)",
+            total_duration, setup_duration, generation_duration
+        )
+
+        # Store performance data
+        store_performance_metrics(metrics)
+
+        return ChatResponse(
+            response=response.response,
+            citations=response.citations or [],
+            conversation_id=conversation_id
+        )
+
+    except Exception as e:
+        logger.error("Direct chat error: %s", str(e), exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error processing direct chat request: {str(e)}")
+
+
+@app.post("/api/chat/direct/stream")
+def chat_direct_stream(request: ChatRequest):
+    """Endpoint for streaming direct LLM chat, bypassing all RAG components."""
+    if not generator_service or not conversation_memory:
+        raise HTTPException(status_code=503, detail="Chat service not available.")
+
+    try:
+        # Get or create conversation
+        conversation = conversation_memory.get_or_create_conversation(request.conversation_id)
+        conversation_id = conversation.conversation_id
+
+        # Add user message to conversation history
+        conversation_memory.add_user_message(conversation_id, request.message)
+
+        # Get conversation context for LLM
+        conversation_context = conversation_memory.get_conversation_context(conversation_id, max_messages=8)
+
+        logger.debug("Direct LLM streaming mode: bypassing RAG for query '%s'", request.message[:50])
+
+        # Generate response directly - no context chunks, no provenance enforcement
+        response = generator_service.ask(
+            request.message,
+            [],  # No context chunks for direct LLM mode
+            conversation_id=conversation_id,
+            conversation_context=conversation_context,
+            enforce_provenance=False  # Never enforce citations in direct mode
+        )
+
+        # Add assistant response to conversation history
+        conversation_memory.add_assistant_message(
+            conversation_id,
+            response.response,
+            response.citations
+        )
+
+        logger.info("Direct LLM streaming response completed for conversation %s", conversation_id)
+
+        # Return as simple streaming response
+        def generate():
+            yield response.response
+
+        return StreamingResponse(generate(), media_type="text/plain")
+
+    except Exception as e:
+        logger.error("Direct streaming chat error: %s", str(e), exc_info=True)
+        return StreamingResponse("Error processing direct request.", media_type="text/plain", status_code=500)
+
+
 # --- Conversation Management Endpoints ---
 
 @app.get("/api/conversations/{conversation_id}")
