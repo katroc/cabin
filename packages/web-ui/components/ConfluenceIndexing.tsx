@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Database, Play, Trash2, RefreshCw, CheckCircle, AlertCircle, Clock, Wifi } from 'lucide-react'
+import { Database, Play, Trash2, RefreshCw, CheckCircle, AlertCircle, Clock, Wifi, ArrowLeft } from 'lucide-react'
 
 interface ConfluenceConfig {
   baseUrl: string
@@ -28,9 +28,10 @@ interface IndexingJob {
 interface ConfluenceIndexingProps {
   isOpen: boolean
   onClose: () => void
+  onBack?: () => void
 }
 
-export default function ConfluenceIndexing({ isOpen, onClose }: ConfluenceIndexingProps) {
+export default function ConfluenceIndexing({ isOpen, onClose, onBack }: ConfluenceIndexingProps) {
   const [config, setConfig] = useState<ConfluenceConfig>({
     baseUrl: '',
     username: '',
@@ -273,10 +274,17 @@ export default function ConfluenceIndexing({ isOpen, onClose }: ConfluenceIndexi
       <div className="drawer-panel fixed left-0 top-0 h-full w-full max-w-2xl overflow-y-auto">
         {/* Header */}
         <div className="drawer-header ui-bg-secondary border-b ui-border-faint">
-          <h2 className="drawer-title ui-text-primary">
-            <Database size={20} />
-            Confluence Indexing
-          </h2>
+          <div className="flex items-center gap-3">
+            {onBack && (
+              <button onClick={onBack} className="btn-close">
+                <ArrowLeft className="w-4 h-4" />
+              </button>
+            )}
+            <h2 className="drawer-title ui-text-primary">
+              <Database size={20} />
+              Confluence Indexing
+            </h2>
+          </div>
           <button onClick={onClose} className="btn-close">
             ×
           </button>

@@ -28,9 +28,10 @@ interface IndexingJob {
 interface FileUploadIndexingProps {
   isOpen: boolean
   onClose: () => void
+  onBack?: () => void
 }
 
-export default function FileUploadIndexing({ isOpen, onClose }: FileUploadIndexingProps) {
+export default function FileUploadIndexing({ isOpen, onClose, onBack }: FileUploadIndexingProps) {
   const [mounted, setMounted] = useState(false)
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([])
   const [isDragOver, setIsDragOver] = useState(false)
@@ -290,10 +291,17 @@ export default function FileUploadIndexing({ isOpen, onClose }: FileUploadIndexi
       <div className="drawer-panel fixed left-0 top-0 h-full w-full max-w-2xl flex flex-col">
         {/* Header */}
         <div className="drawer-header ui-bg-secondary border-b ui-border-faint flex-shrink-0">
-          <h2 className="drawer-title ui-text-primary">
-            <Upload className="w-5 h-5" />
-            File Upload & Indexing
-          </h2>
+          <div className="flex items-center gap-3">
+            {onBack && (
+              <button onClick={onBack} className="btn-close">
+                <ArrowLeft className="w-4 h-4" />
+              </button>
+            )}
+            <h2 className="drawer-title ui-text-primary">
+              <Upload className="w-5 h-5" />
+              File Upload & Indexing
+            </h2>
+          </div>
           <button onClick={onClose} className="btn-close">
             <X className="w-4 h-4" />
           </button>

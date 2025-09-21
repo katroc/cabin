@@ -78,6 +78,11 @@ export default function DataSourceSelector({ isOpen, onClose }: DataSourceSelect
     setCurrentView('selector')
   }
 
+  const handleBackToSelector = () => {
+    setSelectedSource(null)
+    setCurrentView('selector')
+  }
+
   const handleSourceClose = () => {
     setSelectedSource(null)
     setCurrentView('selector')
@@ -98,7 +103,7 @@ export default function DataSourceSelector({ isOpen, onClose }: DataSourceSelect
   // If a specific source is selected, render its component
   if (selectedSource && selectedDataSource) {
     const SourceComponent = selectedDataSource.component
-    return <SourceComponent isOpen={true} onClose={handleSourceClose} />
+    return <SourceComponent isOpen={true} onClose={handleSourceClose} onBack={handleBackToSelector} />
   }
 
   // Group data sources by category
