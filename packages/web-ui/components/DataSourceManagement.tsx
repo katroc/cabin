@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { ArrowLeft, Database, FileText, Globe, Upload, Trash2, RefreshCw, CheckCircle, AlertCircle, Clock, Info } from 'lucide-react'
+import { ArrowLeft, Database, FileText, Globe, Upload, Trash2, RefreshCw, CheckCircle, AlertCircle, Clock, Info, X } from 'lucide-react'
 
 interface IndexedDocument {
   id: string
@@ -207,7 +207,7 @@ export default function DataSourceManagement({ isOpen, onClose, onBack }: DataSo
               Refresh
             </button>
             <button onClick={onClose} className="btn-close">
-              ×
+              <X className="w-4 h-4" />
             </button>
           </div>
         </div>

@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { Settings, Save } from 'lucide-react'
+import { Settings, Save, X } from 'lucide-react'
 
 interface SettingsData {
   llmBaseUrl: string
@@ -168,7 +168,7 @@ export default function SettingsDrawer({ isOpen, onClose, settings, onSave }: Se
             Settings
           </h2>
           <button onClick={onClose} className="btn-close">
-            ×
+            <X className="w-4 h-4" />
           </button>
         </div>
 

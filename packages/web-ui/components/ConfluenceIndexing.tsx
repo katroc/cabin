@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Database, Play, Trash2, RefreshCw, CheckCircle, AlertCircle, Clock, Wifi, ArrowLeft } from 'lucide-react'
+import { Database, Play, Trash2, RefreshCw, CheckCircle, AlertCircle, Clock, Wifi, ArrowLeft, X } from 'lucide-react'
 
 interface ConfluenceConfig {
   baseUrl: string
@@ -286,7 +286,7 @@ export default function ConfluenceIndexing({ isOpen, onClose, onBack }: Confluen
             </h2>
           </div>
           <button onClick={onClose} className="btn-close">
-            ×
+            <X className="w-4 h-4" />
           </button>
         </div>
 
