@@ -158,13 +158,12 @@ export default function SettingsDrawer({ isOpen, onClose, settings, onSave }: Se
   if (!isOpen) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex">
-      <div className="drawer-overlay" onClick={onClose} />
-      <div className="drawer-panel relative ml-auto h-full w-[600px] overflow-y-auto">
+    <div className="drawer-overlay">
+      <div className="drawer-panel fixed right-0 top-0 h-full w-full max-w-2xl flex flex-col">
         {/* Header */}
-        <div className="drawer-header ui-bg-secondary border-b ui-border-faint">
-          <h2 className="drawer-title ui-text-primary">
-            <Settings size={20} />
+        <div className="drawer-header flex-shrink-0">
+          <h2 className="drawer-title">
+            <Settings className="w-5 h-5 ui-text-secondary" />
             Settings
           </h2>
           <button onClick={onClose} className="btn-close">
@@ -172,9 +171,9 @@ export default function SettingsDrawer({ isOpen, onClose, settings, onSave }: Se
           </button>
         </div>
 
-        <div className="p-6 space-y-6 divide-y divide-[color:var(--border-faint)]">
+        <div className="p-6 overflow-y-auto flex-1 min-h-0">
           {/* LLM Provider */}
-          <div className="form-section pt-6 first:pt-0">
+          <div className="form-section first:pt-0">
             <h3 className="form-section-title ui-text-secondary text-sm uppercase tracking-wide">LLM Provider</h3>
             <div className="space-y-4">
               <div className="form-group">
@@ -422,7 +421,7 @@ export default function SettingsDrawer({ isOpen, onClose, settings, onSave }: Se
           </div>
         </div>
 
-        <div className="p-4 border-t" style={{ borderColor: 'var(--border-faint)' }}>
+        <div className="p-4 border-t ui-border-faint flex-shrink-0">
           <button
             onClick={handleSave}
             className="btn-primary flex-1 w-full"
