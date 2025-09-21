@@ -421,7 +421,7 @@ export default function Home() {
           />
         </div>
         <div className="relative h-full overflow-hidden min-h-0">
-          {conversations.length === 0 ? (
+          {isHydrated && conversations.length === 0 ? (
             // Empty state when no conversations exist
             <div className="flex flex-col items-center justify-center h-full p-8">
               <div className="max-w-md text-center">
@@ -441,14 +441,14 @@ export default function Home() {
                 </button>
               </div>
             </div>
-          ) : (
+          ) : isHydrated && activeConversation ? (
             <ChatInterface
               conversation={activeConversation}
               onMessagesChange={setActiveConversationMessages}
               onDownloadConversation={handleDownloadConversation}
               onConversationTitleChange={handleConversationTitleUpdate}
             />
-          )}
+          ) : null}
         </div>
 
         {isSidebarOpen && (
