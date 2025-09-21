@@ -35,6 +35,32 @@ class DocumentMetadata(BaseModel):
     char_start: Optional[int] = None
     char_end: Optional[int] = None
 
+    # File upload specific fields
+    filename: Optional[str] = None
+    file_size: Optional[int] = None
+    file_extension: Optional[str] = None
+    mime_type: Optional[str] = None
+    file_path: Optional[str] = None
+    source_type: Optional[str] = None
+    title: Optional[str] = None
+    author: Optional[str] = None
+    subject: Optional[str] = None
+    keywords: Optional[List[str]] = Field(default_factory=_default_list)
+    language: Optional[str] = None
+    page_count: Optional[int] = None
+    word_count: Optional[int] = None
+    character_count: Optional[int] = None
+    has_images: Optional[bool] = None
+    has_tables: Optional[bool] = None
+    heading_count: Optional[int] = None
+    parser_used: Optional[str] = None
+    extraction_warnings: Optional[List[str]] = Field(default_factory=_default_list)
+    is_encrypted: Optional[bool] = None
+    is_corrupted: Optional[bool] = None
+    created_at: Optional[str] = None
+    modified_at: Optional[str] = None
+    uploaded_at: Optional[str] = None
+
 class ParentChunk(BaseModel):
     id: str
     text: str

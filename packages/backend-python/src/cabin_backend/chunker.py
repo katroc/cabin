@@ -239,6 +239,32 @@ class SemanticChunker:
             token_end=token_end,
             total_tokens=total_tokens,
             section_index=section_index,
+
+            # File upload specific fields from metadata
+            filename=meta_source.get("filename"),
+            file_size=meta_source.get("file_size"),
+            file_extension=meta_source.get("file_extension"),
+            mime_type=meta_source.get("mime_type"),
+            file_path=meta_source.get("file_path"),
+            source_type=meta_source.get("source_type"),
+            title=meta_source.get("title"),
+            author=meta_source.get("author"),
+            subject=meta_source.get("subject"),
+            keywords=meta_source.get("keywords"),
+            language=meta_source.get("language"),
+            page_count=meta_source.get("page_count"),
+            word_count=meta_source.get("word_count"),
+            character_count=meta_source.get("character_count"),
+            has_images=meta_source.get("has_images"),
+            has_tables=meta_source.get("has_tables"),
+            heading_count=meta_source.get("heading_count"),
+            parser_used=meta_source.get("parser_used"),
+            extraction_warnings=meta_source.get("extraction_warnings"),
+            is_encrypted=meta_source.get("is_encrypted"),
+            is_corrupted=meta_source.get("is_corrupted"),
+            created_at=meta_source.get("created_at"),
+            modified_at=meta_source.get("modified_at"),
+            uploaded_at=meta_source.get("uploaded_at"),
         )
 
     def _determine_document_id(self, request: IngestRequest) -> str:
