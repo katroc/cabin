@@ -858,7 +858,7 @@ input::placeholder, textarea::placeholder {
 
 /* Accent button styling */
 .btn-accent {
-  background: var(--success);
+  background: color-mix(in oklab, var(--success) 70%, var(--bg-secondary));
   color: white;
   border: none;
   font-weight: 500;
@@ -873,7 +873,7 @@ input::placeholder, textarea::placeholder {
 }
 
 .btn-accent:hover:not(:disabled) {
-  background: color-mix(in oklab, var(--success) 85%, black);
+  background: color-mix(in oklab, var(--success) 80%, var(--bg-secondary));
   transform: translateY(-1px);
   box-shadow: 0 4px 8px rgba(0,0,0,0.15);
 }
