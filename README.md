@@ -106,18 +106,33 @@ Cabin is a sophisticated **air-gapped RAG assistant** that intelligently routes 
 - **File Upload**: Support for PDF, DOCX, TXT, MD, HTML, CSV files with content validation
 - **Extensible Architecture**: Plugin system for adding new data source connectors
 - **Bulk Operations**: Batch document indexing with progress tracking and error handling
+- **Advanced Document Management**: Multi-view interface (table, grid, list) with pagination
+- **Comprehensive Filtering**: Filter by source type, date range, file size, tags, and content type
+- **Document Statistics**: Real-time stats on indexed documents, storage usage, and source distribution
 
 ### Performance & Monitoring
 - **Real-time Metrics**: Request latency, token usage, and system performance tracking
-- **vLLM Integration**: Live monitoring of model performance and resource utilization
-- **Performance Dashboard**: Visual analytics and bottleneck identification
-- **Component-Level Timing**: Detailed breakdown of retrieval, reranking, and generation times
+- **Advanced Performance Dashboard**: Live visual analytics with component-level timing breakdown
+- **vLLM Integration**: Real-time monitoring of model performance, GPU utilization, and token throughput
+- **Component Analytics**: Detailed breakdown of retrieval, reranking, and generation performance
+- **Query Router Statistics**: Analytics on routing decisions and similarity scoring
+- **Conversation Memory Stats**: Memory usage tracking and conversation lifecycle management
+- **System Health Monitoring**: Live status of all services and model availability
+
+### Security & Reliability
+- **Rate Limiting**: Built-in protection against upload abuse (20 uploads/hour per IP)
+- **File Content Validation**: Magic byte verification to prevent malicious file uploads
+- **Input Sanitization**: Comprehensive validation of filenames and file paths
+- **Error Handling**: Graceful degradation and fallback mechanisms
+- **Resource Protection**: Configurable limits on file sizes and processing resources
 
 ### User Experience
 - **Streaming Responses**: Real-time token streaming for better UX and perceived performance
 - **File Management**: Upload, index, and manage documents through intuitive web UI
 - **Advanced Filtering**: Filter documents by source type, date, size, tags, and content type
 - **Performance Insights**: Real-time performance metrics and system health monitoring
+- **Multi-View Interface**: Table, grid, and list views for document management
+- **Bulk Operations**: Select and manage multiple documents simultaneously
 
 ## 🚀 Quick Start
 
@@ -246,9 +261,13 @@ CABIN_LOG_LEVEL=INFO
 - `POST /api/files/index` - Index uploaded files
 
 **Performance Monitoring**
-- `GET /api/performance/summary` - Performance statistics
-- `GET /api/performance/metrics` - Detailed request metrics
-- `GET /api/performance/vllm` - vLLM service metrics
+- `GET /api/performance/summary` - Performance statistics and trends
+- `GET /api/performance/metrics` - Detailed request metrics with filtering
+- `GET /api/performance/vllm` - vLLM service metrics and health status
+- `GET /api/performance/components` - Component-level performance breakdown
+- `GET /api/performance/trends` - Time-series performance data
+- `GET /api/query-router/stats` - Query routing statistics and configuration
+- `GET /api/conversations/stats` - Conversation memory statistics
 
 ### Request/Response Examples
 
@@ -323,11 +342,15 @@ CABIN_LOG_LEVEL=INFO
    npm test
    ```
 
-### Code Quality
+### Testing & Development Tools
 
-- **Backend**: Black, isort, mypy for Python code quality
-- **Frontend**: ESLint, TypeScript for JavaScript/React code quality
+- **Comprehensive Test Suite**: Unit tests for core functionality including deduplication and generation
+- **Code Quality Tools**:
+  - **Backend**: Black, isort, mypy for Python code quality
+  - **Frontend**: ESLint, TypeScript for JavaScript/React code quality
 - **Pre-commit Hooks**: Automated formatting and linting
+- **Development Server**: Hot-reload for both backend and frontend development
+- **Debug Endpoints**: Dedicated endpoints for troubleshooting and diagnostics
 
 ## 🚢 Deployment
 
