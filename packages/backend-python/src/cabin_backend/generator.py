@@ -50,7 +50,7 @@ class Generator:
                 conversation_id=conversation_id,
                 citations=[],
                 rendered_citations=[],
-                used_rag=True  # This was intended as RAG but failed
+                used_rag=False  # This was intended as RAG but failed
             )
 
         provenance, context_blocks = self._build_provenance_context(context_chunks)
@@ -84,7 +84,7 @@ class Generator:
                 conversation_id=conversation_id,
                 citations=[],
                 rendered_citations=[],
-                used_rag=True  # This was intended as RAG but failed
+                used_rag=False  # This was intended as RAG but failed
             )
 
         # Check if response looks like raw documentation (simple heuristic)
@@ -194,7 +194,7 @@ IMPORTANT: Always process information through your reasoning and provide a natur
                 conversation_id=conversation_id or "unknown",
                 citations=[],
                 rendered_citations=[],
-                used_rag=True  # This was RAG processing but failed
+                used_rag=False  # This was RAG processing but failed
             )
 
         cleaned = self._remove_free_urls(response.strip())
@@ -217,7 +217,7 @@ IMPORTANT: Always process information through your reasoning and provide a natur
                 conversation_id=conversation_id or "unknown",
                 citations=[],
                 rendered_citations=[],
-                used_rag=True  # This was RAG processing but failed
+                used_rag=False  # This was RAG processing but failed
             )
 
         seen: List[str] = []
@@ -305,7 +305,7 @@ IMPORTANT: Always process information through your reasoning and provide a natur
                 conversation_id=conversation_id or "unknown",
                 citations=[],
                 rendered_citations=[],
-                used_rag=True  # This was RAG processing but failed
+                used_rag=False  # This was RAG processing but failed
             )
 
         rendered = render_citation_payloads(citations)
