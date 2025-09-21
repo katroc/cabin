@@ -2,6 +2,73 @@
 
 import { useState, useEffect, useCallback } from 'react'
 
+// Import types from the PerformanceDashboard component
+interface PerformanceSummary {
+  total_requests: number
+  avg_total_duration_ms: number
+  avg_component_durations: Record<string, number>
+  rag_request_percentage: number
+  most_common_bottleneck?: string
+  slowest_component_avg?: string
+  time_period_start: string
+  time_period_end: string
+}
+
+interface ComponentStats {
+  avg_duration_ms: number
+  total_calls: number
+  success_rate: number
+  max_duration_ms: number
+  min_duration_ms: number
+}
+
+interface VLLMMetrics {
+  [serviceName: string]: {
+    num_requests_running: number
+    num_requests_waiting: number
+    num_requests_swapped: number
+    time_to_first_token_seconds: number
+    time_per_output_token_seconds: number
+    e2e_request_latency_seconds: number
+    prompt_tokens_total: number
+    generation_tokens_total: number
+    tokens_per_second: number
+    gpu_cache_usage_perc: number
+    gpu_memory_usage: number
+    model_name: string
+    timestamp: string
+    metrics_available: boolean
+  }
+}
+
+interface VLLMHealth {
+  [serviceName: string]: boolean
+}
+
+interface RAGPerformanceMetrics {
+  request_id: string
+  conversation_id: string
+  query: string
+  query_type: string
+  total_duration_ms: number
+  used_rag: boolean
+  num_context_chunks: number
+  routing_similarity_score?: number
+  routing_reason?: string
+  timestamp: string
+  user_agent?: string
+  filters_applied?: any
+  component_timings: ComponentTiming[]
+}
+
+interface ComponentTiming {
+  component: string
+  duration_ms: number
+  success: boolean
+  error_message?: string
+  metadata: Record<string, any>
+}
+
 // Types for our cached data
 interface CachedData<T> {
   data: T
@@ -15,11 +82,11 @@ interface PerformanceDashboardState {
   autoRefresh: boolean
 
   // Cached performance data (with TTL)
-  summary: CachedData<any> | null
-  componentStats: CachedData<any> | null
-  vllmMetrics: CachedData<any> | null
-  vllmHealth: CachedData<any> | null
-  recentMetrics: CachedData<any> | null
+  summary: CachedData<PerformanceSummary> | null
+  componentStats: CachedData<Record<string, ComponentStats>> | null
+  vllmMetrics: CachedData<VLLMMetrics> | null
+  vllmHealth: CachedData<VLLMHealth> | null
+  recentMetrics: CachedData<RAGPerformanceMetrics[]> | null
 }
 
 const STORAGE_KEY = 'cabin.performance-dashboard.v1'
@@ -118,39 +185,39 @@ export function usePerformanceDashboardState() {
   const isVllmHealthValid = useCallback(() => isCacheValid(vllmHealth), [vllmHealth])
   const isRecentMetricsValid = useCallback(() => isCacheValid(recentMetrics), [recentMetrics])
 
-  // Helper functions to get cached data (or null if invalid)
+  // Helper functions to get cached data (or default values if invalid)
   const getCachedSummary = useCallback(() => summary && isCacheValid(summary) ? summary.data : null, [summary])
-  const getCachedComponentStats = useCallback(() => componentStats && isCacheValid(componentStats) ? componentStats.data : null, [componentStats])
+  const getCachedComponentStats = useCallback(() => componentStats && isCacheValid(componentStats) ? componentStats.data : {}, [componentStats])
   const getCachedVllmMetrics = useCallback(() => vllmMetrics && isCacheValid(vllmMetrics) ? vllmMetrics.data : null, [vllmMetrics])
-  const getCachedVllmHealth = useCallback(() => vllmHealth && isCacheValid(vllmHealth) ? vllmHealth.data : null, [vllmHealth])
-  const getCachedRecentMetrics = useCallback(() => recentMetrics && isCacheValid(recentMetrics) ? recentMetrics.data : null, [recentMetrics])
+  const getCachedVllmHealth = useCallback(() => vllmHealth && isCacheValid(vllmHealth) ? vllmHealth.data : {}, [vllmHealth])
+  const getCachedRecentMetrics = useCallback(() => recentMetrics && isCacheValid(recentMetrics) ? recentMetrics.data : [], [recentMetrics])
 
   // Helper functions to cache new data
-  const cacheSummary = useCallback((data: any) => {
+  const cacheSummary = useCallback((data: PerformanceSummary) => {
     const cached = createCachedData(data)
     setSummary(cached)
     setStoredState({ summary: cached })
   }, [])
 
-  const cacheComponentStats = useCallback((data: any) => {
+  const cacheComponentStats = useCallback((data: Record<string, ComponentStats>) => {
     const cached = createCachedData(data)
     setComponentStats(cached)
     setStoredState({ componentStats: cached })
   }, [])
 
-  const cacheVllmMetrics = useCallback((data: any) => {
+  const cacheVllmMetrics = useCallback((data: VLLMMetrics) => {
     const cached = createCachedData(data)
     setVllmMetrics(cached)
     setStoredState({ vllmMetrics: cached })
   }, [])
 
-  const cacheVllmHealth = useCallback((data: any) => {
+  const cacheVllmHealth = useCallback((data: VLLMHealth) => {
     const cached = createCachedData(data)
     setVllmHealth(cached)
     setStoredState({ vllmHealth: cached })
   }, [])
 
-  const cacheRecentMetrics = useCallback((data: any) => {
+  const cacheRecentMetrics = useCallback((data: RAGPerformanceMetrics[]) => {
     const cached = createCachedData(data)
     setRecentMetrics(cached)
     setStoredState({ recentMetrics: cached })
