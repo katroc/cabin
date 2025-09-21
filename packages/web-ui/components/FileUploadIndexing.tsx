@@ -32,18 +32,12 @@ interface FileUploadIndexingProps {
 }
 
 export default function FileUploadIndexing({ isOpen, onClose, onBack }: FileUploadIndexingProps) {
-  const [mounted, setMounted] = useState(false)
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([])
   const [isDragOver, setIsDragOver] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
   const [jobs, setJobs] = useState<IndexingJob[]>([])
   const [isIndexing, setIsIndexing] = useState(false)
   const [uploadId, setUploadId] = useState<string | null>(null)
-
-  // Ensure this component only renders on the client
-  useEffect(() => {
-    setMounted(true)
-  }, [])
 
   // Supported file types
   const supportedTypes = [
@@ -282,8 +276,7 @@ export default function FileUploadIndexing({ isOpen, onClose, onBack }: FileUplo
     }
   }
 
-  // Don't render until mounted (prevents SSR issues)
-  if (!mounted || !isOpen) return null
+  if (!isOpen) return null
 
   return (
     <div className="fixed inset-0 z-50 flex">
