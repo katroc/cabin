@@ -143,31 +143,31 @@ export function usePerformanceDashboardState() {
   })
 
   // Cached data state
-  const [summary, setSummary] = useState<CachedData<any> | null>(() => {
+  const [summary, setSummary] = useState<CachedData<PerformanceSummary> | null>(() => {
     if (typeof window === 'undefined') return null
     const stored = getStoredState()
     return stored.summary && isCacheValid(stored.summary) ? stored.summary : null
   })
 
-  const [componentStats, setComponentStats] = useState<CachedData<any> | null>(() => {
+  const [componentStats, setComponentStats] = useState<CachedData<Record<string, ComponentStats>> | null>(() => {
     if (typeof window === 'undefined') return null
     const stored = getStoredState()
     return stored.componentStats && isCacheValid(stored.componentStats) ? stored.componentStats : null
   })
 
-  const [vllmMetrics, setVllmMetrics] = useState<CachedData<any> | null>(() => {
+  const [vllmMetrics, setVllmMetrics] = useState<CachedData<VLLMMetrics> | null>(() => {
     if (typeof window === 'undefined') return null
     const stored = getStoredState()
     return stored.vllmMetrics && isCacheValid(stored.vllmMetrics) ? stored.vllmMetrics : null
   })
 
-  const [vllmHealth, setVllmHealth] = useState<CachedData<any> | null>(() => {
+  const [vllmHealth, setVllmHealth] = useState<CachedData<VLLMHealth> | null>(() => {
     if (typeof window === 'undefined') return null
     const stored = getStoredState()
     return stored.vllmHealth && isCacheValid(stored.vllmHealth) ? stored.vllmHealth : null
   })
 
-  const [recentMetrics, setRecentMetrics] = useState<CachedData<any> | null>(() => {
+  const [recentMetrics, setRecentMetrics] = useState<CachedData<RAGPerformanceMetrics[]> | null>(() => {
     if (typeof window === 'undefined') return null
     const stored = getStoredState()
     return stored.recentMetrics && isCacheValid(stored.recentMetrics) ? stored.recentMetrics : null
@@ -184,13 +184,6 @@ export function usePerformanceDashboardState() {
   const isVllmMetricsValid = useCallback(() => isCacheValid(vllmMetrics), [vllmMetrics])
   const isVllmHealthValid = useCallback(() => isCacheValid(vllmHealth), [vllmHealth])
   const isRecentMetricsValid = useCallback(() => isCacheValid(recentMetrics), [recentMetrics])
-
-  // Helper functions to get cached data (or default values if invalid)
-  const getCachedSummary = useCallback(() => summary && isCacheValid(summary) ? summary.data : null, [summary])
-  const getCachedComponentStats = useCallback(() => componentStats && isCacheValid(componentStats) ? componentStats.data : {}, [componentStats])
-  const getCachedVllmMetrics = useCallback(() => vllmMetrics && isCacheValid(vllmMetrics) ? vllmMetrics.data : null, [vllmMetrics])
-  const getCachedVllmHealth = useCallback(() => vllmHealth && isCacheValid(vllmHealth) ? vllmHealth.data : {}, [vllmHealth])
-  const getCachedRecentMetrics = useCallback(() => recentMetrics && isCacheValid(recentMetrics) ? recentMetrics.data : [], [recentMetrics])
 
   // Helper functions to cache new data
   const cacheSummary = useCallback((data: PerformanceSummary) => {
@@ -246,12 +239,12 @@ export function usePerformanceDashboardState() {
     autoRefresh,
     setAutoRefresh: setAutoRefreshState,
 
-    // Cached data getters
-    summary: getCachedSummary(),
-    componentStats: getCachedComponentStats(),
-    vllmMetrics: getCachedVllmMetrics(),
-    vllmHealth: getCachedVllmHealth(),
-    recentMetrics: getCachedRecentMetrics(),
+    // Cached data getters (with real-time validation)
+    summary: summary && isCacheValid(summary) ? summary.data : null,
+    componentStats: componentStats && isCacheValid(componentStats) ? componentStats.data : {},
+    vllmMetrics: vllmMetrics && isCacheValid(vllmMetrics) ? vllmMetrics.data : null,
+    vllmHealth: vllmHealth && isCacheValid(vllmHealth) ? vllmHealth.data : {},
+    recentMetrics: recentMetrics && isCacheValid(recentMetrics) ? recentMetrics.data : [],
 
     // Cache validity checkers
     isSummaryValid: isSummaryValid(),
