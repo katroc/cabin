@@ -400,7 +400,7 @@ export default function DataSourceManagement({ isOpen, onClose, onBack }: DataSo
         <div className="p-6 overflow-y-auto h-full" onClick={(e) => e.stopPropagation()}>
           {/* Error Display */}
           {error && (
-            <div className="mb-6 p-4 ui-bg-error border border-[var(--error)] rounded-[var(--radius-md)]">
+            <div className="mb-6 p-4 ui-bg-error border border-[var(--error)] rounded-lg">
               <div className="flex items-center gap-2">
                 <AlertCircle className="w-4 h-4 text-[var(--error)]" />
                 <span className="text-sm font-medium text-[var(--error)]">Error</span>
@@ -414,21 +414,21 @@ export default function DataSourceManagement({ isOpen, onClose, onBack }: DataSo
             <div className="mb-6">
               <h3 className="text-lg font-semibold ui-text-primary mb-4">Overview</h3>
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <div className="p-4 ui-bg-tertiary border ui-border-faint rounded-[var(--radius-md)]">
+                <div className="p-4 ui-bg-tertiary border ui-border-faint rounded-lg">
                   <div className="flex items-center gap-2 mb-2">
                     <FileText className="w-4 h-4 ui-text-secondary" />
                     <span className="text-sm font-medium ui-text-secondary">Total Documents</span>
                   </div>
                   <div className="text-2xl font-bold ui-text-primary">{stats.total_documents}</div>
                 </div>
-                <div className="p-4 ui-bg-tertiary border ui-border-faint rounded-[var(--radius-md)]">
+                <div className="p-4 ui-bg-tertiary border ui-border-faint rounded-lg">
                   <div className="flex items-center gap-2 mb-2">
                     <Database className="w-4 h-4 ui-text-secondary" />
                     <span className="text-sm font-medium ui-text-secondary">Total Size</span>
                   </div>
                   <div className="text-2xl font-bold ui-text-primary">{formatFileSize(stats.total_size)}</div>
                 </div>
-                <div className="p-4 ui-bg-tertiary border ui-border-faint rounded-[var(--radius-md)]">
+                <div className="p-4 ui-bg-tertiary border ui-border-faint rounded-lg">
                   <div className="flex items-center gap-2 mb-2">
                     <Clock className="w-4 h-4 ui-text-secondary" />
                     <span className="text-sm font-medium ui-text-secondary">Last Updated</span>
@@ -437,7 +437,7 @@ export default function DataSourceManagement({ isOpen, onClose, onBack }: DataSo
                     {stats.last_updated ? new Date(stats.last_updated).toLocaleDateString() : 'Never'}
                   </div>
                 </div>
-                <div className="p-4 ui-bg-tertiary border ui-border-faint rounded-[var(--radius-md)]">
+                <div className="p-4 ui-bg-tertiary border ui-border-faint rounded-lg">
                   <div className="flex items-center gap-2 mb-2">
                     <CheckCircle className="w-4 h-4 ui-text-secondary" />
                     <span className="text-sm font-medium ui-text-secondary">Indexed</span>
@@ -463,8 +463,8 @@ export default function DataSourceManagement({ isOpen, onClose, onBack }: DataSo
 
 
           {/* Documents Header with Bulk Actions */}
-           <div className="flex items-center justify-between mb-4">
-             <div className="flex items-center gap-4">
+           <div className="flex items-center justify-between h-12 mb-4">
+             <div className="flex items-center gap-4 h-full">
                <h3 className="text-lg font-semibold ui-text-primary">
                  Documents ({pagination.totalItems})
                </h3>
@@ -477,7 +477,7 @@ export default function DataSourceManagement({ isOpen, onClose, onBack }: DataSo
                    setView({ ...view, itemsPerPage: newItemsPerPage })
                    setPagination({ ...pagination, currentPage: 1 })
                  }}
-                 className="px-3 py-1 text-sm border ui-border-light rounded-[var(--radius-sm)] ui-bg-secondary"
+                 className="px-3 py-2 text-sm border ui-border-light rounded-md ui-bg-secondary btn-standard"
                >
                  <option value={25}>25 per page</option>
                  <option value={50}>50 per page</option>
@@ -486,10 +486,10 @@ export default function DataSourceManagement({ isOpen, onClose, onBack }: DataSo
                </select>
 
                {/* View Toggle */}
-               <div className="flex items-center gap-1 p-1 ui-bg-secondary border ui-border-faint rounded-[var(--radius-md)]">
+               <div className="flex items-center gap-1 p-1 ui-bg-secondary border ui-border-faint rounded-lg h-9">
                  <button
                    onClick={() => setView({ ...view, type: 'table' })}
-                   className={`p-2 rounded-[var(--radius-sm)] transition-colors ${
+                   className={`p-2 rounded-md transition-colors h-7 w-7 flex items-center justify-center ${
                      view.type === 'table' ? 'ui-bg-tertiary' : 'hover:ui-bg-tertiary'
                    }`}
                    title="Table view"
@@ -498,7 +498,7 @@ export default function DataSourceManagement({ isOpen, onClose, onBack }: DataSo
                  </button>
                  <button
                    onClick={() => setView({ ...view, type: 'grid' })}
-                   className={`p-2 rounded-[var(--radius-sm)] transition-colors ${
+                   className={`p-2 rounded-md transition-colors h-7 w-7 flex items-center justify-center ${
                      view.type === 'grid' ? 'ui-bg-tertiary' : 'hover:ui-bg-tertiary'
                    }`}
                    title="Grid view"
@@ -507,7 +507,7 @@ export default function DataSourceManagement({ isOpen, onClose, onBack }: DataSo
                  </button>
                  <button
                    onClick={() => setView({ ...view, type: 'list' })}
-                   className={`p-2 rounded-[var(--radius-sm)] transition-colors ${
+                   className={`p-2 rounded-md transition-colors h-7 w-7 flex items-center justify-center ${
                      view.type === 'list' ? 'ui-bg-tertiary' : 'hover:ui-bg-tertiary'
                    }`}
                    title="List view"
@@ -518,13 +518,15 @@ export default function DataSourceManagement({ isOpen, onClose, onBack }: DataSo
              </div>
 
              {/* Bulk Actions in Documents Header */}
-             <BulkActions
-               selectedIds={Array.from(selection.selectedIds)}
-               actions={defaultBulkActions}
-               onActionComplete={handleBulkActionComplete}
-               hasSelection={selection.selectedIds.size > 0}
-               compact={true}
-             />
+             <div className="flex items-center h-full">
+               <BulkActions
+                 selectedIds={Array.from(selection.selectedIds)}
+                 actions={defaultBulkActions}
+                 onActionComplete={handleBulkActionComplete}
+                 hasSelection={selection.selectedIds.size > 0}
+                 compact={true}
+               />
+             </div>
            </div>
 
           {/* Document Display */}
@@ -597,14 +599,14 @@ export default function DataSourceManagement({ isOpen, onClose, onBack }: DataSo
                         }
                       }}
                       disabled={pagination.currentPage <= 1}
-                      className="px-3 py-1 text-sm border ui-border-light rounded-[var(--radius-sm)] hover:ui-bg-tertiary disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="px-3 py-1 text-sm border ui-border-light rounded-md hover:ui-bg-tertiary disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       Previous
                     </button>
 
                     <div className="flex items-center gap-1">
                       {Array.from({ length: Math.min(5, pagination.totalPages) }, (_, i) => {
-                        let pageNum
+                        let pageNum: number
                         if (pagination.totalPages <= 5) {
                           pageNum = i + 1
                         } else if (pagination.currentPage <= 3) {
@@ -619,7 +621,7 @@ export default function DataSourceManagement({ isOpen, onClose, onBack }: DataSo
                           <button
                             key={pageNum}
                             onClick={() => setPagination({ ...pagination, currentPage: pageNum })}
-                            className={`px-3 py-1 text-sm border rounded-[var(--radius-sm)] ${
+                            className={`px-3 py-1 text-sm border rounded-md ${
                               pagination.currentPage === pageNum
                                 ? 'ui-bg-tertiary border-[var(--accent)] ui-text-primary'
                                 : 'ui-border-light hover:ui-bg-tertiary'
@@ -639,7 +641,7 @@ export default function DataSourceManagement({ isOpen, onClose, onBack }: DataSo
                         }
                       }}
                       disabled={pagination.currentPage >= pagination.totalPages}
-                      className="px-3 py-1 text-sm border ui-border-light rounded-[var(--radius-sm)] hover:ui-bg-tertiary disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="px-3 py-1 text-sm border ui-border-light rounded-md hover:ui-bg-tertiary disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       Next
                     </button>

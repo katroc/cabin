@@ -89,7 +89,7 @@ export default function FilterBar({
                placeholder="Search documents by title, content, or metadata..."
                value={localFilters.search}
                onChange={(e) => updateFilters({ search: e.target.value })}
-               className="w-full pl-12 pr-4 py-2 border ui-border-light rounded-[var(--radius-md)] ui-bg-secondary focus:outline-none focus:ring-2 focus:ring-[var(--accent)] focus:border-transparent"
+               className="w-full !pl-12 pr-4 py-3 border ui-border-light rounded-lg ui-bg-secondary focus:outline-none focus:ring-2 focus:ring-[var(--accent)] focus:border-transparent btn-standard"
              />
             {localFilters.search && (
               <button
@@ -103,10 +103,10 @@ export default function FilterBar({
         </div>
 
         {/* Quick Filter Buttons */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
           <button
             onClick={() => setShowAdvanced(!showAdvanced)}
-            className={`btn-secondary btn-small ${showAdvanced ? 'ui-bg-tertiary' : ''}`}
+            className={`btn-secondary btn-small btn-standard ${showAdvanced ? 'ui-bg-tertiary' : ''}`}
           >
             <Filter className="w-4 h-4" />
             Advanced
@@ -116,7 +116,7 @@ export default function FilterBar({
           {hasActiveFilters() && (
             <button
               onClick={clearAllFilters}
-              className="btn-secondary btn-small"
+              className="btn-secondary btn-small btn-standard"
             >
               <X className="w-4 h-4" />
               Clear All
@@ -129,7 +129,7 @@ export default function FilterBar({
 
       {/* Advanced Filters */}
       {showAdvanced && (
-        <div className="p-4 ui-bg-secondary border ui-border-faint rounded-[var(--radius-md)] space-y-4">
+        <div className="p-4 ui-bg-secondary border ui-border-faint rounded-lg space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {/* Source Type Filter */}
             <div>
@@ -239,36 +239,30 @@ export default function FilterBar({
                 Date Range
               </label>
               <div className="space-y-2">
-                <div className="relative">
-                  <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 ui-text-muted" />
-                  <input
-                    type="date"
-                    placeholder="From date"
-                    value={localFilters.dateRange.from?.toISOString().split('T')[0] || ''}
-                    onChange={(e) => updateFilters({
-                      dateRange: {
-                        ...localFilters.dateRange,
-                        from: e.target.value ? new Date(e.target.value) : undefined
-                      }
-                    })}
-                    className="w-full pl-10 pr-4 py-2 text-sm border ui-border-light rounded-[var(--radius-sm)] ui-bg-tertiary"
-                  />
-                </div>
-                <div className="relative">
-                  <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 ui-text-muted" />
-                  <input
-                    type="date"
-                    placeholder="To date"
-                    value={localFilters.dateRange.to?.toISOString().split('T')[0] || ''}
-                    onChange={(e) => updateFilters({
-                      dateRange: {
-                        ...localFilters.dateRange,
-                        to: e.target.value ? new Date(e.target.value) : undefined
-                      }
-                    })}
-                    className="w-full pl-10 pr-4 py-2 text-sm border ui-border-light rounded-[var(--radius-sm)] ui-bg-tertiary"
-                  />
-                </div>
+                <input
+                  type="date"
+                  placeholder="From date"
+                  value={localFilters.dateRange.from?.toISOString().split('T')[0] || ''}
+                  onChange={(e) => updateFilters({
+                    dateRange: {
+                      ...localFilters.dateRange,
+                      from: e.target.value ? new Date(e.target.value) : undefined
+                    }
+                  })}
+                  className="w-full px-3 py-2 text-sm border ui-border-light rounded-md ui-bg-tertiary btn-small"
+                />
+                <input
+                  type="date"
+                  placeholder="To date"
+                  value={localFilters.dateRange.to?.toISOString().split('T')[0] || ''}
+                  onChange={(e) => updateFilters({
+                    dateRange: {
+                      ...localFilters.dateRange,
+                      to: e.target.value ? new Date(e.target.value) : undefined
+                    }
+                  })}
+                  className="w-full px-3 py-2 text-sm border ui-border-light rounded-md ui-bg-tertiary btn-small"
+                />
               </div>
             </div>
 
@@ -288,7 +282,7 @@ export default function FilterBar({
                       min: e.target.value ? parseInt(e.target.value) : undefined
                     }
                   })}
-                  className="w-full px-3 py-2 text-sm border ui-border-light rounded-[var(--radius-sm)] ui-bg-tertiary"
+                  className="w-full px-3 py-2 text-sm border ui-border-light rounded-md ui-bg-tertiary btn-small"
                 />
                 <input
                   type="number"
@@ -300,7 +294,7 @@ export default function FilterBar({
                       max: e.target.value ? parseInt(e.target.value) : undefined
                     }
                   })}
-                  className="w-full px-3 py-2 text-sm border ui-border-light rounded-[var(--radius-sm)] ui-bg-tertiary"
+                  className="w-full px-3 py-2 text-sm border ui-border-light rounded-md ui-bg-tertiary btn-small"
                 />
               </div>
             </div>

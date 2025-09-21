@@ -40,10 +40,10 @@ export default function BulkActions({ selectedIds, actions, onActionComplete, ha
   if (compact) {
     // Compact mode for header
     return (
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-3">
         {hasSelection && (
           <>
-            <div className="flex items-center gap-1 text-sm ui-text-muted">
+            <div className="flex items-center gap-2 text-sm ui-text-muted">
               <CheckCircle className="w-3 h-3 text-[var(--success)]" />
               <span>{selectedIds.length} selected</span>
             </div>
@@ -55,8 +55,8 @@ export default function BulkActions({ selectedIds, actions, onActionComplete, ha
                 onClick={() => handleAction(action)}
                 disabled={executingAction !== null || selectedIds.length === 0}
                 className={`
-                  inline-flex items-center gap-1 px-2 py-1 rounded-[var(--radius-sm)]
-                  transition-all duration-200 text-xs
+                  inline-flex items-center gap-2 px-3 py-2 rounded-md
+                  transition-all duration-200 text-sm btn-small
                   ${action.id === 'delete'
                     ? 'ui-bg-tertiary border border-[var(--error)] text-[var(--error)] hover:bg-[var(--error)] hover:text-white'
                     : 'btn-primary'
@@ -82,7 +82,7 @@ export default function BulkActions({ selectedIds, actions, onActionComplete, ha
                 <button
                   onClick={() => setShowDropdown(!showDropdown)}
                   disabled={executingAction !== null || selectedIds.length === 0}
-                  className={`inline-flex items-center gap-1 px-2 py-1 btn-secondary rounded-[var(--radius-sm)] text-xs ${
+                  className={`inline-flex items-center gap-2 px-3 py-2 btn-secondary rounded-md text-sm btn-small ${
                     executingAction !== null || selectedIds.length === 0
                       ? 'opacity-50 cursor-not-allowed'
                       : 'hover:ui-bg-tertiary'
@@ -134,8 +134,8 @@ export default function BulkActions({ selectedIds, actions, onActionComplete, ha
   return (
     <div className={`transition-all duration-300 ease-in-out ${
       hasSelection
-        ? 'p-4 ui-bg-tertiary border ui-border-faint rounded-[var(--radius-md)]'
-        : 'p-2 ui-bg-secondary border ui-border-faint rounded-[var(--radius-sm)] opacity-60'
+        ? 'p-4 ui-bg-tertiary border ui-border-faint rounded-lg'
+        : 'p-2 ui-bg-secondary border ui-border-faint rounded-md opacity-60'
     }`}>
       {hasSelection ? (
         <>
@@ -155,8 +155,8 @@ export default function BulkActions({ selectedIds, actions, onActionComplete, ha
                   onClick={() => handleAction(action)}
                   disabled={executingAction !== null || selectedIds.length === 0}
                   className={`
-                    inline-flex items-center gap-2 px-3 py-2 rounded-[var(--radius-sm)]
-                    transition-all duration-200 text-sm
+                    inline-flex items-center gap-2 px-3 py-2 rounded-md
+                    transition-all duration-200 text-sm btn-standard
                     ${action.id === 'delete'
                       ? 'ui-bg-tertiary border border-[var(--error)] text-[var(--error)] hover:bg-[var(--error)] hover:text-white'
                       : 'btn-primary'
@@ -182,7 +182,7 @@ export default function BulkActions({ selectedIds, actions, onActionComplete, ha
                   <button
                     onClick={() => setShowDropdown(!showDropdown)}
                     disabled={executingAction !== null || selectedIds.length === 0}
-                    className={`inline-flex items-center gap-2 px-3 py-2 btn-secondary rounded-[var(--radius-sm)] text-sm ${
+                    className={`inline-flex items-center gap-2 px-3 py-2 btn-secondary rounded-md text-sm btn-standard ${
                       executingAction !== null || selectedIds.length === 0
                         ? 'opacity-50 cursor-not-allowed'
                         : 'hover:ui-bg-tertiary'
@@ -198,7 +198,7 @@ export default function BulkActions({ selectedIds, actions, onActionComplete, ha
                         className="fixed inset-0 z-10"
                         onClick={() => setShowDropdown(false)}
                       />
-                      <div className="absolute right-0 top-full mt-1 w-48 ui-bg-secondary border ui-border-faint rounded-[var(--radius-md)] shadow-lg z-20">
+                      <div className="absolute right-0 top-full mt-1 w-48 ui-bg-secondary border ui-border-faint rounded-lg shadow-lg z-20">
                         {secondaryActions.map((action) => (
                           <button
                             key={action.id}

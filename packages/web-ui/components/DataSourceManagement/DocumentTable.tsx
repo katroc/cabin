@@ -93,7 +93,7 @@ export default function DocumentTable({
 
   return (
     <div className="overflow-x-auto">
-      <table className="w-full">
+      <table className="w-full table-fixed">
         <thead>
           <tr className="border-b ui-border-light">
             <th className="w-12 p-3">
@@ -107,7 +107,7 @@ export default function DocumentTable({
                 className="rounded"
               />
             </th>
-            <th className="text-left p-3">
+            <th className="text-left p-3 w-64">
               <button
                 onClick={() => handleSort('title')}
                 className="flex items-center gap-2 hover:ui-text-primary transition-colors"
@@ -116,7 +116,7 @@ export default function DocumentTable({
                 {getSortIcon('title')}
               </button>
             </th>
-            <th className="text-left p-3">
+            <th className="text-left p-3 w-32">
               <button
                 onClick={() => handleSort('source_type')}
                 className="flex items-center gap-2 hover:ui-text-primary transition-colors"
@@ -125,7 +125,7 @@ export default function DocumentTable({
                 {getSortIcon('source_type')}
               </button>
             </th>
-            <th className="text-left p-3">
+            <th className="text-left p-3 w-20">
               <button
                 onClick={() => handleSort('file_size')}
                 className="flex items-center gap-2 hover:ui-text-primary transition-colors"
@@ -134,7 +134,7 @@ export default function DocumentTable({
                 {getSortIcon('file_size')}
               </button>
             </th>
-            <th className="text-left p-3">
+            <th className="text-left p-3 w-20">
               <button
                 onClick={() => handleSort('page_count')}
                 className="flex items-center gap-2 hover:ui-text-primary transition-colors"
@@ -143,7 +143,7 @@ export default function DocumentTable({
                 {getSortIcon('page_count')}
               </button>
             </th>
-            <th className="text-left p-3">
+            <th className="text-left p-3 w-24">
               <button
                 onClick={() => handleSort('status')}
                 className="flex items-center gap-2 hover:ui-text-primary transition-colors"
@@ -152,7 +152,7 @@ export default function DocumentTable({
                 {getSortIcon('status')}
               </button>
             </th>
-            <th className="text-left p-3">
+            <th className="text-left p-3 w-28">
               <button
                 onClick={() => handleSort('last_modified')}
                 className="flex items-center gap-2 hover:ui-text-primary transition-colors"
@@ -185,11 +185,11 @@ export default function DocumentTable({
               </td>
               <td className="p-3">
                 <div className="flex items-center gap-3">
-                  <div className="p-2 ui-bg-secondary rounded-[var(--radius-sm)]">
+                  <div className="p-2 ui-bg-secondary rounded-md flex-shrink-0">
                     {getSourceIcon(doc.source_type)}
                   </div>
                   <div className="min-w-0 flex-1">
-                    <div className="font-medium ui-text-primary text-sm truncate">
+                    <div className="font-medium ui-text-primary text-sm break-words line-clamp-2">
                       {doc.title}
                     </div>
                     {doc.content_type && (

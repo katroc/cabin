@@ -854,6 +854,12 @@ input::placeholder, textarea::placeholder {
   font-size: var(--text-xs);
   padding: var(--space-1) var(--space-2);
   border-radius: var(--radius-sm);
+  height: 28px; /* h-7 equivalent - consistent small button height */
+}
+
+/* Standard button height for consistent alignment */
+.btn-standard {
+  height: 36px; /* h-9 equivalent - consistent standard button height */
 }
 
 /* Accent button styling */
@@ -1045,6 +1051,16 @@ input[type="checkbox"] {
 
 .tag-remove:hover {
   color: var(--accent);
+}
+
+/* Line clamping utility for table text wrapping */
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  line-height: 1.4;
+  max-height: calc(1.4em * 2);
 }
 
 /* Responsive design */

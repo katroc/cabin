@@ -171,7 +171,7 @@ export default function SettingsDrawer({ isOpen, onClose, settings, onSave }: Se
           </button>
         </div>
 
-        <div className="p-6 overflow-y-auto flex-1 min-h-0">
+        <div className="p-6 overflow-y-auto flex-1 min-h-0" onClick={(e) => e.stopPropagation()}>
           {/* LLM Provider */}
           <div className="form-section first:pt-0">
             <h3 className="form-section-title ui-text-secondary text-sm uppercase tracking-wide">LLM Provider</h3>
