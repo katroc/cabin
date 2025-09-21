@@ -133,7 +133,7 @@ export default function ChatInterface({
       abortControllerRef.current = null
       return aggregated
     },
-    [updateAssistantMessage, chatMode]
+    [chatMode]
   )
 
   const requestFullResponse = useCallback(async (prompt: string) => {
@@ -442,8 +442,10 @@ export default function ChatInterface({
                 >
                   {/* Sliding background indicator */}
                   <div
-                    className={`absolute top-1 bottom-1 w-1/2 rounded-full transition-all duration-200 ease-in-out ${
-                      chatMode === 'rag' ? 'left-1 bg-[var(--accent)]' : 'left-1/2 bg-orange-500'
+                    className={`absolute top-1 bottom-1 rounded-full transition-all duration-200 ease-in-out ${
+                      chatMode === 'rag'
+                        ? 'left-1 right-1/2 bg-[var(--accent)]'
+                        : 'left-1/2 right-1 bg-orange-500'
                     }`}
                   />
 

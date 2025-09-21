@@ -174,9 +174,8 @@ export default function Home() {
       console.warn('Failed to hydrate stored conversations:', error)
     }
 
-    const fallback = createDefaultConversation()
-    setConversations([fallback])
-    setActiveConversationId(fallback.id)
+    setConversations([])
+    setActiveConversationId(null)
     setIsHydrated(true)
   }, [])
 
@@ -419,12 +418,34 @@ export default function Home() {
           />
         </div>
         <div className="relative h-full overflow-hidden min-h-0">
-          <ChatInterface
-            conversation={activeConversation}
-            onMessagesChange={setActiveConversationMessages}
-            onDownloadConversation={handleDownloadConversation}
-            onConversationTitleChange={handleConversationTitleUpdate}
-          />
+          {conversations.length === 0 ? (
+            // Empty state when no conversations exist
+            <div className="flex flex-col items-center justify-center h-full p-8">
+              <div className="max-w-md text-center">
+                <MessageSquare className="w-16 h-16 mx-auto mb-6 ui-text-muted" />
+                <h3 className="text-xl font-semibold ui-text-primary mb-2">
+                  Welcome to Cabin
+                </h3>
+                <p className="ui-text-secondary mb-6">
+                  Start your first conversation to begin chatting with your documents or get direct AI assistance.
+                </p>
+                <button
+                  onClick={handleNewConversation}
+                  className="inline-flex items-center gap-2 px-6 py-3 bg-[var(--accent)] text-white rounded-lg font-medium hover:bg-[var(--accent-hover)] transition-colors ui-shadow-elevated"
+                >
+                  <MessageSquare className="w-4 h-4" />
+                  Start Your First Conversation
+                </button>
+              </div>
+            </div>
+          ) : (
+            <ChatInterface
+              conversation={activeConversation}
+              onMessagesChange={setActiveConversationMessages}
+              onDownloadConversation={handleDownloadConversation}
+              onConversationTitleChange={handleConversationTitleUpdate}
+            />
+          )}
         </div>
 
         {isSidebarOpen && (
