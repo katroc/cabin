@@ -143,7 +143,7 @@ export default function DataSourceSelector({ isOpen, onClose }: DataSourceSelect
           </div>
         </div>
 
-        <div className="p-6 overflow-y-auto h-full">
+        <div className="p-6 overflow-y-auto h-full" onClick={(e) => e.stopPropagation()}>
           {/* Introduction */}
           <div className="mb-8">
             <h3 className="text-lg font-semibold ui-text-primary mb-2">Add New Data Source</h3>
