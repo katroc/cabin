@@ -6,6 +6,7 @@ import numpy as np
 from urllib.parse import urlparse
 from pathlib import Path
 from collections import defaultdict
+from datetime import datetime
 
 from fastapi import FastAPI, HTTPException, File, UploadFile, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -809,9 +810,38 @@ def cancel_indexing_job(job_id: str) -> dict:
 class DeleteDocumentsRequest(BaseModel):
     document_ids: List[str]
 
+class DocumentsQueryParams(BaseModel):
+    search: Optional[str] = None
+    source_types: Optional[str] = None  # Comma-separated list
+    statuses: Optional[str] = None    # Comma-separated list
+    date_from: Optional[str] = None
+    date_to: Optional[str] = None
+    size_min: Optional[int] = None
+    size_max: Optional[int] = None
+    tags: Optional[str] = None        # Comma-separated list
+    content_types: Optional[str] = None  # Comma-separated list
+    sort_field: str = "last_modified"
+    sort_direction: str = "desc"
+    limit: int = 50
+    offset: int = 0
+
 @app.get("/api/data-sources/documents")
-def get_indexed_documents() -> dict:
-    """Get list of indexed documents."""
+def get_indexed_documents(
+    search: Optional[str] = None,
+    source_types: Optional[str] = None,
+    statuses: Optional[str] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    size_min: Optional[int] = None,
+    size_max: Optional[int] = None,
+    tags: Optional[str] = None,
+    content_types: Optional[str] = None,
+    sort_field: str = "last_modified",
+    sort_direction: str = "desc",
+    limit: int = 50,
+    offset: int = 0
+) -> dict:
+    """Get list of indexed documents with filtering, sorting, and pagination."""
     if not vector_store_service:
         raise HTTPException(status_code=503, detail="Vector store not available.")
 
@@ -827,22 +857,141 @@ def get_indexed_documents() -> dict:
                 doc_id = metadata.get("document_id")
                 if doc_id:
                     if doc_id not in documents_by_id:
+                        # Get source type from metadata, with fallback logic
+                        source_type = metadata.get("source_type", "unknown")
+                        if source_type == "confluence":
+                            source_type = "confluence"
+                        elif source_type == "unknown" and metadata.get("space_key"):
+                            # Fallback: if we have space_key but no source_type, it's likely Confluence
+                            source_type = "confluence"
+
                         documents_by_id[doc_id] = {
                             "id": doc_id,
-                            "title": metadata.get("page_title", "Untitled"),
-                            "source_type": metadata.get("source_type", "unknown"),
-                            "source_url": metadata.get("source_url", ""),
+                            "title": metadata.get("page_title", metadata.get("title", "Untitled")),
+                            "source_type": source_type,
+                            "source_url": metadata.get("source_url", metadata.get("url", "")),
                             "last_modified": metadata.get("last_modified"),
                             "file_size": metadata.get("file_size"),
                             "page_count": metadata.get("page_count"),
                             "status": "indexed",
-                            "chunk_count": 0
+                            "chunk_count": 0,
+                            "content_type": metadata.get("content_type"),
+                            "tags": metadata.get("tags", metadata.get("labels", [])) or [],
+                            "metadata": {
+                                "author": metadata.get("author", metadata.get("created_by", "")),
+                                "created_date": metadata.get("created_date"),
+                                "description": metadata.get("description"),
+                                "keywords": metadata.get("keywords", []),
+                                "language": metadata.get("language"),
+                                "space_key": metadata.get("space_key"),
+                                "space_name": metadata.get("space_name")
+                            }
                         }
                     documents_by_id[doc_id]["chunk_count"] += 1
 
         documents = list(documents_by_id.values())
 
-        return {"documents": documents}
+        # Apply filters
+        if search or source_types or statuses or date_from or date_to or size_min or size_max or tags or content_types:
+            filtered_documents = []
+
+            # Parse comma-separated filter lists
+            source_types_list = source_types.split(',') if source_types else []
+            statuses_list = statuses.split(',') if statuses else []
+            tags_list = tags.split(',') if tags else []
+            content_types_list = content_types.split(',') if content_types else []
+
+            for doc in documents:
+                # Search filter
+                if search:
+                    search_term = search.lower()
+                    matches_search = (
+                        search_term in doc["title"].lower() or
+                        search_term in doc.get("content_type", "").lower() or
+                        search_term in doc["source_type"].lower()
+                    )
+                    if not matches_search:
+                        continue
+
+                # Source type filter
+                if source_types_list and doc["source_type"] not in source_types_list:
+                    continue
+
+                # Status filter
+                if statuses_list and doc["status"] not in statuses_list:
+                    continue
+
+                # Date range filter
+                if date_from or date_to:
+                    doc_date = doc.get("last_modified")
+                    if doc_date:
+                        doc_date_obj = None
+                        try:
+                            doc_date_obj = datetime.fromisoformat(doc_date.replace('Z', '+00:00'))
+                        except:
+                            try:
+                                doc_date_obj = datetime.strptime(doc_date, '%Y-%m-%dT%H:%M:%S.%f')
+                            except:
+                                pass
+
+                        if doc_date_obj:
+                            if date_from and doc_date_obj < datetime.fromisoformat(date_from):
+                                continue
+                            if date_to and doc_date_obj > datetime.fromisoformat(date_to):
+                                continue
+
+                # Size range filter
+                if size_min is not None and (not doc.get("file_size") or doc["file_size"] < size_min):
+                    continue
+                if size_max is not None and (not doc.get("file_size") or doc["file_size"] > size_max):
+                    continue
+
+                # Tags filter
+                if tags_list and not any(tag in (doc.get("tags", []) or []) for tag in tags_list):
+                    continue
+
+                # Content type filter
+                if content_types_list and doc.get("content_type") not in content_types_list:
+                    continue
+
+                filtered_documents.append(doc)
+
+            documents = filtered_documents
+
+        # Sort documents
+        def sort_key(doc):
+            if sort_field == "title":
+                return doc["title"].lower()
+            elif sort_field == "source_type":
+                return doc["source_type"]
+            elif sort_field == "file_size":
+                return doc.get("file_size", 0)
+            elif sort_field == "page_count":
+                return doc.get("page_count", 0)
+            elif sort_field == "status":
+                return doc["status"]
+            elif sort_field == "last_modified":
+                return doc.get("last_modified", "")
+            elif sort_field == "last_indexed":
+                return doc.get("last_indexed", "")
+            else:
+                return doc.get("last_modified", "")
+
+        documents.sort(key=sort_key, reverse=(sort_direction == "desc"))
+
+        # Apply pagination
+        total_documents = len(documents)
+        start_idx = offset
+        end_idx = offset + limit
+        paginated_documents = documents[start_idx:end_idx]
+
+        return {
+            "documents": paginated_documents,
+            "total": total_documents,
+            "offset": offset,
+            "limit": limit,
+            "has_more": end_idx < total_documents
+        }
     except Exception as e:
         print(f"Error getting indexed documents: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to get indexed documents: {e}")
@@ -862,6 +1011,12 @@ def get_data_source_stats() -> dict:
         total_size = 0
         sources = {}
         last_updated = None
+        status_distribution = {
+            "indexed": 0,
+            "error": 0,
+            "processing": 0,
+            "pending": 0
+        }
 
         metadatas = results.get("metadatas", [])
         if metadatas:
@@ -883,7 +1038,8 @@ def get_data_source_stats() -> dict:
                         sources[source_type] = {
                             "count": 0,
                             "size": 0,
-                            "last_updated": None
+                            "last_updated": None,
+                            "status": "active"
                         }
 
                     sources[source_type]["count"] += 1
@@ -898,11 +1054,17 @@ def get_data_source_stats() -> dict:
                         if not sources[source_type]["last_updated"] or doc_last_modified > sources[source_type]["last_updated"]:
                             sources[source_type]["last_updated"] = doc_last_modified
 
+                    # Track status distribution
+                    status = metadata.get("status", "indexed")
+                    if status in status_distribution:
+                        status_distribution[status] += 1
+
         return {
             "total_documents": total_documents,
             "total_size": total_size,
             "last_updated": last_updated,
-            "sources": sources
+            "sources": sources,
+            "status_distribution": status_distribution
         }
     except Exception as e:
         print(f"Error getting data source stats: {e}")
