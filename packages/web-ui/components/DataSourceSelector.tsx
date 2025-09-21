@@ -123,7 +123,7 @@ export default function DataSourceSelector({ isOpen, onClose }: DataSourceSelect
     <div className="drawer-overlay" onClick={onClose}>
       <div className="drawer-panel fixed right-0 top-0 h-full w-full max-w-2xl overflow-hidden">
         {/* Header */}
-        <div className="drawer-header">
+        <div className="drawer-header" onClick={(e) => e.stopPropagation()}>
           <div className="drawer-title">
             <Database className="w-5 h-5 ui-text-secondary" />
             Data Sources

@@ -283,7 +283,7 @@ export default function FileUploadIndexing({ isOpen, onClose, onBack }: FileUplo
       <div className="drawer-overlay" onClick={onClose} />
       <div className="drawer-panel fixed left-0 top-0 h-full w-full max-w-2xl flex flex-col">
         {/* Header */}
-        <div className="drawer-header ui-bg-secondary border-b ui-border-faint flex-shrink-0">
+        <div className="drawer-header ui-bg-secondary border-b ui-border-faint flex-shrink-0" onClick={(e) => e.stopPropagation()}>
           <div className="flex items-center gap-3">
             {onBack && (
               <button onClick={onBack} className="btn-close">

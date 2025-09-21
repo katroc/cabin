@@ -273,7 +273,7 @@ export default function ConfluenceIndexing({ isOpen, onClose, onBack }: Confluen
       <div className="drawer-overlay" onClick={onClose} />
       <div className="drawer-panel fixed left-0 top-0 h-full w-full max-w-2xl overflow-y-auto">
         {/* Header */}
-        <div className="drawer-header ui-bg-secondary border-b ui-border-faint">
+        <div className="drawer-header ui-bg-secondary border-b ui-border-faint" onClick={(e) => e.stopPropagation()}>
           <div className="flex items-center gap-3">
             {onBack && (
               <button onClick={onBack} className="btn-close">
