@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useCallback, useEffect } from 'react'
-import { Upload, File, Trash2, Play, CheckCircle, AlertCircle, Clock, X } from 'lucide-react'
+import { Upload, File, Trash2, Play, CheckCircle, AlertCircle, Clock, X, ArrowLeft, FolderUp, FileUp } from 'lucide-react'
 
 interface UploadedFile {
   file: File
@@ -90,7 +90,8 @@ export default function FileUploadIndexing({ isOpen, onClose }: FileUploadIndexi
 
       if (unsupportedFiles.length > 0) {
         setTimeout(() => {
-          alert(`${unsupportedFiles.length} files were skipped (unsupported format). Supported: ${supportedTypes.join(', ')}`)
+          // Use a more user-friendly notification instead of alert
+          console.warn(`${unsupportedFiles.length} files were skipped (unsupported format). Supported: ${supportedTypes.join(', ')}`)
         }, 100)
       }
 
@@ -100,7 +101,8 @@ export default function FileUploadIndexing({ isOpen, onClose }: FileUploadIndexi
 
       if (oversizedFiles.length > 0) {
         setTimeout(() => {
-          alert(`${oversizedFiles.length} files were skipped (over 50MB limit)`)
+          // Use a more user-friendly notification instead of alert
+          console.warn(`${oversizedFiles.length} files were skipped (over 50MB limit)`)
         }, 200)
       }
 
@@ -263,10 +265,19 @@ export default function FileUploadIndexing({ isOpen, onClose }: FileUploadIndexi
 
   const getStatusIcon = (status: string) => {
     switch (status) {
-      case 'completed': return <CheckCircle className="w-4 h-4 text-green-500" />
-      case 'failed': return <AlertCircle className="w-4 h-4 text-red-500" />
-      case 'running': return <Clock className="w-4 h-4 text-blue-500 animate-spin" />
-      default: return <Clock className="w-4 h-4 text-gray-500" />
+      case 'completed': return <CheckCircle className="w-4 h-4 text-[var(--success)]" />
+      case 'failed': return <AlertCircle className="w-4 h-4 text-[var(--error)]" />
+      case 'running': return <Clock className="w-4 h-4 text-[var(--accent)] animate-spin" />
+      default: return <Clock className="w-4 h-4 ui-text-muted" />
+    }
+  }
+
+  const getFileStatusIcon = (status: string) => {
+    switch (status) {
+      case 'uploaded': return <CheckCircle className="w-4 h-4 text-[var(--success)]" />
+      case 'failed': return <AlertCircle className="w-4 h-4 text-[var(--error)]" />
+      case 'uploading': return <Clock className="w-4 h-4 text-[var(--accent)] animate-spin" />
+      default: return null
     }
   }
 
@@ -274,147 +285,203 @@ export default function FileUploadIndexing({ isOpen, onClose }: FileUploadIndexi
   if (!mounted || !isOpen) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden">
+    <div className="fixed inset-0 z-50 flex">
+      <div className="drawer-overlay" onClick={onClose} />
+      <div className="drawer-panel relative ml-auto h-full w-full max-w-4xl overflow-y-auto">
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b dark:border-gray-700">
-          <div className="flex items-center space-x-3">
-            <Upload className="w-6 h-6 text-blue-500" />
-            <h2 className="text-xl font-semibold">File Upload & Indexing</h2>
-          </div>
-          <button
-            onClick={onClose}
-            className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
-          >
-            <X className="w-5 h-5" />
+        <div className="drawer-header ui-bg-secondary border-b ui-border-faint">
+          <h2 className="drawer-title ui-text-primary">
+            <Upload className="w-5 h-5" />
+            File Upload & Indexing
+          </h2>
+          <button onClick={onClose} className="btn-close">
+            <X className="w-4 h-4" />
           </button>
         </div>
 
-        <div className="p-6 overflow-y-auto max-h-[calc(90vh-80px)]">
-          {/* Upload Area */}
+        <div className="p-6 overflow-y-auto h-full">
+          {/* Introduction */}
           <div className="mb-8">
-            <h3 className="text-lg font-medium mb-4">Upload Files</h3>
+            <h3 className="text-lg font-semibold ui-text-primary mb-2">Upload Documents</h3>
+            <p className="ui-text-secondary text-sm mb-6">
+              Upload your documents to make them searchable. Supported formats include PDF, DOCX, Markdown, HTML, TXT, and CSV files.
+            </p>
 
+            {/* Upload Drop Zone */}
             <div
-              className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
-                isDragOver
-                  ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
-                  : 'border-gray-300 dark:border-gray-600 hover:border-blue-400'
-              }`}
+              className={`
+                border-2 border-dashed rounded-[var(--radius-lg)] p-8 text-center transition-all duration-200
+                ${isDragOver
+                  ? 'border-[var(--accent)] ui-bg-tertiary'
+                  : 'ui-border-light hover:border-[var(--accent)] hover:ui-bg-tertiary'
+                }
+              `}
               onDragOver={handleDragOver}
               onDragLeave={handleDragLeave}
               onDrop={handleDrop}
             >
-              <Upload className="w-12 h-12 mx-auto mb-4 text-gray-400" />
-              <div className="mb-2">
-                <span className="text-lg">Drop files here or </span>
-                <label className="text-blue-500 hover:text-blue-600 cursor-pointer underline">
-                  browse files
-                  <input
-                    type="file"
-                    multiple
-                    className="hidden"
-                    onChange={handleFileSelect}
-                    accept={supportedTypes.join(',')}
-                  />
-                </label>
-              </div>
-              <p className="text-sm text-gray-500">
-                Supported: PDF, DOCX, Markdown, HTML, TXT, CSV (max 50MB each)
-              </p>
-            </div>
-
-            {uploadedFiles.length > 0 && (
-              <div className="mt-4">
-                <div className="flex items-center justify-between mb-3">
-                  <span className="text-sm font-medium">{uploadedFiles.length} files selected</span>
-                  <button
-                    onClick={clearAllFiles}
-                    className="text-sm text-red-500 hover:text-red-600"
-                  >
-                    Clear all
-                  </button>
+              <div className="flex flex-col items-center">
+                <div className="p-4 ui-bg-secondary rounded-[var(--radius-md)] mb-4">
+                  <FolderUp className="w-8 h-8 ui-text-secondary" />
                 </div>
+                <div className="mb-3">
+                  <span className="text-base ui-text-primary">Drop files here or </span>
+                  <label className="text-[var(--accent)] hover:text-[var(--accent-hover)] cursor-pointer font-medium underline decoration-2 underline-offset-2">
+                    browse files
+                    <input
+                      type="file"
+                      multiple
+                      className="hidden"
+                      onChange={handleFileSelect}
+                      accept={supportedTypes.join(',')}
+                    />
+                  </label>
+                </div>
+                <div className="flex flex-wrap gap-2 justify-center text-xs ui-text-muted">
+                  <span className="px-2 py-1 ui-bg-secondary rounded-[var(--radius-sm)]">PDF</span>
+                  <span className="px-2 py-1 ui-bg-secondary rounded-[var(--radius-sm)]">DOCX</span>
+                  <span className="px-2 py-1 ui-bg-secondary rounded-[var(--radius-sm)]">Markdown</span>
+                  <span className="px-2 py-1 ui-bg-secondary rounded-[var(--radius-sm)]">HTML</span>
+                  <span className="px-2 py-1 ui-bg-secondary rounded-[var(--radius-sm)]">TXT</span>
+                  <span className="px-2 py-1 ui-bg-secondary rounded-[var(--radius-sm)]">CSV</span>
+                </div>
+                <p className="text-xs ui-text-muted mt-2">Maximum file size: 50MB</p>
+                {uploadedFiles.length === 0 && (
+                  <p className="text-xs ui-text-muted mt-1">
+                    Files will be processed and indexed for search
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
 
-                <div className="space-y-2 max-h-40 overflow-y-auto">
-                  {uploadedFiles.map(({ file, id, name, size, status, error }) => (
-                    <div key={id} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
-                      <div className="flex items-center space-x-3 flex-1 min-w-0">
-                        <File className="w-4 h-4 text-blue-500 flex-shrink-0" />
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium truncate">{name}</p>
-                          <p className="text-xs text-gray-500">{formatFileSize(size)}</p>
-                          {error && <p className="text-xs text-red-500">{error}</p>}
-                        </div>
+          {/* File List */}
+          {uploadedFiles.length > 0 && (
+            <div className="form-section">
+              <div className="flex items-center justify-between mb-4">
+                <h4 className="form-section-title">
+                  Selected Files ({uploadedFiles.length})
+                </h4>
+                <button
+                  onClick={clearAllFiles}
+                  className="btn-secondary btn-small text-[var(--error)]"
+                >
+                  <Trash2 className="w-3 h-3" />
+                  Clear All
+                </button>
+              </div>
+
+              <div className="space-y-3 max-h-60 overflow-y-auto mb-6">
+                {uploadedFiles.map(({ file, id, name, size, status, error }) => (
+                  <div key={id} className="p-4 ui-bg-secondary border ui-border-faint rounded-[var(--radius-md)]">
+                    <div className="flex items-start gap-3">
+                      <div className="p-2 ui-bg-tertiary rounded-[var(--radius-sm)]">
+                        <FileUp className="w-4 h-4 ui-text-secondary" />
                       </div>
-                      <div className="flex items-center space-x-2">
-                        {status === 'uploaded' && <CheckCircle className="w-4 h-4 text-green-500" />}
-                        {status === 'failed' && <AlertCircle className="w-4 h-4 text-red-500" />}
-                        {status === 'uploading' && <Clock className="w-4 h-4 text-blue-500 animate-spin" />}
-                        <button
-                          onClick={() => removeFile(id)}
-                          className="p-1 text-gray-400 hover:text-red-500"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between gap-2">
+                          <h5 className="font-medium ui-text-primary text-sm truncate">{name}</h5>
+                          <div className="flex items-center gap-2">
+                            {getFileStatusIcon(status)}
+                            <button
+                              onClick={() => removeFile(id)}
+                              className="p-1 ui-text-muted hover:text-[var(--error)] transition-colors"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </button>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-3 mt-1">
+                          <span className="text-xs ui-text-muted">{formatFileSize(size)}</span>
+                          {status === 'uploading' && (
+                            <span className="text-xs text-[var(--accent)]">Uploading...</span>
+                          )}
+                          {status === 'uploaded' && (
+                            <span className="text-xs text-[var(--success)]">Uploaded</span>
+                          )}
+                          {status === 'failed' && (
+                            <span className="text-xs text-[var(--error)]">Failed</span>
+                          )}
+                        </div>
+                        {error && (
+                          <p className="text-xs text-[var(--error)] mt-1 p-2 ui-bg-tertiary rounded-[var(--radius-sm)]">
+                            {error}
+                          </p>
+                        )}
                       </div>
                     </div>
-                  ))}
-                </div>
-
-                <div className="mt-4 flex space-x-3">
-                  {!uploadId && (
-                    <button
-                      onClick={uploadFiles}
-                      disabled={isUploading || uploadedFiles.length === 0}
-                      className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
-                    >
-                      <Upload className="w-4 h-4" />
-                      <span>{isUploading ? 'Uploading...' : 'Upload Files'}</span>
-                    </button>
-                  )}
-
-                  <button
-                    onClick={startIndexing}
-                    disabled={isIndexing || uploadedFiles.length === 0}
-                    className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
-                  >
-                    <Play className="w-4 h-4" />
-                    <span>{isIndexing ? 'Starting...' : 'Start Indexing'}</span>
-                  </button>
-                </div>
+                  </div>
+                ))}
               </div>
-            )}
-          </div>
+
+              {/* Action Buttons */}
+              <div className="flex gap-3">
+                {!uploadId && (
+                  <button
+                    onClick={uploadFiles}
+                    disabled={isUploading || uploadedFiles.length === 0}
+                    className="btn-primary flex-1"
+                  >
+                    <Upload className="w-4 h-4" />
+                    {isUploading ? 'Uploading Files...' : 'Upload Files'}
+                  </button>
+                )}
+
+                <button
+                  onClick={startIndexing}
+                  disabled={isIndexing || uploadedFiles.length === 0}
+                  className="btn-accent flex-1"
+                >
+                  <Play className="w-4 h-4" />
+                  {isIndexing ? 'Starting Indexing...' : 'Start Indexing'}
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Indexing Jobs */}
           {jobs.length > 0 && (
-            <div>
-              <h3 className="text-lg font-medium mb-4">Indexing Jobs</h3>
+            <div className="form-section">
+              <h4 className="form-section-title mb-4">Indexing Progress</h4>
               <div className="space-y-4">
                 {jobs.map((job) => (
-                  <div key={job.id} className="border dark:border-gray-600 rounded-lg p-4">
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="flex items-center space-x-2">
+                  <div key={job.id} className="p-4 ui-bg-secondary border ui-border-faint rounded-[var(--radius-md)]">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-3">
                         {getStatusIcon(job.status)}
-                        <span className="font-medium">Job {job.id.slice(0, 8)}</span>
+                        <div>
+                          <h5 className="font-medium ui-text-primary text-sm">
+                            Indexing Job #{job.id.slice(0, 8)}
+                          </h5>
+                          <p className="text-xs ui-text-muted">
+                            {job.status === 'completed' ? 'Completed successfully' :
+                             job.status === 'failed' ? 'Processing failed' :
+                             job.status === 'running' ? 'Processing documents...' : 'Pending'}
+                          </p>
+                        </div>
                       </div>
-                      <span className="text-sm text-gray-500">
-                        {job.status === 'completed' ? 'Completed' :
+                      <span className={`
+                        px-2 py-1 text-xs font-medium rounded-[var(--radius-sm)]
+                        ${job.status === 'completed' ? 'text-[var(--success)] ui-bg-tertiary' :
+                          job.status === 'failed' ? 'text-[var(--error)] ui-bg-tertiary' :
+                          job.status === 'running' ? 'text-[var(--accent)] ui-bg-tertiary' :
+                          'ui-text-muted ui-bg-tertiary'}
+                      `}>
+                        {job.status === 'completed' ? 'Done' :
                          job.status === 'failed' ? 'Failed' :
-                         job.status === 'running' ? 'Running' : 'Pending'}
+                         job.status === 'running' ? 'Processing' : 'Waiting'}
                       </span>
                     </div>
 
                     {job.status === 'running' && (
-                      <div className="mb-2">
-                        <div className="flex justify-between text-sm text-gray-600 mb-1">
-                          <span>{job.processedFiles} of {job.totalFiles} files processed</span>
-                          <span>{Math.round(job.progress)}%</span>
+                      <div className="mb-3">
+                        <div className="flex justify-between text-sm ui-text-secondary mb-2">
+                          <span>{job.processedFiles} of {job.totalFiles} documents processed</span>
+                          <span className="font-medium">{Math.round(job.progress)}%</span>
                         </div>
-                        <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                        <div className="w-full ui-bg-tertiary rounded-[var(--radius-sm)] h-2">
                           <div
-                            className="bg-blue-500 h-2 rounded-full transition-all duration-300"
+                            className="bg-[var(--accent)] h-2 rounded-[var(--radius-sm)] transition-all duration-300"
                             style={{ width: `${job.progress}%` }}
                           />
                         </div>
@@ -422,15 +489,36 @@ export default function FileUploadIndexing({ isOpen, onClose }: FileUploadIndexi
                     )}
 
                     {job.error && (
-                      <p className="text-sm text-red-500 mt-2">{job.error}</p>
+                      <div className="mt-3 p-3 ui-bg-tertiary border border-[var(--error)] rounded-[var(--radius-sm)]">
+                        <p className="text-sm text-[var(--error)]">{job.error}</p>
+                      </div>
                     )}
 
-                    <div className="text-xs text-gray-500 mt-2">
-                      Started: {job.startedAt.toLocaleString()}
-                      {job.completedAt && ` • Completed: ${job.completedAt.toLocaleString()}`}
+                    <div className="text-xs ui-text-muted mt-3 pt-3 border-t ui-border-faint">
+                      <div className="flex flex-wrap gap-4">
+                        <span>Started: {job.startedAt.toLocaleString()}</span>
+                        {job.completedAt && (
+                          <span>Completed: {job.completedAt.toLocaleString()}</span>
+                        )}
+                      </div>
                     </div>
                   </div>
                 ))}
+              </div>
+            </div>
+          )}
+
+          {/* Empty State */}
+          {uploadedFiles.length === 0 && (
+            <div className="form-section">
+              <div className="text-center py-8">
+                <div className="p-4 ui-bg-tertiary rounded-[var(--radius-md)] inline-block mb-4">
+                  <FileUp className="w-8 h-8 ui-text-secondary" />
+                </div>
+                <h4 className="font-medium ui-text-primary mb-2">No files selected</h4>
+                <p className="text-sm ui-text-secondary">
+                  Drop files here or click "browse files" to get started
+                </p>
               </div>
             </div>
           )}
