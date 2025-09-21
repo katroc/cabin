@@ -945,8 +945,6 @@ async def upload_files(request: Request, files: List[UploadFile] = File(...)) ->
                     failed_files.append({"name": file.filename, "error": "Failed to process file"})
                     continue
 
-                uploaded_files.append(file.filename)
-
             except Exception as e:
                 failed_files.append({"name": file.filename, "error": str(e)})
 
