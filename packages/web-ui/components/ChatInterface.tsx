@@ -111,7 +111,10 @@ export default function ChatInterface({
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ message: prompt }),
+        body: JSON.stringify({
+          message: prompt,
+          conversation_id: conversation?.id
+        }),
         signal: controller.signal
       })
 
@@ -163,7 +166,10 @@ export default function ChatInterface({
       headers: {
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({ message: prompt }),
+      body: JSON.stringify({
+        message: prompt,
+        conversation_id: conversation?.id
+      }),
       signal: controller.signal
     })
 

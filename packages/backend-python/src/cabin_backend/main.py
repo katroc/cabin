@@ -53,6 +53,7 @@ class UISettingsPayload(BaseModel):
     reranker_url: str = Field(alias="rerankerUrl")
     reranker_port: int = Field(alias="rerankerPort")
     log_level: str = Field(alias="logLevel")
+    max_memory_messages: int = Field(alias="maxMemoryMessages")
 
     class Config:
         populate_by_name = True
@@ -125,6 +126,7 @@ def load_default_ui_settings() -> UISettingsPayload:
         rerankerUrl=reranker_url,
         rerankerPort=reranker_port,
         logLevel=log_level,
+        maxMemoryMessages=8,
     )
 
 
@@ -356,7 +358,7 @@ def chat(request: ChatRequest) -> ChatResponse:
         metrics.conversation_id = conversation_id
 
         conversation_memory.add_user_message(conversation_id, request.message)
-        conversation_context = conversation_memory.get_conversation_context(conversation_id, max_messages=8)
+        conversation_context = conversation_memory.get_conversation_context(conversation_id, max_messages=current_ui_settings.max_memory_messages)
         setup_duration = (time.time() - setup_start) * 1000
         metrics.add_timing("conversation_setup", setup_duration)
 
@@ -498,7 +500,7 @@ def chat_stream(request: ChatRequest):
         conversation_memory.add_user_message(conversation_id, request.message)
 
         # Get conversation context for LLM
-        conversation_context = conversation_memory.get_conversation_context(conversation_id, max_messages=8)
+        conversation_context = conversation_memory.get_conversation_context(conversation_id, max_messages=current_ui_settings.max_memory_messages)
 
         # Decide if we need RAG retrieval using query router
         corpus_sample = vector_store_service.get_corpus_sample_for_routing(sample_size=20)
@@ -580,7 +582,7 @@ def chat_direct(request: ChatRequest) -> ChatResponse:
         metrics.conversation_id = conversation_id
 
         conversation_memory.add_user_message(conversation_id, request.message)
-        conversation_context = conversation_memory.get_conversation_context(conversation_id, max_messages=8)
+        conversation_context = conversation_memory.get_conversation_context(conversation_id, max_messages=current_ui_settings.max_memory_messages)
         setup_duration = (time.time() - setup_start) * 1000
         metrics.add_timing("conversation_setup", setup_duration)
 
@@ -652,7 +654,7 @@ def chat_direct_stream(request: ChatRequest):
         conversation_memory.add_user_message(conversation_id, request.message)
 
         # Get conversation context for LLM
-        conversation_context = conversation_memory.get_conversation_context(conversation_id, max_messages=8)
+        conversation_context = conversation_memory.get_conversation_context(conversation_id, max_messages=current_ui_settings.max_memory_messages)
 
         logger.debug("Direct LLM streaming mode: bypassing RAG for query '%s'", request.message[:50])
 

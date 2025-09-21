@@ -53,6 +53,7 @@ interface SettingsData {
   rerankerUrl: string
   rerankerPort: number
   logLevel: string
+  maxMemoryMessages: number
 }
 
 const STORAGE_KEY = 'cabin.conversations.v1'
@@ -112,7 +113,8 @@ export default function Home() {
     useRm3: false,
     rerankerUrl: 'http://localhost:8010/rerank',
     rerankerPort: 8010,
-    logLevel: 'INFO'
+    logLevel: 'INFO',
+    maxMemoryMessages: 8
   })
 
   useEffect(() => {
@@ -142,6 +144,7 @@ export default function Home() {
           rerankerUrl: data.rerankerUrl || settings.rerankerUrl,
           rerankerPort: typeof data.rerankerPort === 'number' ? data.rerankerPort : settings.rerankerPort,
           logLevel: data.logLevel || settings.logLevel,
+          maxMemoryMessages: typeof data.maxMemoryMessages === 'number' ? data.maxMemoryMessages : settings.maxMemoryMessages,
         })
       } catch (error) {
         console.warn('Failed to load runtime settings:', error)

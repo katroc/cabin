@@ -20,6 +20,7 @@ interface SettingsData {
   rerankerUrl: string
   rerankerPort: number
   logLevel: string
+  maxMemoryMessages: number
 }
 
 interface SettingsDrawerProps {
@@ -347,6 +348,28 @@ export default function SettingsDrawer({ isOpen, onClose, settings, onSave }: Se
                 <label htmlFor="rm3Toggle" className="label-inline">
                   Enable RM3 Expansion
                 </label>
+              </div>
+            </div>
+          </div>
+
+          {/* Memory Configuration */}
+          <div className="form-section">
+            <h3 className="section-title">Memory</h3>
+            <div className="space-y-4">
+              <div className="form-group">
+                <label className="label-base">Max Memory Messages: {formData.maxMemoryMessages}</label>
+                <input
+                  type="range"
+                  min="2"
+                  max="20"
+                  value={formData.maxMemoryMessages}
+                  onChange={(e) => handleInputChange('maxMemoryMessages', parseInt(e.target.value))}
+                  className="w-full"
+                />
+                <div className="text-xs ui-text-muted mt-1">
+                  Controls how many recent messages are kept in conversation context.
+                  Higher values provide more context but use more tokens.
+                </div>
               </div>
             </div>
           </div>
