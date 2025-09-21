@@ -49,23 +49,17 @@ export default function DataSourceManagement({ isOpen, onClose, onBack }: DataSo
 
   const fetchIndexedDocuments = async () => {
     try {
-      // This would be a real API call to get indexed documents
-      // For now, using mock data
-      const mockDocuments: IndexedDocument[] = [
-        {
-          id: 'doc_1',
-          title: 'Defence White Paper 2009',
-          source_type: 'file_upload',
-          source_url: 'file://defence_white_paper_2009.pdf',
-          last_modified: new Date().toISOString(),
-          file_size: 2500000,
-          page_count: 142,
-          status: 'indexed'
-        }
-      ]
-      setDocuments(mockDocuments)
+      const response = await fetch('http://localhost:8788/api/data-sources/documents')
+      if (response.ok) {
+        const data = await response.json()
+        setDocuments(data.documents || [])
+      } else {
+        console.error('Failed to fetch documents:', response.status)
+        setDocuments([])
+      }
     } catch (error) {
       console.error('Failed to fetch documents:', error)
+      setDocuments([])
     } finally {
       setLoading(false)
     }
@@ -73,22 +67,17 @@ export default function DataSourceManagement({ isOpen, onClose, onBack }: DataSo
 
   const fetchStats = async () => {
     try {
-      // This would be a real API call to get stats
-      const mockStats: DataSourceStats = {
-        total_documents: 1,
-        total_size: 2500000,
-        last_updated: new Date().toISOString(),
-        sources: {
-          file_upload: {
-            count: 1,
-            size: 2500000,
-            last_updated: new Date().toISOString()
-          }
-        }
+      const response = await fetch('http://localhost:8788/api/data-sources/stats')
+      if (response.ok) {
+        const data = await response.json()
+        setStats(data)
+      } else {
+        console.error('Failed to fetch stats:', response.status)
+        setStats(null)
       }
-      setStats(mockStats)
     } catch (error) {
       console.error('Failed to fetch stats:', error)
+      setStats(null)
     }
   }
 
@@ -158,18 +147,28 @@ export default function DataSourceManagement({ isOpen, onClose, onBack }: DataSo
 
     setDeleting(true)
     try {
-      // This would be a real API call to delete documents
       const idsToDelete = Array.from(selectedDocuments)
-      console.log('Deleting documents:', idsToDelete)
 
-      // Update local state
-      setDocuments(docs => docs.filter(doc => !selectedDocuments.has(doc.id)))
+      // Make API call to delete documents
+      const response = await fetch('http://localhost:8788/api/data-sources/documents', {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ document_ids: idsToDelete })
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to delete documents')
+      }
+
+      // Clear selection and refresh data
       setSelectedDocuments(new Set())
-
-      // Refresh stats
+      await fetchIndexedDocuments()
       await fetchStats()
     } catch (error) {
       console.error('Failed to delete documents:', error)
+      // TODO: Show error toast notification
     } finally {
       setDeleting(false)
     }
@@ -212,7 +211,7 @@ export default function DataSourceManagement({ isOpen, onClose, onBack }: DataSo
           </div>
         </div>
 
-        <div className="p-6 overflow-y-auto h-full">
+        <div className="p-6 overflow-y-auto h-full" onClick={(e) => e.stopPropagation()}>
           {/* Stats Overview */}
           {stats && (
             <div className="mb-8">
@@ -232,13 +231,15 @@ export default function DataSourceManagement({ isOpen, onClose, onBack }: DataSo
                   </div>
                   <div className="text-2xl font-bold ui-text-primary">{formatFileSize(stats.total_size)}</div>
                 </div>
-                <div className="p-4 ui-bg-tertiary border ui-border-faint rounded-[var(--radius-md)]">
-                  <div className="flex items-center gap-2 mb-2">
-                    <Clock className="w-4 h-4 ui-text-secondary" />
-                    <span className="text-sm font-medium ui-text-secondary">Last Updated</span>
-                  </div>
-                  <div className="text-sm ui-text-primary">{new Date(stats.last_updated).toLocaleDateString()}</div>
-                </div>
+                 <div className="p-4 ui-bg-tertiary border ui-border-faint rounded-[var(--radius-md)]">
+                   <div className="flex items-center gap-2 mb-2">
+                     <Clock className="w-4 h-4 ui-text-secondary" />
+                     <span className="text-sm font-medium ui-text-secondary">Last Updated</span>
+                   </div>
+                   <div className="text-lg font-semibold ui-text-primary">
+                     {stats.last_updated ? new Date(stats.last_updated).toLocaleDateString() : 'Never'}
+                   </div>
+                 </div>
               </div>
             </div>
           )}
@@ -246,17 +247,17 @@ export default function DataSourceManagement({ isOpen, onClose, onBack }: DataSo
           {/* Actions */}
           <div className="flex items-center justify-between mb-6">
             <h3 className="text-lg font-semibold ui-text-primary">Indexed Documents</h3>
-            <div className="flex items-center gap-2">
-              {selectedDocuments.size > 0 && (
-                <button
-                  onClick={handleDeleteSelected}
-                  disabled={deleting}
-                  className="btn-danger btn-small"
-                >
-                  <Trash2 className="w-4 h-4" />
-                  Delete {selectedDocuments.size} item{selectedDocuments.size > 1 ? 's' : ''}
-                </button>
-              )}
+            <div className="flex items-center gap-2 h-8">
+              <button
+                onClick={handleDeleteSelected}
+                disabled={deleting}
+                className={`inline-flex items-center gap-2 btn-danger btn-small transition-opacity ${
+                  selectedDocuments.size > 0 ? 'opacity-100' : 'opacity-0 pointer-events-none'
+                }`}
+              >
+                <Trash2 className="w-4 h-4" />
+                Delete {selectedDocuments.size} item{selectedDocuments.size > 1 ? 's' : ''}
+              </button>
             </div>
           </div>
 

@@ -2,6 +2,9 @@
 
 import { useState } from 'react'
 import { Database, Play, Trash2, RefreshCw, CheckCircle, AlertCircle, Clock, Wifi, ArrowLeft, X } from 'lucide-react'
+import ConfirmationModal from './ConfirmationModal'
+import AlertModal from './AlertModal'
+import { useToast } from './ToastProvider'
 
 interface ConfluenceConfig {
   baseUrl: string
@@ -32,6 +35,8 @@ interface ConfluenceIndexingProps {
 }
 
 export default function ConfluenceIndexing({ isOpen, onClose, onBack }: ConfluenceIndexingProps) {
+  const { addToast } = useToast()
+
   const [config, setConfig] = useState<ConfluenceConfig>({
     baseUrl: '',
     username: '',
@@ -47,6 +52,9 @@ export default function ConfluenceIndexing({ isOpen, onClose, onBack }: Confluen
   const [isIndexing, setIsIndexing] = useState(false)
   const [isTestingConnection, setIsTestingConnection] = useState(false)
   const [connectionStatus, setConnectionStatus] = useState<'untested' | 'success' | 'failed'>('untested')
+  const [showClearConfirmation, setShowClearConfirmation] = useState(false)
+  const [showAlert, setShowAlert] = useState(false)
+  const [alertConfig, setAlertConfig] = useState<{ title: string; message: string; type: 'success' | 'error' | 'info' } | null>(null)
 
   if (!isOpen) return null
 
@@ -69,7 +77,12 @@ export default function ConfluenceIndexing({ isOpen, onClose, onBack }: Confluen
 
   const handleTestConnection = async () => {
     if (!config.baseUrl) {
-      alert('Please provide a Confluence base URL first')
+      setAlertConfig({
+        title: 'Missing URL',
+        message: 'Please provide a Confluence base URL first.',
+        type: 'info'
+      })
+      setShowAlert(true)
       return
     }
 
@@ -234,25 +247,49 @@ export default function ConfluenceIndexing({ isOpen, onClose, onBack }: Confluen
 
     } catch (error) {
       console.error('Error starting indexing:', error)
-      alert('Failed to start indexing. Please check your configuration and try again.')
+      setAlertConfig({
+        title: 'Indexing Failed',
+        message: 'Failed to start indexing. Please check your configuration and try again.',
+        type: 'error'
+      })
+      setShowAlert(true)
       setIsIndexing(false)
     }
   }
 
-  const handleClearIndex = async () => {
-    if (confirm('Are you sure you want to clear the entire index? This cannot be undone.')) {
-      try {
-        const response = await fetch('http://localhost:8788/api/index', {
-          method: 'DELETE'
-        })
-        if (response.ok) {
-          alert('Index cleared successfully')
-        }
-      } catch (error) {
-        console.error('Failed to clear index:', error)
-        alert('Failed to clear index')
+  const handleClearIndex = () => {
+    setShowClearConfirmation(true)
+  }
+
+  const handleConfirmClearIndex = async () => {
+    setShowClearConfirmation(false)
+    try {
+      const response = await fetch('http://localhost:8788/api/index', {
+        method: 'DELETE'
+      })
+      if (response.ok) {
+        addToast('The index has been cleared successfully.', 'success')
+      } else {
+        throw new Error('Failed to clear index')
       }
+    } catch (error) {
+      console.error('Failed to clear index:', error)
+      setAlertConfig({
+        title: 'Clear Failed',
+        message: 'Failed to clear the index. Please try again.',
+        type: 'error'
+      })
+      setShowAlert(true)
     }
+  }
+
+  const handleCancelClearIndex = () => {
+    setShowClearConfirmation(false)
+  }
+
+  const handleCloseAlert = () => {
+    setShowAlert(false)
+    setAlertConfig(null)
   }
 
   const getStatusIcon = (status: IndexingJob['status']) => {
@@ -579,6 +616,27 @@ export default function ConfluenceIndexing({ isOpen, onClose, onBack }: Confluen
           )}
         </div>
       </div>
+
+      <ConfirmationModal
+        isOpen={showClearConfirmation}
+        title="Clear Index"
+        message="Are you sure you want to clear the entire index? This action cannot be undone."
+        confirmText="Clear Index"
+        cancelText="Cancel"
+        onConfirm={handleConfirmClearIndex}
+        onCancel={handleCancelClearIndex}
+        type="danger"
+      />
+
+      {alertConfig && (
+        <AlertModal
+          isOpen={showAlert}
+          title={alertConfig.title}
+          message={alertConfig.message}
+          type={alertConfig.type}
+          onClose={handleCloseAlert}
+        />
+      )}
     </div>
   )
 }

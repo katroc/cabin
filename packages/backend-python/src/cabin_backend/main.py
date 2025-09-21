@@ -646,6 +646,133 @@ def cancel_indexing_job(job_id: str) -> dict:
         print(f"Error cancelling job: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to cancel job: {e}")
 
+class DeleteDocumentsRequest(BaseModel):
+    document_ids: List[str]
+
+@app.get("/api/data-sources/documents")
+def get_indexed_documents() -> dict:
+    """Get list of indexed documents."""
+    if not vector_store_service:
+        raise HTTPException(status_code=503, detail="Vector store not available.")
+
+    try:
+        # Get all documents from the collection
+        results = vector_store_service.chroma.collection.get(include=["metadatas"])
+
+        # Group by document_id and aggregate metadata
+        documents_by_id = {}
+        metadatas = results.get("metadatas", [])
+        if metadatas:
+            for metadata in metadatas:
+                doc_id = metadata.get("document_id")
+                if doc_id:
+                    if doc_id not in documents_by_id:
+                        documents_by_id[doc_id] = {
+                            "id": doc_id,
+                            "title": metadata.get("page_title", "Untitled"),
+                            "source_type": metadata.get("source_type", "unknown"),
+                            "source_url": metadata.get("source_url", ""),
+                            "last_modified": metadata.get("last_modified"),
+                            "file_size": metadata.get("file_size"),
+                            "page_count": metadata.get("page_count"),
+                            "status": "indexed",
+                            "chunk_count": 0
+                        }
+                    documents_by_id[doc_id]["chunk_count"] += 1
+
+        documents = list(documents_by_id.values())
+
+        return {"documents": documents}
+    except Exception as e:
+        print(f"Error getting indexed documents: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get indexed documents: {e}")
+
+@app.get("/api/data-sources/stats")
+def get_data_source_stats() -> dict:
+    """Get statistics about indexed data sources."""
+    if not vector_store_service:
+        raise HTTPException(status_code=503, detail="Vector store not available.")
+
+    try:
+        # Get all documents from the collection
+        results = vector_store_service.chroma.collection.get(include=["metadatas"])
+
+        # Calculate stats
+        total_documents = 0
+        total_size = 0
+        sources = {}
+        last_updated = None
+
+        metadatas = results.get("metadatas", [])
+        if metadatas:
+            document_ids = set()
+            for metadata in metadatas:
+                doc_id = metadata.get("document_id")
+                if doc_id and doc_id not in document_ids:
+                    document_ids.add(doc_id)
+                    total_documents += 1
+
+                    # Add file size if available (ensure it's a number)
+                    file_size = metadata.get("file_size")
+                    if file_size and isinstance(file_size, (int, float)):
+                        total_size += int(file_size)
+
+                    # Track source types
+                    source_type = metadata.get("source_type", "unknown")
+                    if source_type not in sources:
+                        sources[source_type] = {
+                            "count": 0,
+                            "size": 0,
+                            "last_updated": None
+                        }
+
+                    sources[source_type]["count"] += 1
+                    if file_size and isinstance(file_size, (int, float)):
+                        sources[source_type]["size"] += int(file_size)
+
+                    # Update last modified (ensure it's a string/date)
+                    doc_last_modified = metadata.get("last_modified")
+                    if doc_last_modified and isinstance(doc_last_modified, str):
+                        if not last_updated or doc_last_modified > last_updated:
+                            last_updated = doc_last_modified
+                        if not sources[source_type]["last_updated"] or doc_last_modified > sources[source_type]["last_updated"]:
+                            sources[source_type]["last_updated"] = doc_last_modified
+
+        return {
+            "total_documents": total_documents,
+            "total_size": total_size,
+            "last_updated": last_updated,
+            "sources": sources
+        }
+    except Exception as e:
+        print(f"Error getting data source stats: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get data source stats: {e}")
+
+@app.delete("/api/data-sources/documents")
+def delete_documents(request: DeleteDocumentsRequest) -> dict:
+    """Delete documents by their IDs."""
+    if not vector_store_service:
+        raise HTTPException(status_code=503, detail="Vector store not available.")
+
+    try:
+        deleted_count = 0
+        for document_id in request.document_ids:
+            try:
+                vector_store_service.delete_document(document_id)
+                deleted_count += 1
+            except Exception as e:
+                print(f"Error deleting document {document_id}: {e}")
+                # Continue with other documents even if one fails
+
+        return {
+            "success": True,
+            "message": f"Successfully deleted {deleted_count} out of {len(request.document_ids)} documents",
+            "deleted_count": deleted_count
+        }
+    except Exception as e:
+        print(f"Error deleting documents: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to delete documents: {e}")
+
 # --- File Upload Endpoints ---
 
 @app.post("/api/files/upload")

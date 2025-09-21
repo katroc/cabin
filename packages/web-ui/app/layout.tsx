@@ -1,5 +1,7 @@
 import type { Metadata } from 'next'
 import './globals.css'
+import { ToastProvider } from '../components/ToastProvider'
+import { Toast } from '../components/Toast'
 
 export const metadata: Metadata = {
   title: 'Cabin',
@@ -19,7 +21,10 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="h-screen" style={{ background: 'var(--bg-primary)', color: 'var(--text-primary)' }}>
-        {children}
+        <ToastProvider>
+          {children}
+          <Toast />
+        </ToastProvider>
       </body>
     </html>
   )

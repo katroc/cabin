@@ -1,8 +1,9 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Download, FileJson, Loader2, Send, StopCircle } from 'lucide-react'
+import { Loader2, Send, StopCircle } from 'lucide-react'
 import SmartResponse from './SmartResponse'
+import ExportDropdown from './ExportDropdown'
 
 interface Citation {
   id: string
@@ -304,24 +305,12 @@ export default function ChatInterface({
   return (
     <div className="flex h-full min-h-0 w-full flex-col ui-bg-primary">
       <div
-        className="sticky top-0 z-10 flex justify-end gap-2 border-b px-4 py-3 sm:px-10 ui-bg-primary/95 backdrop-blur border-[color:var(--border-faint)]"
+        className="sticky top-0 z-10 flex justify-end border-b px-4 py-3 sm:px-6 ui-bg-primary/95 backdrop-blur border-[color:var(--border-faint)]"
       >
-        <button
-          onClick={() => onDownloadConversation('markdown')}
+        <ExportDropdown
+          onDownloadConversation={onDownloadConversation}
           disabled={!hasMessages}
-          className="flex items-center gap-2 rounded-lg border px-3 py-2 text-sm transition disabled:cursor-not-allowed disabled:opacity-40 ui-bg-secondary ui-border-light ui-text-primary ui-shadow-floating"
-        >
-          <Download size={16} />
-          Markdown
-        </button>
-        <button
-          onClick={() => onDownloadConversation('json')}
-          disabled={!hasMessages}
-          className="flex items-center gap-2 rounded-lg border px-3 py-2 text-sm transition disabled:cursor-not-allowed disabled:opacity-40 ui-bg-secondary ui-border-light ui-text-primary ui-shadow-floating"
-        >
-          <FileJson size={16} />
-          JSON
-        </button>
+        />
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 pb-10 pt-6 sm:px-10 min-h-0">
