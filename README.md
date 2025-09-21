@@ -18,13 +18,20 @@
 
 ## 🎯 Overview
 
-Cabin is a sophisticated RAG assistant that intelligently routes queries between conversational AI and retrieval-augmented responses. Built with a microservices architecture, it features:
+Cabin is a sophisticated **air-gapped RAG assistant** that intelligently routes queries between conversational AI and retrieval-augmented responses. Built with a fully self-contained architecture, it features:
 
-- **Intelligent Query Routing**: Automatically determines when to use RAG vs. direct LLM responses
+- **Intelligent Query Routing**: Automatically determines when to use RAG vs. direct LLM responses based on content similarity
+- **Air-Gapped Operation**: Complete offline capability with all models and processing running locally
+- **Advanced Conversation Memory**: Persistent multi-turn conversation context and history management
 - **Multi-Source Integration**: Support for Confluence, file uploads, and extensible data sources
-- **Conversation Memory**: Persistent conversation context and history management
-- **Performance Monitoring**: Comprehensive metrics and performance tracking
-- **Streaming Support**: Real-time streaming responses for better UX
+- **Performance Monitoring**: Comprehensive real-time metrics and performance tracking
+- **Streaming Support**: Real-time token streaming for enhanced user experience
+
+**Key Technologies**:
+- **BGE-M3** for semantic embeddings and document understanding
+- **BGE-Reranker-V2-M3** for precision document reranking
+- **GPT-OSS-20B** for high-quality response generation
+- **ChromaDB** for local vector storage and retrieval
 
 ## 🏗️ Architecture
 
@@ -32,21 +39,26 @@ Cabin is a sophisticated RAG assistant that intelligently routes queries between
 
 **Backend (Python/FastAPI)**
 - RESTful API server with comprehensive RAG functionality
-- Vector store integration with ChromaDB
-- Document chunking and indexing
-- Query routing and conversation management
-- Performance monitoring and metrics collection
+- **BGE-M3** embedding model for semantic document understanding
+- **BGE-Reranker-V2-M3** for precision document reranking
+- **GPT-OSS-20B** language model for response generation
+- Vector store integration with ChromaDB for local document storage
+- Document chunking and indexing with parent document strategy
+- Intelligent query routing and conversation management
+- Performance monitoring and real-time metrics collection
 
 **Frontend (Next.js/React)**
-- Modern web interface for document management
+- Modern web interface for document management and chat
 - Real-time chat interface with streaming support
-- Data source configuration and management
-- Performance dashboard and analytics
+- Data source configuration and management interface
+- Performance dashboard with live metrics and analytics
+- RAG/LLM mode toggle and conversation memory controls
 
-**Infrastructure**
-- vLLM models for embeddings and reranking
-- ChromaDB for vector storage
-- Docker containerization for easy deployment
+**Infrastructure (Air-Gapped)**
+- **vLLM** containerized models for local inference
+- **ChromaDB** for local vector storage and retrieval
+- **Docker containerization** for complete self-contained deployment
+- **No external dependencies** - all processing happens on-premises
 
 ### Data Flow
 
@@ -58,27 +70,54 @@ Cabin is a sophisticated RAG assistant that intelligently routes queries between
 
 ## ✨ Features
 
+### 🔄 Intelligent Query Routing & Mode Toggle
+- **RAG/LLM Mode Toggle**: Seamlessly switch between retrieval-augmented generation and direct LLM responses
+- **Automatic Query Classification**: AI-powered routing determines when to use RAG vs. conversational AI
+- **Direct LLM Endpoints**: Dedicated `/api/chat/direct` endpoints for bypassing RAG entirely
+- **Fallback Mechanisms**: Automatic fallback from RAG to conversational mode when retrieval fails
+
+### 🧠 Advanced Conversation Memory
+- **Persistent Context**: Maintain conversation history across sessions and browser refreshes
+- **Contextual Awareness**: System remembers previous questions and responses for coherent multi-turn conversations
+- **Memory Management**: Configurable message history limits and automatic cleanup
+- **Conversation Threads**: Support for multiple parallel conversation threads
+
+### 🔍 Semantic Search & Reranking
+- **BGE-M3 Embeddings**: State-of-the-art embedding model for semantic document understanding
+- **Hybrid Retrieval**: Combines BM25 lexical search with dense vector semantic search
+- **BGE-Reranker-V2-M3**: Advanced reranking model for improving retrieval precision
+- **RM3 Query Expansion**: Pseudo-relevance feedback for enhanced query understanding
+- **Configurable Reranking**: Enable/disable reranking with fallback options
+
+### 🌐 Air-Gapped Operation
+- **Complete Offline Capability**: All models and processing run locally without internet dependency
+- **Self-Contained Deployment**: Docker containers include all required models and dependencies
+- **No External API Calls**: All inference happens on-premises for security and privacy
+- **Local Vector Storage**: ChromaDB runs locally for document indexing and retrieval
+
 ### Core RAG Capabilities
-- **Parent Document Retriever**: Hierarchical document chunking strategy
-- **Hybrid Search**: Combines lexical (BM25) and semantic (dense) retrieval
-- **Intelligent Routing**: Query router determines optimal response strategy
-- **Citation Support**: Automatic source citation and provenance tracking
+- **Parent Document Retriever**: Hierarchical document chunking strategy preserving document structure
+- **Intelligent Routing**: Query router determines optimal response strategy based on content similarity
+- **Citation Support**: Automatic source citation and provenance tracking with direct links
+- **Provenance Enforcement**: Configurable requirements for citation-backed responses
 
 ### Data Source Integration
-- **Confluence Integration**: Direct integration with Confluence spaces
-- **File Upload**: Support for PDF, DOCX, TXT, MD, HTML, CSV files
-- **Extensible Architecture**: Plugin system for additional data sources
+- **Confluence Integration**: Direct integration with Confluence spaces and page hierarchies
+- **File Upload**: Support for PDF, DOCX, TXT, MD, HTML, CSV files with content validation
+- **Extensible Architecture**: Plugin system for adding new data source connectors
+- **Bulk Operations**: Batch document indexing with progress tracking and error handling
 
 ### Performance & Monitoring
-- **Real-time Metrics**: Request latency, token usage, and system performance
-- **vLLM Integration**: Live monitoring of model performance
+- **Real-time Metrics**: Request latency, token usage, and system performance tracking
+- **vLLM Integration**: Live monitoring of model performance and resource utilization
 - **Performance Dashboard**: Visual analytics and bottleneck identification
+- **Component-Level Timing**: Detailed breakdown of retrieval, reranking, and generation times
 
 ### User Experience
-- **Streaming Responses**: Real-time token streaming for better UX
-- **Conversation Memory**: Persistent conversation history and context
-- **Direct LLM Mode**: Bypass RAG for conversational queries
-- **File Management**: Upload, index, and manage documents through web UI
+- **Streaming Responses**: Real-time token streaming for better UX and perceived performance
+- **File Management**: Upload, index, and manage documents through intuitive web UI
+- **Advanced Filtering**: Filter documents by source type, date, size, tags, and content type
+- **Performance Insights**: Real-time performance metrics and system health monitoring
 
 ## 🚀 Quick Start
 
@@ -105,6 +144,13 @@ The system will be available at:
 
 ## 📦 Installation
 
+### Prerequisites (Air-Gapped Ready)
+- Docker and Docker Compose (for containerized deployment)
+- Python 3.9+ (for manual installation)
+- Node.js 18+ (for frontend development)
+- GPU with CUDA support (recommended for optimal performance)
+- **No internet required** after initial setup - all models run locally
+
 ### Manual Installation
 
 **Backend Setup**
@@ -121,13 +167,14 @@ cd packages/web-ui
 npm install
 ```
 
-**vLLM Models Setup**
-```bash
-# Download required models
-# BGE-M3 embedding model
-# BGE-Reranker-V2-M3 reranking model
-# GPT-OSS-20B language model
-```
+**Model Setup (Local Models)**
+The system uses three specialized models that run entirely on-premises:
+
+- **BGE-M3** (`BAAI/bge-m3`): Advanced embedding model for semantic understanding
+- **BGE-Reranker-V2-M3** (`BAAI/bge-reranker-v2-m3`): Precision reranking model
+- **GPT-OSS-20B**: High-quality language model for response generation
+
+All models are containerized and run locally - no external API calls required.
 
 ## ⚙️ Configuration
 
@@ -177,10 +224,10 @@ CABIN_LOG_LEVEL=INFO
 ### Core Endpoints
 
 **Chat Endpoints**
-- `POST /api/chat` - Standard chat with RAG routing
-- `POST /api/chat/stream` - Streaming chat responses
-- `POST /api/chat/direct` - Direct LLM chat (no RAG)
-- `POST /api/chat/direct/stream` - Direct streaming chat
+- `POST /api/chat` - Standard chat with intelligent RAG routing
+- `POST /api/chat/stream` - Streaming chat with RAG routing
+- `POST /api/chat/direct` - **Direct LLM mode** - bypasses RAG entirely
+- `POST /api/chat/direct/stream` - **Direct streaming mode** - conversational AI only
 
 **Document Management**
 - `POST /api/index` - Index single document
@@ -205,16 +252,16 @@ CABIN_LOG_LEVEL=INFO
 
 ### Request/Response Examples
 
-**Chat Request**
+**Chat Request with Conversation Memory**
 ```json
 {
   "message": "What are the main features of Cabin?",
-  "conversation_id": "optional-conversation-id",
+  "conversation_id": "conv-456",  // Maintains conversation context
   "filters": {}
 }
 ```
 
-**Chat Response**
+**Chat Response with Citations**
 ```json
 {
   "response": "Cabin is a RAG assistant with intelligent query routing...",
@@ -226,9 +273,23 @@ CABIN_LOG_LEVEL=INFO
       "chunk_text": "Cabin provides intelligent..."
     }
   ],
-  "conversation_id": "conv-456"
+  "conversation_id": "conv-456"  // Consistent across conversation
 }
 ```
+
+**Direct LLM Mode (No RAG)**
+```json
+{
+  "message": "Tell me a joke",
+  "conversation_id": "conv-789"
+}
+```
+
+**Conversation Memory Management**
+- Automatic context preservation across multiple turns
+- Configurable message history limits
+- Persistent storage across sessions
+- Support for multiple parallel conversations
 
 ## 🛠️ Development
 
@@ -270,21 +331,33 @@ CABIN_LOG_LEVEL=INFO
 
 ## 🚢 Deployment
 
-### Docker Deployment
+### Air-Gapped Docker Deployment
+
+Cabin is designed for **complete air-gapped operation** - all services, models, and data processing run locally without any external dependencies.
 
 ```bash
-# Build and start all services
+# Build and start all services (completely offline after initial setup)
 docker-compose up --build
 
-# Production deployment
+# Production deployment (self-contained)
 docker-compose -f docker-compose.prod.yml up -d
 ```
 
 ### System Requirements
 
-- **Minimum**: 16GB RAM, 4-core CPU
-- **Recommended**: 32GB RAM, 8-core CPU, GPU with 8GB+ VRAM
-- **Storage**: 50GB+ for models and vector storage
+- **Minimum**: 16GB RAM, 4-core CPU, 50GB storage
+- **Recommended**: 32GB RAM, 8-core CPU, GPU with 8GB+ VRAM, 100GB storage
+- **Storage Breakdown**:
+  - Models: ~40GB (BGE-M3, BGE-Reranker-V2-M3, GPT-OSS-20B)
+  - Vector Storage: Variable based on indexed documents
+  - Application: ~10GB for containers and dependencies
+
+### Air-Gapped Considerations
+
+- **No External API Dependencies**: All inference happens locally
+- **Local Model Storage**: Models are stored in Docker volumes
+- **Offline Document Processing**: All document indexing and retrieval is local
+- **Self-Contained Services**: ChromaDB, vLLM, and all services run in containers
 
 ## 🔧 Troubleshooting
 
