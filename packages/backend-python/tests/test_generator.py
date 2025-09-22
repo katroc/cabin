@@ -46,7 +46,7 @@ class GeneratorPostProcessTests(unittest.TestCase):
 
     def test_provenance_mismatch_returns_fallback(self):
         response = self.generator._post_process('"rain" [2]', self.provenance, "test question")
-        self.assertEqual(response.response, "Not found in docs.")
+        self.assertEqual(response.response, "I couldn't find reliable citations for this information in the available documentation. Please try rephrasing your question or checking if the topic is covered in the docs.")
         self.assertEqual(len(response.citations), 0)
 
 

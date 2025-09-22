@@ -150,6 +150,44 @@ export function RetrievalSettingsPanel() {
             error={state.validationErrors.mmrLambda}
           />
         </SettingField>
+
+        <SettingField
+          title="Smart Routing Threshold"
+          description="Similarity threshold for routing queries to RAG vs Direct LLM"
+        >
+          <SettingControl
+            type="slider"
+            id="routingThreshold"
+            label="Routing Threshold"
+            value={state.data.routingThreshold}
+            onChange={(value) => updateSetting('routingThreshold', value)}
+            min={0.1}
+            max={0.8}
+            step={0.05}
+            formatValue={(value) => value.toFixed(2)}
+            description="Higher values route more queries to Direct LLM mode"
+            error={state.validationErrors.routingThreshold}
+          />
+        </SettingField>
+
+        <SettingField
+          title="Routing Sample Size"
+          description="Number of documents to sample when comparing query similarity"
+        >
+          <SettingControl
+            type="slider"
+            id="routingSampleSize"
+            label="Sample Size"
+            value={state.data.routingSampleSize}
+            onChange={(value) => updateSetting('routingSampleSize', value)}
+            min={5}
+            max={100}
+            step={5}
+            formatValue={(value) => `${value} docs`}
+            description="More documents = better differentiation but slower routing"
+            error={state.validationErrors.routingSampleSize}
+          />
+        </SettingField>
       </SettingGroup>
 
       <SettingGroup
@@ -186,35 +224,9 @@ export function RetrievalSettingsPanel() {
           />
         </SettingField>
 
-        <SettingField
-          title="RM3 Query Expansion"
-          description="Use Relevance Model 3 for query expansion"
-        >
-          <SettingControl
-            type="toggle"
-            id="useRm3"
-            label="Enable RM3"
-            value={state.data.useRm3}
-            onChange={(value) => updateSetting('useRm3', value)}
-            description="Expand queries using terms from top retrieved documents"
-            error={state.validationErrors.useRm3}
-          />
-        </SettingField>
 
-        <SettingField
-          title="Early Reranking"
-          description="Apply reranking before final passage selection"
-        >
-          <SettingControl
-            type="toggle"
-            id="useEarlyReranker"
-            label="Enable Early Reranker"
-            value={state.data.useEarlyReranker}
-            onChange={(value) => updateSetting('useEarlyReranker', value)}
-            description="Rerank candidates before final passage selection"
-            error={state.validationErrors.useEarlyReranker}
-          />
-        </SettingField>
+
+
       </SettingGroup>
 
       <SettingGroup

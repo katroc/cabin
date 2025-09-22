@@ -440,6 +440,10 @@ const SmartResponse: React.FC<SmartResponseProps> = ({
                     </a>
                   ),
 
+                  // Table components with citation support
+                  td: ({ children }: any) => <td>{renderWithCitations(children)}</td>,
+                  th: ({ children }: any) => <th>{renderWithCitations(children)}</th>,
+
                   table: ({ node, children }: any) => {
                     const headerRow = node?.children?.[0];
                     const headerLabels = headerRow?.children?.map((cell: any) => getNodeText(cell).toLowerCase()) ?? [];
@@ -469,7 +473,7 @@ const SmartResponse: React.FC<SmartResponseProps> = ({
 
                     return (
                       <div className="table-scroll">
-                        <table>{children}</table>
+                        <table>{renderWithCitations(children)}</table>
                       </div>
                     );
                   },

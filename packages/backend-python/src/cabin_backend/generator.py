@@ -1,6 +1,7 @@
 import logging
-from typing import Any, Dict, Iterator, List, Optional, Tuple
+from typing import Any, Dict, Iterator, List, Optional, Tuple, cast
 import openai
+from openai.types.chat import ChatCompletionMessageParam
 import re
 
 CITATION_PATTERN = re.compile(r"\[(\d+)\]")
@@ -74,7 +75,7 @@ class Generator:
 
         response = self.llm_client.chat.completions.create(
             model=self.llm_model,
-            messages=messages,
+            messages=cast(List[ChatCompletionMessageParam], messages),
             stream=False,
             temperature=self.temperature,
             max_tokens=self.max_tokens,
@@ -151,7 +152,7 @@ class Generator:
         try:
             response_stream = self.llm_client.chat.completions.create(
                 model=self.llm_model,
-                messages=messages,
+                messages=cast(List[ChatCompletionMessageParam], messages),
                 stream=True,  # Enable streaming
                 temperature=self.temperature,
                 max_tokens=self.streaming_max_tokens,
@@ -188,7 +189,7 @@ class Generator:
         try:
             response_stream = self.llm_client.chat.completions.create(
                 model=self.llm_model,
-                messages=messages,
+                messages=cast(List[ChatCompletionMessageParam], messages),
                 stream=True,  # Enable streaming
                 temperature=self.temperature,
                 max_tokens=self.streaming_max_tokens,
@@ -266,6 +267,53 @@ IMPORTANT: Always process information through your reasoning and provide a natur
 
         context_blocks = build_context_blocks(entries) if entries else ""
         return provenance, context_blocks
+
+    def _extract_citations_from_response(
+        self,
+        response: str,
+        context_chunks: List[ParentChunk],
+    ) -> List[Citation]:
+        """Extract citations from response text using context chunks."""
+        # Find all citation markers like [1], [2], etc.
+        matches = CITATION_PATTERN.findall(response)
+
+        citations = []
+        seen_indices = set()
+
+        # Build provenance mapping from context chunks
+        provenance = {}
+        for i, chunk in enumerate(context_chunks, 1):
+            idx = str(i)
+            provenance[idx] = {
+                "chunk": chunk,
+                "page_title": chunk.metadata.page_title or "",
+                "source_url": chunk.metadata.source_url or chunk.metadata.url or "",
+                "space_name": chunk.metadata.space_name or "",
+            }
+
+        for match in matches:
+            idx = match
+            if idx in seen_indices or idx not in provenance:
+                continue
+            seen_indices.add(idx)
+
+            data = provenance[idx]
+            chunk = data["chunk"]
+
+            # Extract quote from response (simplified - take text around citation)
+            quote = self._default_quote(chunk.text, settings.app_config.generation.quote_max_words)
+
+            citation = Citation(
+                id=idx,
+                chunk_id=chunk.metadata.chunk_id or chunk.id,
+                page_title=data["page_title"] or data["source_url"] or f"Source {idx}",
+                source_url=data["source_url"],
+                space_name=data["space_name"],
+                quote=quote,
+            )
+            citations.append(citation)
+
+        return citations
 
     def _post_process(
         self,
@@ -362,7 +410,7 @@ IMPORTANT: Always process information through your reasoning and provide a natur
                 continue
             citation = Citation(
                 id=idx,
-                page_title=data["page_title"],
+                page_title=data["page_title"] or data["url"] or f"Source {idx}",
                 space_name=data["space_name"] or None,
                 space_key=data["space_key"] or None,
                 source_url=data["url"] or None,
@@ -383,9 +431,14 @@ IMPORTANT: Always process information through your reasoning and provide a natur
             cleaned = self._remove_citations(cleaned, invalid)
             metrics.increment("generator.citation_repair", value=len(invalid), reason="invalid_removed")
 
-        if not citations:
-            logger.warning("No valid citations remained; returning fallback | %s", log_ctx)
-            metrics.increment("generator.citation_fallback", reason="no_valid_citations")
+        # Ensure citations and response text are consistent
+        # Only include citations that are still present in the final cleaned response
+        final_citation_indices = set(self._extract_citation_indices(cleaned))
+        consistent_citations = [citation for citation in citations if citation.id in final_citation_indices]
+
+        if not consistent_citations:
+            logger.warning("No citations remained after consistency check; returning fallback | %s", log_ctx)
+            metrics.increment("generator.citation_fallback", reason="no_consistent_citations")
             return ChatResponse(
                 response="I couldn't find reliable citations for this information in the available documentation. Please try rephrasing your question or checking if the topic is covered in the docs.",
                 conversation_id=conversation_id or "unknown",
@@ -394,11 +447,11 @@ IMPORTANT: Always process information through your reasoning and provide a natur
                 used_rag=False  # This was RAG processing but failed
             )
 
-        rendered = render_citation_payloads(citations)
+        rendered = render_citation_payloads(consistent_citations)
         return ChatResponse(
             response=cleaned,
             conversation_id=conversation_id or "unknown",
-            citations=citations,
+            citations=consistent_citations,
             rendered_citations=rendered,
             used_rag=True  # Successful RAG response with citations
         )
@@ -471,7 +524,7 @@ Make it sound like you're explaining this to a colleague in a helpful, natural w
 
             response = self.llm_client.chat.completions.create(
                 model=self.llm_model,
-                messages=[{"role": "user", "content": rephrase_prompt}],
+                messages=cast(List[ChatCompletionMessageParam], [{"role": "user", "content": rephrase_prompt}]),
                 stream=False,
                 temperature=0.3,  # Lower temperature for consistency
                 max_tokens=self.rephrasing_max_tokens,
@@ -512,7 +565,7 @@ provide a natural conversational response acknowledging their question."""
 
             response = self.llm_client.chat.completions.create(
                 model=self.llm_model,
-                messages=messages,
+                messages=cast(List[ChatCompletionMessageParam], messages),
                 stream=False,
                 temperature=self.temperature,
                 max_tokens=self.max_tokens,

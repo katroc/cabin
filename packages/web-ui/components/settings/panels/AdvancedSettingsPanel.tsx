@@ -69,67 +69,7 @@ export function AdvancedSettingsPanel() {
         </SettingField>
       </SettingGroup>
 
-      <SettingGroup
-        title="RM3 Query Expansion"
-        description="Relevance Model 3 parameters for improving query understanding"
-      >
-        <SettingField
-          title="Top Documents"
-          description="Number of top documents to use for query expansion"
-        >
-          <SettingControl
-            type="slider"
-            id="rm3TopDocs"
-            label="RM3 Top Documents"
-            value={state.data.rm3TopDocs}
-            onChange={(value) => updateSetting('rm3TopDocs', value)}
-            min={1}
-            max={50}
-            step={1}
-            formatValue={(value) => `${value} documents`}
-            description="More documents provide richer expansion but may introduce noise"
-            error={state.validationErrors.rm3TopDocs}
-          />
-        </SettingField>
 
-        <SettingField
-          title="Expansion Terms"
-          description="Number of terms to add to the original query"
-        >
-          <SettingControl
-            type="slider"
-            id="rm3Terms"
-            label="RM3 Terms"
-            value={state.data.rm3Terms}
-            onChange={(value) => updateSetting('rm3Terms', value)}
-            min={1}
-            max={50}
-            step={1}
-            formatValue={(value) => `${value} terms`}
-            description="Additional terms from relevant documents to expand the query"
-            error={state.validationErrors.rm3Terms}
-          />
-        </SettingField>
-
-        <SettingField
-          title="Alpha Parameter"
-          description="Weight of original query vs expanded terms"
-        >
-          <SettingControl
-            type="slider"
-            id="rm3Alpha"
-            label="RM3 Alpha"
-            value={state.data.rm3Alpha}
-            onChange={(value) => updateSetting('rm3Alpha', value)}
-            min={0}
-            max={1}
-            step={0.1}
-            formatValue={(value) => value.toFixed(1)}
-            description="Higher values favor original query terms over expansion terms"
-            error={state.validationErrors.rm3Alpha}
-          />
-        </SettingField>
-      </SettingGroup>
 
       <SettingGroup
         title="Content Verification"
@@ -175,7 +115,6 @@ export function AdvancedSettingsPanel() {
               </p>
               <ul className="space-y-1 text-xs text-[color:var(--text-muted)] ml-4">
                 <li>• Incorrect deduplication settings may remove relevant content</li>
-                <li>• RM3 parameters affect query expansion and retrieval quality</li>
                 <li>• Fuzzy matching thresholds impact content verification accuracy</li>
                 <li>• Changes may require reindexing or system restart</li>
               </ul>
@@ -195,9 +134,6 @@ export function AdvancedSettingsPanel() {
                 updateSetting('dedupEnabled', true)
                 updateSetting('dedupMethod', 'minhash')
                 updateSetting('dedupThreshold', 0.92)
-                updateSetting('rm3TopDocs', 10)
-                updateSetting('rm3Terms', 10)
-                updateSetting('rm3Alpha', 0.4)
                 updateSetting('fuzzyPartialRatioMin', 70)
               }}
               className="btn-secondary"

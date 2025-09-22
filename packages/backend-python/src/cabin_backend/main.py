@@ -72,12 +72,12 @@ class UISettingsPayload(BaseModel):
     lexical_k: int = Field(alias="lexicalK", default=80)
     rrf_k: int = Field(alias="rrfK", default=60)
     mmr_lambda: float = Field(alias="mmrLambda", default=0.5)
+    routing_threshold: float = Field(alias="routingThreshold", default=0.4)
+    routing_sample_size: int = Field(alias="routingSampleSize", default=20)
 
     # Retrieval - Features
     use_reranker: bool = Field(alias="useReranker")
     allow_reranker_fallback: bool = Field(alias="allowRerankerFallback")
-    use_rm3: bool = Field(alias="useRm3")
-    use_early_reranker: bool = Field(alias="useEarlyReranker", default=True)
 
     # Reranker
     reranker_url: str = Field(alias="rerankerUrl")
@@ -105,10 +105,7 @@ class UISettingsPayload(BaseModel):
     dedup_method: str = Field(alias="dedupMethod", default="minhash")
     dedup_threshold: float = Field(alias="dedupThreshold", default=0.92)
 
-    # Advanced - RM3
-    rm3_top_docs: int = Field(alias="rm3TopDocs", default=10)
-    rm3_terms: int = Field(alias="rm3Terms", default=10)
-    rm3_alpha: float = Field(alias="rm3Alpha", default=0.4)
+
 
     # Advanced - Verification
     fuzzy_partial_ratio_min: int = Field(alias="fuzzyPartialRatioMin", default=70)
@@ -135,7 +132,6 @@ class UISettingsPayload(BaseModel):
             min_keyword_overlap=self.min_keyword_overlap,
             use_reranker=self.use_reranker,
             allow_reranker_fallback=self.allow_reranker_fallback,
-            use_rm3=self.use_rm3,
             reranker_url=self.reranker_url,
             log_level=self.log_level,
             max_tokens=self.max_tokens,
@@ -219,12 +215,12 @@ def load_default_ui_settings() -> UISettingsPayload:
         lexicalK=retrieval_cfg.lexical_k,
         rrfK=retrieval_cfg.rrf_k,
         mmrLambda=retrieval_cfg.mmr_lambda,
+        routingThreshold=0.4,  # Default routing threshold for smart routing
+        routingSampleSize=20,  # Default corpus sample size for routing
 
         # Retrieval - Features
         useReranker=feature_flags.reranker,
         allowRerankerFallback=feature_flags.heuristic_fallback,
-        useRm3=feature_flags.rm3,
-        useEarlyReranker=feature_flags.early_reranker,
 
         # Reranker
         rerankerUrl=reranker_url,
@@ -252,10 +248,7 @@ def load_default_ui_settings() -> UISettingsPayload:
         dedupMethod=ingestion_cfg.dedup_method,
         dedupThreshold=ingestion_cfg.dedup_threshold,
 
-        # Advanced - RM3
-        rm3TopDocs=retrieval_cfg.rm3_top_docs,
-        rm3Terms=retrieval_cfg.rm3_terms,
-        rm3Alpha=retrieval_cfg.rm3_alpha,
+
 
         # Advanced - Verification
         fuzzyPartialRatioMin=verification_cfg.fuzzy_partial_ratio_min,
@@ -358,7 +351,7 @@ try:
     generator_service = Generator(overrides=current_overrides)
     data_source_manager = DataSourceManager(chunker_service, vector_store_service)
     conversation_memory = ConversationMemoryManager()
-    query_router = QueryRouter()
+    query_router = QueryRouter(similarity_threshold=current_ui_settings.routing_threshold)
 except Exception as e:
     # If services fail to initialize (e.g., can't connect to ChromaDB),
     # log the error and prevent the app from starting gracefully.
@@ -387,8 +380,9 @@ def store_performance_metrics(metrics: RAGPerformanceMetrics) -> None:
 
 def apply_ui_settings(payload: UISettingsPayload) -> None:
     global current_ui_settings, current_overrides
-    global vector_store_service, generator_service, data_source_manager
+    global vector_store_service, generator_service, data_source_manager, query_router
 
+    logger.info(f"Applying UI settings - routing threshold: {payload.routing_threshold}")
     overrides = payload.to_overrides()
     setup_logging(payload.log_level)
     current_ui_settings = payload
@@ -400,10 +394,14 @@ def apply_ui_settings(payload: UISettingsPayload) -> None:
     new_vector_store = VectorStore(overrides=overrides)
     new_generator = Generator(overrides=overrides)
     new_data_manager = DataSourceManager(chunker_service, new_vector_store)
+    new_query_router = QueryRouter(similarity_threshold=payload.routing_threshold)
+    logger.info(f"Created new QueryRouter with threshold: {payload.routing_threshold}")
 
     vector_store_service = new_vector_store
     generator_service = new_generator
     data_source_manager = new_data_manager
+    query_router = new_query_router
+    logger.info(f"QueryRouter updated - new threshold: {query_router.similarity_threshold}")
 
 # --- Health Check ---
 @app.get("/health")
@@ -501,7 +499,7 @@ def chat(request: ChatRequest) -> ChatResponse:
 
         # Query routing timing
         routing_start = time.time()
-        corpus_sample = vector_store_service.get_corpus_sample_for_routing(sample_size=20)
+        corpus_sample = vector_store_service.get_corpus_sample_for_routing(sample_size=current_ui_settings.routing_sample_size)
         should_use_rag, similarity_score, routing_reason = query_router.should_use_rag(
             request.message,
             conversation_context=conversation_context,
@@ -516,7 +514,7 @@ def chat(request: ChatRequest) -> ChatResponse:
 
         # Store routing metadata
         metrics.used_rag = bool(should_use_rag)  # Convert numpy bool to Python bool
-        metrics.query_type = "rag" if should_use_rag else "conversational"
+        metrics.query_type = "rag" if should_use_rag else "direct"
         metrics.routing_similarity_score = similarity_score
         metrics.routing_reason = routing_reason
 
@@ -625,44 +623,80 @@ def chat(request: ChatRequest) -> ChatResponse:
 @app.post("/api/chat/stream")
 def chat_stream(request: ChatRequest):
     """Endpoint for streaming chat responses."""
-    if not vector_store_service or not generator_service or not conversation_memory:
+    if not vector_store_service or not generator_service or not conversation_memory or not query_router:
         raise HTTPException(status_code=503, detail="Chat service not available.")
 
+    # Initialize performance tracking
+    start_time = time.time()
+    metrics = RAGPerformanceMetrics(
+        conversation_id="",  # Will be set once we get/create conversation
+        query=request.message,
+        query_type="",  # Will be determined by routing
+        total_duration_ms=0,
+        used_rag=False
+    )
+
     try:
-        # Get or create conversation
+        # Conversation setup timing
+        setup_start = time.time()
         conversation = conversation_memory.get_or_create_conversation(request.conversation_id)
         conversation_id = conversation.conversation_id
+        metrics.conversation_id = conversation_id
 
         # Add user message to conversation history
         conversation_memory.add_user_message(conversation_id, request.message)
 
         # Get conversation context for LLM
         conversation_context = conversation_memory.get_conversation_context(conversation_id, max_messages=current_ui_settings.max_memory_messages)
+        setup_duration = (time.time() - setup_start) * 1000
+        metrics.add_timing("conversation_setup", setup_duration)
 
-        # Decide if we need RAG retrieval using query router
-        corpus_sample = vector_store_service.get_corpus_sample_for_routing(sample_size=20)
+        # Query routing timing
+        routing_start = time.time()
+        corpus_sample = vector_store_service.get_corpus_sample_for_routing(sample_size=current_ui_settings.routing_sample_size)
         should_use_rag, similarity_score, routing_reason = query_router.should_use_rag(
             request.message,
             conversation_context=conversation_context,
             corpus_sample=corpus_sample
         )
+        routing_duration = (time.time() - routing_start) * 1000
+        metrics.add_timing("query_routing", routing_duration, metadata={
+            "should_use_rag": should_use_rag,
+            "similarity_score": similarity_score,
+            "routing_reason": routing_reason
+        })
+        metrics.query_type = "rag" if should_use_rag else "direct"
+        metrics.routing_similarity_score = similarity_score
+        metrics.routing_reason = routing_reason
 
         logger.debug(
             "Streaming query routing: '%s' -> RAG=%s (sim=%.3f, reason=%s)",
             request.message[:50], should_use_rag, similarity_score, routing_reason
         )
 
-        # Retrieve documents only if routing suggests we need them
+        # Document retrieval timing
+        retrieval_start = time.time()
         if should_use_rag:
             context_chunks = vector_store_service.query(request.message, filters=request.filters)
             logger.debug("Streaming RAG retrieval: found %d context chunks", len(context_chunks))
+            if context_chunks:
+                logger.debug("First context chunk: %s", context_chunks[0].text[:200])
         else:
             context_chunks = []
             logger.debug("Streaming conversational routing: skipping document retrieval")
+        retrieval_duration = (time.time() - retrieval_start) * 1000
+        metrics.add_timing("document_retrieval", retrieval_duration, metadata={
+            "num_chunks": len(context_chunks),
+            "used_rag": should_use_rag
+        })
+        metrics.num_context_chunks = len(context_chunks)
+        metrics.used_rag = should_use_rag
 
         # Generate real streaming response
         def generate():
+            nonlocal metrics
             collected_response = ""
+            generation_start = time.time()
             try:
                 for chunk in generator_service.ask_stream(
                     request.message,
@@ -674,21 +708,76 @@ def chat_stream(request: ChatRequest):
                     collected_response += chunk
                     yield chunk
 
+                # Generate citations from the collected response and context
+                citations = []
+                if should_use_rag and context_chunks:
+                    logger.debug("DEBUG: Collected response for citation extraction: %s", collected_response[:500])
+                    logger.debug("DEBUG: Number of context chunks: %d", len(context_chunks))
+                    # Extract citations from the response text
+                    citations = generator_service._extract_citations_from_response(
+                        collected_response, context_chunks
+                    )
+                    logger.debug("Extracted %d citations from streaming response: %s", len(citations), [c.id for c in citations])
+                    if citations:
+                        logger.debug("First citation data: %s", citations[0].model_dump() if hasattr(citations[0], 'model_dump') else citations[0].__dict__)
+
+                # Send citations as JSON in the final chunk
+                import json
+                citations_data = []
+                for cite in citations:
+                    cite_dict = cite.model_dump() if hasattr(cite, 'model_dump') else cite.__dict__
+                    # Ensure we have the expected field names for frontend
+                    cite_dict['source_url'] = cite_dict.get('source_url') or cite_dict.get('url', '')
+                    citations_data.append(cite_dict)
+                metadata = {
+                    "citations": citations_data,
+                    "conversation_id": conversation_id
+                }
+                if citations_data:
+                    yield f"\n---METADATA---{json.dumps(metadata)}---END---\n"
+
+                # Record generation timing
+                generation_duration = (time.time() - generation_start) * 1000
+                metrics.add_timing("response_generation", generation_duration, metadata={
+                    "response_length": len(collected_response),
+                    "num_citations": len(citations)
+                })
+
                 # Add assistant response to conversation history after streaming is complete
                 conversation_memory.add_assistant_message(
                     conversation_id,
                     collected_response,
-                    []  # No citations available during streaming
+                    citations
                 )
+
+                # Calculate total duration and store metrics
+                total_duration = (time.time() - start_time) * 1000
+                metrics.total_duration_ms = total_duration
+                store_performance_metrics(metrics)
 
                 logger.info("Streaming response completed for conversation %s", conversation_id)
 
             except Exception as e:
+                # Record error timing
+                error_duration = (time.time() - generation_start) * 1000
+                metrics.add_timing("response_generation", error_duration, success=False, error_message=str(e))
+
+                # Store error metrics
+                total_duration = (time.time() - start_time) * 1000
+                metrics.total_duration_ms = total_duration
+                store_performance_metrics(metrics)
+
                 logger.error("Error during streaming: %s", str(e))
                 yield f"Error: {str(e)}"
 
         return StreamingResponse(generate(), media_type="text/plain")
     except Exception as e:
+        # Track errors in performance metrics
+        error_duration = (time.time() - start_time) * 1000
+        metrics.total_duration_ms = error_duration
+        metrics.add_timing("error", 0, success=False, error_message=str(e))
+        store_performance_metrics(metrics)
+
         print(f"Error during streaming chat: {e}")
         # Cannot return a standard HTTPException body in a streaming response that may have already started.
         # The client will see a dropped connection.
@@ -782,22 +871,42 @@ def chat_direct_stream(request: ChatRequest):
     if not generator_service or not conversation_memory:
         raise HTTPException(status_code=503, detail="Chat service not available.")
 
+    # Initialize performance tracking for direct LLM mode
+    start_time = time.time()
+    metrics = RAGPerformanceMetrics(
+        conversation_id="",  # Will be set once we get/create conversation
+        query=request.message,
+        query_type="direct_llm",
+        total_duration_ms=0,
+        used_rag=False
+    )
+
     try:
-        # Get or create conversation
+        # Conversation setup timing
+        setup_start = time.time()
         conversation = conversation_memory.get_or_create_conversation(request.conversation_id)
         conversation_id = conversation.conversation_id
+        metrics.conversation_id = conversation_id
 
         # Add user message to conversation history
         conversation_memory.add_user_message(conversation_id, request.message)
 
         # Get conversation context for LLM
         conversation_context = conversation_memory.get_conversation_context(conversation_id, max_messages=current_ui_settings.max_memory_messages)
+        setup_duration = (time.time() - setup_start) * 1000
+        metrics.add_timing("conversation_setup", setup_duration)
+
+        # Skip routing and retrieval - go directly to LLM
+        metrics.add_timing("query_routing", 0, metadata={"mode": "direct_llm", "skipped": True})
+        metrics.add_timing("document_retrieval", 0, metadata={"mode": "direct_llm", "skipped": True})
 
         logger.debug("Direct LLM streaming mode: bypassing RAG for query '%s'", request.message[:50])
 
         # Generate real streaming response directly - no context chunks, no provenance enforcement
         def generate():
+            nonlocal metrics
             collected_response = ""
+            generation_start = time.time()
             try:
                 for chunk in generator_service.ask_stream(
                     request.message,
@@ -809,6 +918,13 @@ def chat_direct_stream(request: ChatRequest):
                     collected_response += chunk
                     yield chunk
 
+                # Record generation timing
+                generation_duration = (time.time() - generation_start) * 1000
+                metrics.add_timing("response_generation", generation_duration, metadata={
+                    "response_length": len(collected_response),
+                    "mode": "direct_llm"
+                })
+
                 # Add assistant response to conversation history after streaming is complete
                 conversation_memory.add_assistant_message(
                     conversation_id,
@@ -816,15 +932,35 @@ def chat_direct_stream(request: ChatRequest):
                     []  # No citations in direct mode
                 )
 
+                # Calculate total duration and store metrics
+                total_duration = (time.time() - start_time) * 1000
+                metrics.total_duration_ms = total_duration
+                store_performance_metrics(metrics)
+
                 logger.info("Direct LLM streaming response completed for conversation %s", conversation_id)
 
             except Exception as e:
+                # Record error timing
+                error_duration = (time.time() - generation_start) * 1000
+                metrics.add_timing("response_generation", error_duration, success=False, error_message=str(e))
+
+                # Store error metrics
+                total_duration = (time.time() - start_time) * 1000
+                metrics.total_duration_ms = total_duration
+                store_performance_metrics(metrics)
+
                 logger.error("Error during direct streaming: %s", str(e))
                 yield f"Error: {str(e)}"
 
         return StreamingResponse(generate(), media_type="text/plain")
 
     except Exception as e:
+        # Track errors in performance metrics
+        error_duration = (time.time() - start_time) * 1000
+        metrics.total_duration_ms = error_duration
+        metrics.add_timing("error", 0, success=False, error_message=str(e))
+        store_performance_metrics(metrics)
+
         logger.error("Direct streaming chat error: %s", str(e), exc_info=True)
         return StreamingResponse("Error processing direct request.", media_type="text/plain", status_code=500)
 
