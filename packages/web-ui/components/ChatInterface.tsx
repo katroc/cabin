@@ -54,7 +54,6 @@ export default function ChatInterface({
 }: ChatInterfaceProps) {
   const [input, setInput] = useState('')
   const [isProcessing, setIsProcessing] = useState(false)
-  const [verifyingMessageId, setVerifyingMessageId] = useState<string | null>(null)
   const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null)
   const [chatMode, setChatMode] = useState<ChatMode>('rag')
   const messagesEndRef = useRef<HTMLDivElement | null>(null)
@@ -67,7 +66,6 @@ export default function ChatInterface({
   useEffect(() => {
     setInput('')
     setIsProcessing(false)
-    setVerifyingMessageId(null)
     setStreamingMessageId(null)
     lastAssistantIdRef.current = null
     abortControllerRef.current?.abort()
@@ -81,15 +79,6 @@ export default function ChatInterface({
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [conversation?.messages, conversation?.id])
 
-  // Scroll when verification state changes (animation appears/disappears)
-  useEffect(() => {
-    if (verifyingMessageId) {
-      // Small delay to let the animation render first
-      setTimeout(() => {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-      }, 100)
-    }
-  }, [verifyingMessageId])
 
   const updateAssistantMessage = useCallback(
     (assistantId: string, updater: (message: Message) => Message) => {
@@ -127,14 +116,37 @@ export default function ChatInterface({
       const reader = response.body.getReader()
       const decoder = new TextDecoder()
       let aggregated = ''
+      let citations: any[] = []
       let lastUpdate = 0
+      let hasParsedCitations = false
 
       while (true) {
         const { value, done } = await reader.read()
         if (done) break
 
         const chunk = decoder.decode(value, { stream: true })
-        aggregated += chunk
+
+        // Check if this is the metadata chunk
+        if (chunk.includes('---METADATA---')) {
+          const metadataMatch = chunk.match(/---METADATA---(\{.*?\})---END---/)
+          if (metadataMatch) {
+            try {
+              const metadata = JSON.parse(metadataMatch[1])
+              citations = metadata.citations || []
+              // Immediately update the message with citations when we receive them
+              updateAssistantMessage(assistantId, message => ({
+                ...message,
+                citations: citations
+              }))
+            } catch (e) {
+              console.warn('Failed to parse streaming metadata:', e)
+            }
+            // Remove the metadata from the aggregated text
+            aggregated = aggregated.replace(/\n?---METADATA---\{.*?\}---END---\n?$/, '')
+          }
+        } else {
+          aggregated += chunk
+        }
 
         // Throttle updates for smoother streaming - update at most every 50ms
         const now = Date.now()
@@ -142,7 +154,9 @@ export default function ChatInterface({
           const currentText = aggregated
           updateAssistantMessage(assistantId, message => ({
             ...message,
-            content: currentText
+            content: currentText,
+            // Preserve existing citations if they exist
+            citations: message.citations || []
           }))
           lastUpdate = now
 
@@ -185,7 +199,6 @@ export default function ChatInterface({
     abortControllerRef.current?.abort()
     abortControllerRef.current = null
     setIsProcessing(false)
-    setVerifyingMessageId(null)
     setStreamingMessageId(null)
     lastAssistantIdRef.current = null
   }, [])
@@ -223,7 +236,6 @@ export default function ChatInterface({
 
     // Show verification animation for potential RAG requests (we'll hide it if it's not RAG)
     if (chatMode === 'rag') {
-      setVerifyingMessageId(assistantMessageId)
     }
 
     let streamedText = ''
@@ -240,54 +252,48 @@ export default function ChatInterface({
       console.warn('Streaming unavailable, falling back to standard response:', error)
     }
 
-    try {
-      // Always fetch full response for metadata, but handle verification animation smartly
-      const fullResponse = await requestFullResponse(question)
+    if (streamingFailed || !streamedText) {
+      // Streaming failed, fall back to regular endpoint
+      try {
+        const fullResponse = await requestFullResponse(question)
 
-      // Hide verification animation if this wasn't actually a RAG request
-      if (!fullResponse.used_rag) {
-        setVerifyingMessageId(null)
-      }
+        // Hide verification animation if this wasn't actually a RAG request
+        if (!fullResponse.used_rag) {
+              }
 
-      if (streamingFailed || !streamedText) {
-        // If streaming failed, use the full response content
         updateAssistantMessage(assistantMessageId, message => ({
           ...message,
           content: fullResponse.response || 'No response received',
           citations: fullResponse.citations || [],
           timestamp: new Date()
         }))
-      } else {
-        // If streaming succeeded, keep streamed content but add citations
+
+        // Clear verification animation now that citations are populated
+          } catch (error) {
+        console.error('Both streaming and regular endpoints failed:', error)
         updateAssistantMessage(assistantMessageId, message => ({
           ...message,
-          citations: fullResponse.citations || [],
+          content: 'Sorry, I encountered an error processing your request.',
+          citations: [],
           timestamp: new Date()
         }))
-      }
-
-      // Clear verification animation now that citations are populated
-      setVerifyingMessageId(null)
-    } catch (error) {
-      if ((error as Error).name === 'AbortError') {
-        return
-      }
-      console.error('Failed to fetch complete response:', error)
+          }
+    } else {
+      // Streaming succeeded and citations were already added during streaming
+      // Just add timestamp and clear verification animation
       updateAssistantMessage(assistantMessageId, message => ({
         ...message,
-        content: 'Sorry, I encountered an error processing your request.',
         timestamp: new Date()
       }))
-      // Clear verification state on error
-      setVerifyingMessageId(null)
-    } finally {
-      setIsProcessing(false)
-      setStreamingMessageId(null)
-      abortControllerRef.current = null
-      lastAssistantIdRef.current = null
-      // Refocus input after message is sent
-      setTimeout(() => inputRef.current?.focus(), 100)
-    }
+      }
+
+    // Cleanup
+    setIsProcessing(false);
+    setStreamingMessageId(null);
+    abortControllerRef.current = null;
+    lastAssistantIdRef.current = null;
+    // Refocus input after message is sent
+    setTimeout(() => inputRef.current?.focus(), 100);
   }, [
     conversation,
     input,
@@ -374,7 +380,7 @@ export default function ChatInterface({
                         answer={message.content}
                         query={messages[index - 1]?.content || ''}
                         citations={message.citations || []}
-                        isVerifyingSources={verifyingMessageId === message.id}
+                        isVerifyingSources={false}
                         isStreaming={streamingMessageId === message.id}
                       />
                     )}

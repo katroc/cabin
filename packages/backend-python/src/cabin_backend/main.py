@@ -76,7 +76,6 @@ class UISettingsPayload(BaseModel):
     # Retrieval - Features
     use_reranker: bool = Field(alias="useReranker")
     allow_reranker_fallback: bool = Field(alias="allowRerankerFallback")
-    use_rm3: bool = Field(alias="useRm3")
 
     # Reranker
     reranker_url: str = Field(alias="rerankerUrl")
@@ -104,10 +103,7 @@ class UISettingsPayload(BaseModel):
     dedup_method: str = Field(alias="dedupMethod", default="minhash")
     dedup_threshold: float = Field(alias="dedupThreshold", default=0.92)
 
-    # Advanced - RM3
-    rm3_top_docs: int = Field(alias="rm3TopDocs", default=10)
-    rm3_terms: int = Field(alias="rm3Terms", default=10)
-    rm3_alpha: float = Field(alias="rm3Alpha", default=0.4)
+
 
     # Advanced - Verification
     fuzzy_partial_ratio_min: int = Field(alias="fuzzyPartialRatioMin", default=70)
@@ -134,7 +130,6 @@ class UISettingsPayload(BaseModel):
             min_keyword_overlap=self.min_keyword_overlap,
             use_reranker=self.use_reranker,
             allow_reranker_fallback=self.allow_reranker_fallback,
-            use_rm3=self.use_rm3,
             reranker_url=self.reranker_url,
             log_level=self.log_level,
             max_tokens=self.max_tokens,
@@ -222,7 +217,6 @@ def load_default_ui_settings() -> UISettingsPayload:
         # Retrieval - Features
         useReranker=feature_flags.reranker,
         allowRerankerFallback=feature_flags.heuristic_fallback,
-        useRm3=feature_flags.rm3,
 
         # Reranker
         rerankerUrl=reranker_url,
@@ -250,10 +244,7 @@ def load_default_ui_settings() -> UISettingsPayload:
         dedupMethod=ingestion_cfg.dedup_method,
         dedupThreshold=ingestion_cfg.dedup_threshold,
 
-        # Advanced - RM3
-        rm3TopDocs=retrieval_cfg.rm3_top_docs,
-        rm3Terms=retrieval_cfg.rm3_terms,
-        rm3Alpha=retrieval_cfg.rm3_alpha,
+
 
         # Advanced - Verification
         fuzzyPartialRatioMin=verification_cfg.fuzzy_partial_ratio_min,
@@ -654,6 +645,8 @@ def chat_stream(request: ChatRequest):
         if should_use_rag:
             context_chunks = vector_store_service.query(request.message, filters=request.filters)
             logger.debug("Streaming RAG retrieval: found %d context chunks", len(context_chunks))
+            if context_chunks:
+                logger.debug("First context chunk: %s", context_chunks[0].text[:200])
         else:
             context_chunks = []
             logger.debug("Streaming conversational routing: skipping document retrieval")
@@ -672,11 +665,39 @@ def chat_stream(request: ChatRequest):
                     collected_response += chunk
                     yield chunk
 
+                # Generate citations from the collected response and context
+                citations = []
+                if should_use_rag and context_chunks:
+                    logger.debug("DEBUG: Collected response for citation extraction: %s", collected_response[:500])
+                    logger.debug("DEBUG: Number of context chunks: %d", len(context_chunks))
+                    # Extract citations from the response text
+                    citations = generator_service._extract_citations_from_response(
+                        collected_response, context_chunks
+                    )
+                    logger.debug("Extracted %d citations from streaming response: %s", len(citations), [c.id for c in citations])
+                    if citations:
+                        logger.debug("First citation data: %s", citations[0].model_dump() if hasattr(citations[0], 'model_dump') else citations[0].__dict__)
+
+                # Send citations as JSON in the final chunk
+                import json
+                citations_data = []
+                for cite in citations:
+                    cite_dict = cite.model_dump() if hasattr(cite, 'model_dump') else cite.__dict__
+                    # Ensure we have the expected field names for frontend
+                    cite_dict['source_url'] = cite_dict.get('source_url') or cite_dict.get('url', '')
+                    citations_data.append(cite_dict)
+                metadata = {
+                    "citations": citations_data,
+                    "conversation_id": conversation_id
+                }
+                if citations_data:
+                    yield f"\n---METADATA---{json.dumps(metadata)}---END---\n"
+
                 # Add assistant response to conversation history after streaming is complete
                 conversation_memory.add_assistant_message(
                     conversation_id,
                     collected_response,
-                    []  # No citations available during streaming
+                    citations
                 )
 
                 logger.info("Streaming response completed for conversation %s", conversation_id)
