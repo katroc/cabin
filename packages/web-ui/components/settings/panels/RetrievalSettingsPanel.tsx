@@ -201,20 +201,7 @@ export function RetrievalSettingsPanel() {
           />
         </SettingField>
 
-        <SettingField
-          title="Early Reranking"
-          description="Apply reranking before final passage selection"
-        >
-          <SettingControl
-            type="toggle"
-            id="useEarlyReranker"
-            label="Enable Early Reranker"
-            value={state.data.useEarlyReranker}
-            onChange={(value) => updateSetting('useEarlyReranker', value)}
-            description="Rerank candidates before final passage selection"
-            error={state.validationErrors.useEarlyReranker}
-          />
-        </SettingField>
+
       </SettingGroup>
 
       <SettingGroup

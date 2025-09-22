@@ -77,7 +77,6 @@ class UISettingsPayload(BaseModel):
     use_reranker: bool = Field(alias="useReranker")
     allow_reranker_fallback: bool = Field(alias="allowRerankerFallback")
     use_rm3: bool = Field(alias="useRm3")
-    use_early_reranker: bool = Field(alias="useEarlyReranker", default=True)
 
     # Reranker
     reranker_url: str = Field(alias="rerankerUrl")
@@ -224,7 +223,6 @@ def load_default_ui_settings() -> UISettingsPayload:
         useReranker=feature_flags.reranker,
         allowRerankerFallback=feature_flags.heuristic_fallback,
         useRm3=feature_flags.rm3,
-        useEarlyReranker=feature_flags.early_reranker,
 
         # Reranker
         rerankerUrl=reranker_url,

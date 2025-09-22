@@ -50,7 +50,6 @@ class RuntimeOverrides:
     use_reranker: Optional[bool] = None
     allow_reranker_fallback: Optional[bool] = None
     use_rm3: Optional[bool] = None
-    use_early_reranker: Optional[bool] = None
 
     # Retrieval - Database
     chroma_host: Optional[str] = None

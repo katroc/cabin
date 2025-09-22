@@ -35,7 +35,7 @@ class VectorStore:
         self.use_reranker_default = overrides.use_reranker if overrides.use_reranker is not None else settings.feature_flags.reranker
         self.allow_reranker_fallback_default = overrides.allow_reranker_fallback if overrides.allow_reranker_fallback is not None else settings.feature_flags.heuristic_fallback
         self.use_rm3_default = overrides.use_rm3 if overrides.use_rm3 is not None else settings.feature_flags.rm3
-        self.use_early_reranker_default = settings.feature_flags.early_reranker
+
         reranker_url = overrides.reranker_url or settings.app_config.reranker.url
 
         self.embedding_client = EmbeddingClient(
@@ -412,7 +412,7 @@ class VectorStore:
 
         # Apply early reranking before MMR selection for better candidate selection
         reranker_enabled = self.use_reranker_default if use_reranker is None else use_reranker
-        early_reranker_enabled = self.use_early_reranker_default and reranker_enabled
+        early_reranker_enabled = reranker_enabled  # Early reranking is now always enabled when reranking is enabled
         fallback_enabled = self.allow_reranker_fallback_default if allow_reranker_fallback is None else allow_reranker_fallback
 
         chunk_lookup = {meta.get("chunk_id") or chunk.id: chunk for meta, chunk in extracted}

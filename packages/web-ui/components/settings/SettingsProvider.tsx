@@ -46,7 +46,6 @@ export interface ExtendedSettingsData {
   useReranker: boolean
   allowRerankerFallback: boolean
   useRm3: boolean
-  useEarlyReranker: boolean
 
   // Retrieval - Database
   chromaHost: string
@@ -141,10 +140,9 @@ const defaultSettings: ExtendedSettingsData = {
   lexicalK: 80,
   rrfK: 60,
   mmrLambda: 0.5,
-  useReranker: true,
-  allowRerankerFallback: true,
-  useRm3: false,
-  useEarlyReranker: true,
+   useReranker: true,
+   allowRerankerFallback: true,
+   useRm3: false,
   chromaHost: 'localhost',
   chromaPort: 8100,
 
@@ -375,7 +373,6 @@ export function SettingsProvider({
         useReranker: state.data.useReranker,
         allowRerankerFallback: state.data.allowRerankerFallback,
         useRm3: state.data.useRm3,
-        useEarlyReranker: state.data.useEarlyReranker,
 
         // Retrieval - Database
         chromaHost: state.data.chromaHost,
