@@ -501,25 +501,7 @@ class VectorStore:
         else:
             self._last_lexical_rankings = []
 
-        # Handle legacy reranking if early reranking is disabled but reranker is enabled
-        ordered_ids = selected_ids
-        if reranker_enabled and not early_reranker_enabled and selected_ids:
-            # Legacy post-MMR reranking for backward compatibility
-            reranker_input = {cid: chunk_lookup[cid].text for cid in selected_ids if cid in chunk_lookup}
-            if reranker_input:
-                reranked = self.reranker.rerank(
-                    query_text,
-                    reranker_input,
-                    allow_fallback=fallback_enabled,
-                )
-                if reranked:
-                    ordered_ids = [cid for cid, _ in reranked]
-                    logger.debug(
-                        "Applied legacy post-MMR reranking to %d candidates",
-                        len(reranked),
-                    )
-
-        selected_chunks = [chunk_lookup[cid] for cid in ordered_ids if cid in chunk_lookup]
+        selected_chunks = [chunk_lookup[cid] for cid in selected_ids if cid in chunk_lookup]
 
         logger.debug(
             "VectorStore returning %d parent chunks for query '%s'",
