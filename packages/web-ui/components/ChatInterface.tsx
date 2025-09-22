@@ -55,12 +55,12 @@ export default function ChatInterface({
   const [input, setInput] = useState('')
   const [isProcessing, setIsProcessing] = useState(false)
   const [verifyingMessageId, setVerifyingMessageId] = useState<string | null>(null)
-  const [routingMessageId, setRoutingMessageId] = useState<string | null>(null)
   const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null)
   const [chatMode, setChatMode] = useState<ChatMode>('rag')
   const messagesEndRef = useRef<HTMLDivElement | null>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
   const lastAssistantIdRef = useRef<string | null>(null)
+  const inputRef = useRef<HTMLTextAreaElement | null>(null)
 
   const messages = conversation?.messages ?? []
 
@@ -68,11 +68,12 @@ export default function ChatInterface({
     setInput('')
     setIsProcessing(false)
     setVerifyingMessageId(null)
-    setRoutingMessageId(null)
     setStreamingMessageId(null)
     lastAssistantIdRef.current = null
     abortControllerRef.current?.abort()
     abortControllerRef.current = null
+    // Focus input when conversation changes
+    inputRef.current?.focus()
   }, [conversation?.id])
 
   useEffect(() => {
@@ -185,7 +186,6 @@ export default function ChatInterface({
     abortControllerRef.current = null
     setIsProcessing(false)
     setVerifyingMessageId(null)
-    setRoutingMessageId(null)
     setStreamingMessageId(null)
     lastAssistantIdRef.current = null
   }, [])
@@ -221,8 +221,10 @@ export default function ChatInterface({
     setInput('')
     setIsProcessing(true)
 
-    // Show routing animation immediately
-    setRoutingMessageId(assistantMessageId)
+    // Show verification animation for potential RAG requests (we'll hide it if it's not RAG)
+    if (chatMode === 'rag') {
+      setVerifyingMessageId(assistantMessageId)
+    }
 
     let streamedText = ''
     let streamingFailed = false
@@ -242,14 +244,9 @@ export default function ChatInterface({
       // Always fetch full response for metadata, but handle verification animation smartly
       const fullResponse = await requestFullResponse(question)
 
-      // Clear routing animation and show appropriate next state
-      setRoutingMessageId(null)
-
-      // Only show verification animation if response actually has citations
-      if (fullResponse.citations && fullResponse.citations.length > 0) {
-        setVerifyingMessageId(assistantMessageId)
-        // Brief delay to show the verification happened
-        await new Promise(resolve => setTimeout(resolve, 600))
+      // Hide verification animation if this wasn't actually a RAG request
+      if (!fullResponse.used_rag) {
+        setVerifyingMessageId(null)
       }
 
       if (streamingFailed || !streamedText) {
@@ -269,7 +266,7 @@ export default function ChatInterface({
         }))
       }
 
-      // Clear verification state
+      // Clear verification animation now that citations are populated
       setVerifyingMessageId(null)
     } catch (error) {
       if ((error as Error).name === 'AbortError') {
@@ -283,13 +280,13 @@ export default function ChatInterface({
       }))
       // Clear verification state on error
       setVerifyingMessageId(null)
-      // Clear routing state on error
-      setRoutingMessageId(null)
     } finally {
       setIsProcessing(false)
       setStreamingMessageId(null)
       abortControllerRef.current = null
       lastAssistantIdRef.current = null
+      // Refocus input after message is sent
+      setTimeout(() => inputRef.current?.focus(), 100)
     }
   }, [
     conversation,
@@ -311,6 +308,9 @@ export default function ChatInterface({
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault()
       void sendMessage()
+    } else if (event.key === 'Tab') {
+      event.preventDefault()
+      setChatMode(chatMode === 'rag' ? 'llm' : 'rag')
     }
   }
 
@@ -328,10 +328,9 @@ export default function ChatInterface({
   }, [isProcessing, messages])
 
   const placeholderState = useMemo(() => {
-    if (routingMessageId) return "routing"
     if (streamingPlaceholderVisible) return "streaming"
     return null
-  }, [routingMessageId, streamingPlaceholderVisible])
+  }, [streamingPlaceholderVisible])
 
   const hasMessages = messages.length > 0
   const canStop = isProcessing && Boolean(abortControllerRef.current)
@@ -396,29 +395,12 @@ export default function ChatInterface({
             <div className="flex justify-start">
               <div className="w-full">
                 <div className="rounded-xl border px-4 py-5 ui-bg-secondary ui-border-faint">
-                  {placeholderState === 'routing' ? (
-                    <div className="routing-section">
-                      <div className="routing-animation">
-                        <svg
-                          width="16"
-                          height="16"
-                          viewBox="0 0 24 24"
-                          fill="currentColor"
-                          className="routing-icon routing-loading"
-                        >
-                          <path d="M12,4V2A10,10 0 0,0 2,12H4A8,8 0 0,1 12,4Z" />
-                        </svg>
-                        <span className="routing-text">Analyzing request...</span>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="text-center">
-                      <Loader2 className="mx-auto animate-spin text-[var(--accent)]" />
-                      <p className="mt-3 text-sm ui-text-secondary">
-                        Generating response...
-                      </p>
-                    </div>
-                  )}
+                  <div className="text-center">
+                    <Loader2 className="mx-auto animate-spin text-[var(--accent)]" />
+                    <p className="mt-3 text-sm ui-text-secondary">
+                      Generating response...
+                    </p>
+                  </div>
                 </div>
               </div>
             </div>
@@ -439,13 +421,15 @@ export default function ChatInterface({
             className="w-full rounded-2xl border px-4 py-2.5 sm:px-5 ui-bg-secondary ui-border-light ui-shadow-elevated"
           >
             <textarea
+              ref={inputRef}
               rows={2}
               value={input}
               onChange={(event) => setInput(event.target.value)}
               onKeyDown={handleComposerKeyDown}
-              placeholder="Ask about your documentation..."
+              placeholder={chatMode === 'rag' ? "Ask about your documentation..." : "Chat with AI..."}
               className="w-full resize-none bg-transparent text-base leading-relaxed focus:outline-none ui-text-primary"
               disabled={isProcessing && !canStop}
+              autoFocus
             />
             <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
               <div className="text-xs ui-text-muted">
