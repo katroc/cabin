@@ -17,6 +17,12 @@ interface SettingsDrawerProps {
   availableModels: Array<{id: string, object: string}>;
   ragConfig: RagConfig;
   setRagConfig: (config: RagConfig) => void;
+  maxTokens: number;
+  setMaxTokens: (value: number) => void;
+  streamingMaxTokens: number;
+  setStreamingMaxTokens: (value: number) => void;
+  rephrasingMaxTokens: number;
+  setRephrasingMaxTokens: (value: number) => void;
   crawlerAllSpaces: boolean;
   setCrawlerAllSpaces: (value: boolean) => void;
   crawlerSpaces: string;
@@ -50,6 +56,12 @@ export function SettingsDrawer({
   availableModels,
   ragConfig,
   setRagConfig,
+  maxTokens,
+  setMaxTokens,
+  streamingMaxTokens,
+  setStreamingMaxTokens,
+  rephrasingMaxTokens,
+  setRephrasingMaxTokens,
   crawlerAllSpaces,
   setCrawlerAllSpaces,
   crawlerSpaces,
@@ -173,6 +185,66 @@ export function SettingsDrawer({
                   className="range-input"
                 />
                 <span className="range-value">{temperature.toFixed(1)}</span>
+              </div>
+            </div>
+
+            <div className="setting-group">
+              <label htmlFor="max-tokens-setting">
+                <span>Max Response Tokens</span>
+                <span className="setting-description">Maximum tokens for standard responses (1000-16000)</span>
+              </label>
+              <div className="range-input-group">
+                <input
+                  id="max-tokens-setting"
+                  type="range"
+                  min="1000"
+                  max="16000"
+                  step="500"
+                  value={maxTokens}
+                  onChange={(e) => setMaxTokens(Number(e.target.value))}
+                  className="range-input"
+                />
+                <span className="range-value">{maxTokens}</span>
+              </div>
+            </div>
+
+            <div className="setting-group">
+              <label htmlFor="streaming-max-tokens-setting">
+                <span>Max Streaming Tokens</span>
+                <span className="setting-description">Maximum tokens for streaming responses (1000-16000)</span>
+              </label>
+              <div className="range-input-group">
+                <input
+                  id="streaming-max-tokens-setting"
+                  type="range"
+                  min="1000"
+                  max="16000"
+                  step="500"
+                  value={streamingMaxTokens}
+                  onChange={(e) => setStreamingMaxTokens(Number(e.target.value))}
+                  className="range-input"
+                />
+                <span className="range-value">{streamingMaxTokens}</span>
+              </div>
+            </div>
+
+            <div className="setting-group">
+              <label htmlFor="rephrasing-max-tokens-setting">
+                <span>Max Rephrasing Tokens</span>
+                <span className="setting-description">Maximum tokens for response rephrasing (1000-8000)</span>
+              </label>
+              <div className="range-input-group">
+                <input
+                  id="rephrasing-max-tokens-setting"
+                  type="range"
+                  min="1000"
+                  max="8000"
+                  step="250"
+                  value={rephrasingMaxTokens}
+                  onChange={(e) => setRephrasingMaxTokens(Number(e.target.value))}
+                  className="range-input"
+                />
+                <span className="range-value">{rephrasingMaxTokens}</span>
               </div>
             </div>
           </div>

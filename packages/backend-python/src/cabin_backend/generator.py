@@ -21,6 +21,12 @@ class Generator:
         base_url = overrides.llm_base_url or settings.llm_base_url
         model = overrides.llm_model or settings.llm_model
         self.temperature = overrides.temperature if overrides.temperature is not None else 0.1
+
+        # Store token limit overrides
+        self.max_tokens = overrides.max_tokens or settings.app_config.generation.max_tokens
+        self.streaming_max_tokens = overrides.streaming_max_tokens or settings.app_config.generation.streaming_max_tokens
+        self.rephrasing_max_tokens = overrides.rephrasing_max_tokens or settings.app_config.generation.rephrasing_max_tokens
+
         self.llm_client = openai.OpenAI(
             api_key=settings.llm_api_key,
             base_url=base_url,
@@ -71,7 +77,7 @@ class Generator:
             messages=messages,
             stream=False,
             temperature=self.temperature,
-            max_tokens=1000,  # Limit response length to prevent context overflow
+            max_tokens=self.max_tokens,
         )
 
         answer = response.choices[0].message.content
@@ -148,7 +154,7 @@ class Generator:
                 messages=messages,
                 stream=True,  # Enable streaming
                 temperature=self.temperature,
-                max_tokens=1000,
+                max_tokens=self.streaming_max_tokens,
             )
 
             collected_content = ""
@@ -185,7 +191,7 @@ class Generator:
                 messages=messages,
                 stream=True,  # Enable streaming
                 temperature=self.temperature,
-                max_tokens=1000,
+                max_tokens=self.streaming_max_tokens,
             )
 
             for chunk in response_stream:
@@ -468,7 +474,7 @@ Make it sound like you're explaining this to a colleague in a helpful, natural w
                 messages=[{"role": "user", "content": rephrase_prompt}],
                 stream=False,
                 temperature=0.3,  # Lower temperature for consistency
-                max_tokens=1500,  # Allow more tokens for rephrasing
+                max_tokens=self.rephrasing_max_tokens,
             )
 
             rephrased = response.choices[0].message.content
@@ -509,7 +515,7 @@ provide a natural conversational response acknowledging their question."""
                 messages=messages,
                 stream=False,
                 temperature=self.temperature,
-                max_tokens=1000,  # Limit response length to prevent context overflow
+                max_tokens=self.max_tokens,
             )
 
             answer = response.choices[0].message.content

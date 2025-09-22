@@ -88,6 +88,9 @@ class GenerationSettings(BaseModel):
     max_citations: int = 3
     require_quotes: bool = True
     quote_max_words: int = 12
+    max_tokens: int = 8000
+    streaming_max_tokens: int = 8000
+    rephrasing_max_tokens: int = 4000
 
     class Config:
         extra = "ignore"

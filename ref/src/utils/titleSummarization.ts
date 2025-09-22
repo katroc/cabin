@@ -71,7 +71,7 @@ Create a short title that summarizes this conversation.
     const requestBody = {
       messages: [{ role: 'user', content: prompt }],
       temperature: 0.5,
-      max_tokens: 100,
+      max_tokens: 150,
       ...(model && model.trim() && { model: model }), // Only include model if it's not empty
     };
     

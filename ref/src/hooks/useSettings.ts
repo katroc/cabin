@@ -27,6 +27,9 @@ export function useSettings() {
   const [topK, setTopK] = useState(() => (typeof window !== 'undefined' ? Number(localStorage.getItem('settings:topK')) || 5 : 5));
   const [temperature, setTemperature] = useState(() => (typeof window !== 'undefined' ? Number(localStorage.getItem('settings:temperature')) || 0.7 : 0.7));
   const [ragBypass, setRagBypass] = useState(() => (typeof window !== 'undefined' ? localStorage.getItem('settings:ragBypass') === 'true' : false));
+  const [maxTokens, setMaxTokens] = useState(() => (typeof window !== 'undefined' ? Number(localStorage.getItem('settings:maxTokens')) || 8000 : 8000));
+  const [streamingMaxTokens, setStreamingMaxTokens] = useState(() => (typeof window !== 'undefined' ? Number(localStorage.getItem('settings:streamingMaxTokens')) || 8000 : 8000));
+  const [rephrasingMaxTokens, setRephrasingMaxTokens] = useState(() => (typeof window !== 'undefined' ? Number(localStorage.getItem('settings:rephrasingMaxTokens')) || 4000 : 4000));
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
     const saved = typeof window !== 'undefined' ? localStorage.getItem('theme') : null;
     if (saved === 'light' || saved === 'dark') return saved;
@@ -82,6 +85,21 @@ export function useSettings() {
   }, [ragBypass]);
 
   React.useEffect(() => {
+    if (typeof window === 'undefined') return;
+    localStorage.setItem('settings:maxTokens', String(maxTokens));
+  }, [maxTokens]);
+
+  React.useEffect(() => {
+    if (typeof window === 'undefined') return;
+    localStorage.setItem('settings:streamingMaxTokens', String(streamingMaxTokens));
+  }, [streamingMaxTokens]);
+
+  React.useEffect(() => {
+    if (typeof window === 'undefined') return;
+    localStorage.setItem('settings:rephrasingMaxTokens', String(rephrasingMaxTokens));
+  }, [rephrasingMaxTokens]);
+
+  React.useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
     localStorage.setItem('theme', theme);
   }, [theme]);
@@ -92,6 +110,9 @@ export function useSettings() {
     topK, setTopK,
     temperature, setTemperature,
     ragBypass, setRagBypass,
+    maxTokens, setMaxTokens,
+    streamingMaxTokens, setStreamingMaxTokens,
+    rephrasingMaxTokens, setRephrasingMaxTokens,
     theme, setTheme,
     ragConfig, setRagConfig
   };

@@ -54,6 +54,9 @@ class UISettingsPayload(BaseModel):
     reranker_port: int = Field(alias="rerankerPort")
     log_level: str = Field(alias="logLevel")
     max_memory_messages: int = Field(alias="maxMemoryMessages")
+    max_tokens: int = Field(alias="maxTokens")
+    streaming_max_tokens: int = Field(alias="streamingMaxTokens")
+    rephrasing_max_tokens: int = Field(alias="rephrasingMaxTokens")
 
     class Config:
         populate_by_name = True
@@ -75,6 +78,9 @@ class UISettingsPayload(BaseModel):
             use_rm3=self.use_rm3,
             reranker_url=self.reranker_url,
             log_level=self.log_level,
+            max_tokens=self.max_tokens,
+            streaming_max_tokens=self.streaming_max_tokens,
+            rephrasing_max_tokens=self.rephrasing_max_tokens,
         )
 
 
@@ -106,6 +112,7 @@ def _convert_numpy_types(obj):
 def load_default_ui_settings() -> UISettingsPayload:
     retrieval_cfg = settings.app_config.retrieval
     feature_flags = settings.feature_flags
+    generation_cfg = settings.app_config.generation
     reranker_url = settings.app_config.reranker.url
     reranker_port = _parse_port_from_url(reranker_url, default=8000)
     log_level = os.getenv("CABIN_LOG_LEVEL") or settings.app_config.telemetry.log_level
@@ -127,6 +134,9 @@ def load_default_ui_settings() -> UISettingsPayload:
         rerankerPort=reranker_port,
         logLevel=log_level,
         maxMemoryMessages=8,
+        maxTokens=generation_cfg.max_tokens,
+        streamingMaxTokens=generation_cfg.streaming_max_tokens,
+        rephrasingMaxTokens=generation_cfg.rephrasing_max_tokens,
     )
 
 

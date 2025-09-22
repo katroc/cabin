@@ -46,6 +46,9 @@ generation:
   max_citations: 3
   require_quotes: true
   quote_max_words: 12
+  max_tokens: 8000
+  streaming_max_tokens: 8000
+  rephrasing_max_tokens: 4000
 
 verification:
   fuzzy_partial_ratio_min: 70
