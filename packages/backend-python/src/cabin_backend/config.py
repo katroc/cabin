@@ -22,6 +22,7 @@ DEFAULT_APP_CONFIG_PATH = "config/app.yaml"
 class FeatureFlags(BaseModel):
     rag_provenance_lock: bool = Field(True, alias="FEATURE_RAG_PROVENANCE_LOCK")
     reranker: bool = Field(True, alias="FEATURE_RERANKER")
+    early_reranker: bool = Field(True, alias="FEATURE_EARLY_RERANKER")
     rm3: bool = Field(False, alias="FEATURE_RM3")
     heuristic_fallback: bool = Field(True, alias="FEATURE_HEURISTIC_FALLBACK")
 
@@ -74,6 +75,10 @@ class RerankerSettings(BaseModel):
     timeout_s: int = 8
     model: str = "bge-reranker-v2-m3"
     api_key: Optional[str] = None
+    # Pool size for early reranking (before MMR selection)
+    pool_size_multiplier: int = 3
+    # Weight for combining fusion and reranker scores (0.0 = all fusion, 1.0 = all reranker)
+    score_weight: float = 0.7
 
     class Config:
         extra = "ignore"

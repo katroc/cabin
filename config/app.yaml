@@ -1,6 +1,7 @@
 features:
   FEATURE_RAG_PROVENANCE_LOCK: true
   FEATURE_RERANKER: true
+  FEATURE_EARLY_RERANKER: true
   FEATURE_RM3: false
   FEATURE_HEURISTIC_FALLBACK: true
 
@@ -36,6 +37,10 @@ reranker:
   timeout_s: 8
   model: "bge-reranker-v2-m3"
   api_key: null
+  # Pool size multiplier for early reranking (top_n * pool_size_multiplier candidates will be reranked)
+  pool_size_multiplier: 3
+  # Score weight for combining fusion and reranker scores (0.0 = all fusion, 1.0 = all reranker)
+  score_weight: 0.7
 
 generation:
   max_citations: 3

@@ -35,6 +35,7 @@ class VectorStore:
         self.use_reranker_default = overrides.use_reranker if overrides.use_reranker is not None else settings.feature_flags.reranker
         self.allow_reranker_fallback_default = overrides.allow_reranker_fallback if overrides.allow_reranker_fallback is not None else settings.feature_flags.heuristic_fallback
         self.use_rm3_default = overrides.use_rm3 if overrides.use_rm3 is not None else settings.feature_flags.rm3
+        self.use_early_reranker_default = settings.feature_flags.early_reranker
         reranker_url = overrides.reranker_url or settings.app_config.reranker.url
 
         self.embedding_client = EmbeddingClient(
@@ -409,8 +410,67 @@ class VectorStore:
         if not filtered_scores:
             filtered_scores = fusion_scores
 
+        # Apply early reranking before MMR selection for better candidate selection
+        reranker_enabled = self.use_reranker_default if use_reranker is None else use_reranker
+        early_reranker_enabled = self.use_early_reranker_default and reranker_enabled
+        fallback_enabled = self.allow_reranker_fallback_default if allow_reranker_fallback is None else allow_reranker_fallback
+
+        chunk_lookup = {meta.get("chunk_id") or chunk.id: chunk for meta, chunk in extracted}
+        final_scores = filtered_scores
+
+        if early_reranker_enabled and filtered_scores:
+            # Take top candidates for reranking (larger pool than final selection)
+            rerank_pool_size = min(
+                len(filtered_scores),
+                settings.app_config.reranker.top_n * settings.app_config.reranker.pool_size_multiplier
+            )
+            top_candidates = sorted(
+                filtered_scores.items(),
+                key=lambda item: item[1],
+                reverse=True,
+            )[:rerank_pool_size]
+
+            # Prepare reranker input
+            reranker_input = {
+                cid: chunk_lookup[cid].text
+                for cid, _ in top_candidates
+                if cid in chunk_lookup
+            }
+
+            if reranker_input:
+                reranked = self.reranker.rerank(
+                    query_text,
+                    reranker_input,
+                    allow_fallback=fallback_enabled,
+                )
+
+                if reranked:
+                    # Combine reranker scores with original fusion scores
+                    reranker_scores = {cid: score for cid, score in reranked}
+
+                    # Create hybrid scores combining fusion and reranker scores
+                    hybrid_scores = {}
+                    reranker_weight = settings.app_config.reranker.score_weight
+                    fusion_weight = 1.0 - reranker_weight
+
+                    for cid, fusion_score in filtered_scores.items():
+                        if cid in reranker_scores:
+                            # Weight reranker score according to configuration
+                            hybrid_scores[cid] = fusion_weight * fusion_score + reranker_weight * reranker_scores[cid]
+                        else:
+                            # Keep original fusion score for non-reranked candidates
+                            hybrid_scores[cid] = fusion_score
+
+                    final_scores = hybrid_scores
+                    logger.debug(
+                        "Applied early reranking to %d candidates, updated %d scores (reranker_weight=%.2f)",
+                        len(reranker_input),
+                        len(reranker_scores),
+                        reranker_weight,
+                    )
+
         candidates_for_mmr = sorted(
-            filtered_scores.items(),
+            final_scores.items(),
             key=lambda item: item[1],
             reverse=True,
         )
@@ -428,8 +488,6 @@ class VectorStore:
             limit=settings.app_config.retrieval.final_passages,
         )
 
-        chunk_lookup = {meta.get("chunk_id") or chunk.id: chunk for meta, chunk in extracted}
-
         if query_tokens:
             lexical_rankings = self.bm25_index.query(query_tokens)
             self._last_lexical_rankings = [
@@ -443,18 +501,23 @@ class VectorStore:
         else:
             self._last_lexical_rankings = []
 
+        # Handle legacy reranking if early reranking is disabled but reranker is enabled
         ordered_ids = selected_ids
-        reranker_enabled = self.use_reranker_default if use_reranker is None else use_reranker
-        fallback_enabled = self.allow_reranker_fallback_default if allow_reranker_fallback is None else allow_reranker_fallback
-        if reranker_enabled:
+        if reranker_enabled and not early_reranker_enabled and selected_ids:
+            # Legacy post-MMR reranking for backward compatibility
             reranker_input = {cid: chunk_lookup[cid].text for cid in selected_ids if cid in chunk_lookup}
-            reranked = self.reranker.rerank(
-                query_text,
-                reranker_input,
-                allow_fallback=fallback_enabled,
-            )
-            if reranked:
-                ordered_ids = [cid for cid, _ in reranked]
+            if reranker_input:
+                reranked = self.reranker.rerank(
+                    query_text,
+                    reranker_input,
+                    allow_fallback=fallback_enabled,
+                )
+                if reranked:
+                    ordered_ids = [cid for cid, _ in reranked]
+                    logger.debug(
+                        "Applied legacy post-MMR reranking to %d candidates",
+                        len(reranked),
+                    )
 
         selected_chunks = [chunk_lookup[cid] for cid in ordered_ids if cid in chunk_lookup]
 
