@@ -23,7 +23,6 @@ class FeatureFlags(BaseModel):
     rag_provenance_lock: bool = Field(True, alias="FEATURE_RAG_PROVENANCE_LOCK")
     reranker: bool = Field(True, alias="FEATURE_RERANKER")
     early_reranker: bool = Field(True, alias="FEATURE_EARLY_RERANKER")
-    rm3: bool = Field(False, alias="FEATURE_RM3")
     heuristic_fallback: bool = Field(True, alias="FEATURE_HEURISTIC_FALLBACK")
 
     class Config:
@@ -61,9 +60,6 @@ class RetrievalSettings(BaseModel):
     cosine_floor: float = 0.05
     min_keyword_overlap: int = 2
     final_passages: int = 8
-    rm3_top_docs: int = 10
-    rm3_terms: int = 10
-    rm3_alpha: float = 0.4
 
     class Config:
         extra = "ignore"
@@ -228,7 +224,6 @@ class Settings(BaseSettings):
         None, env="FEATURE_RAG_PROVENANCE_LOCK"
     )
     feature_reranker_override: Optional[bool] = Field(None, env="FEATURE_RERANKER")
-    feature_rm3_override: Optional[bool] = Field(None, env="FEATURE_RM3")
     feature_heuristic_fallback_override: Optional[bool] = Field(
         None, env="FEATURE_HEURISTIC_FALLBACK"
     )
@@ -247,7 +242,6 @@ class Settings(BaseSettings):
         overrides = {
             "rag_provenance_lock": self.feature_rag_provenance_lock_override,
             "reranker": self.feature_reranker_override,
-            "rm3": self.feature_rm3_override,
             "heuristic_fallback": self.feature_heuristic_fallback_override,
         }
         return base_config.with_feature_overrides(overrides)

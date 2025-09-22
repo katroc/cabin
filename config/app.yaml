@@ -2,7 +2,6 @@ features:
   FEATURE_RAG_PROVENANCE_LOCK: true
   FEATURE_RERANKER: true
   FEATURE_EARLY_RERANKER: true
-  FEATURE_RM3: false
   FEATURE_HEURISTIC_FALLBACK: true
 
 ingestion:
@@ -27,9 +26,6 @@ retrieval:
   cosine_floor: 0.05
   min_keyword_overlap: 2
   final_passages: 8
-  rm3_top_docs: 10
-  rm3_terms: 10
-  rm3_alpha: 0.4
 
 reranker:
   url: "http://localhost:8002/rerank"

@@ -37,7 +37,6 @@ class EvalRunConfig:
     """Optional overrides for evaluation runs."""
 
     use_reranker: Optional[bool] = None
-    use_rm3: Optional[bool] = None
     allow_reranker_fallback: Optional[bool] = None
     enforce_provenance: Optional[bool] = None
 
@@ -78,7 +77,6 @@ class EvalHarness:
                 chunks = self.vector_store.query(
                     sample.question,
                     use_reranker=run_cfg.use_reranker,
-                    use_rm3=run_cfg.use_rm3,
                     allow_reranker_fallback=run_cfg.allow_reranker_fallback,
                 )
                 response = self.generator.ask(

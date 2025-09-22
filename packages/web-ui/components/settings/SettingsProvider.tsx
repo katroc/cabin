@@ -41,6 +41,8 @@ export interface ExtendedSettingsData {
   lexicalK: number
   rrfK: number
   mmrLambda: number
+  routingThreshold: number
+  routingSampleSize: number
 
   // Retrieval - Features
   useReranker: boolean
@@ -77,10 +79,7 @@ export interface ExtendedSettingsData {
   dedupMethod: string
   dedupThreshold: number
 
-  // Advanced - RM3
-  rm3TopDocs: number
-  rm3Terms: number
-  rm3Alpha: number
+
 
   // Advanced - Verification
   fuzzyPartialRatioMin: number
@@ -140,6 +139,8 @@ const defaultSettings: ExtendedSettingsData = {
   lexicalK: 80,
   rrfK: 60,
   mmrLambda: 0.5,
+  routingThreshold: 0.4,
+  routingSampleSize: 20,
    useReranker: true,
    allowRerankerFallback: true,
    useRm3: false,
@@ -167,9 +168,6 @@ const defaultSettings: ExtendedSettingsData = {
   dedupEnabled: true,
   dedupMethod: 'minhash',
   dedupThreshold: 0.92,
-  rm3TopDocs: 10,
-  rm3Terms: 10,
-  rm3Alpha: 0.4,
   fuzzyPartialRatioMin: 70
 }
 
@@ -368,6 +366,8 @@ export function SettingsProvider({
         lexicalK: state.data.lexicalK,
         rrfK: state.data.rrfK,
         mmrLambda: state.data.mmrLambda,
+        routingThreshold: state.data.routingThreshold,
+        routingSampleSize: state.data.routingSampleSize,
 
         // Retrieval - Features
         useReranker: state.data.useReranker,
@@ -404,10 +404,7 @@ export function SettingsProvider({
         dedupMethod: state.data.dedupMethod,
         dedupThreshold: state.data.dedupThreshold,
 
-        // Advanced - RM3
-        rm3TopDocs: state.data.rm3TopDocs,
-        rm3Terms: state.data.rm3Terms,
-        rm3Alpha: state.data.rm3Alpha,
+
 
         // Advanced - Verification
         fuzzyPartialRatioMin: state.data.fuzzyPartialRatioMin
@@ -480,6 +477,18 @@ export function SettingsProvider({
           return 'MMR Lambda must be between 0 and 1'
         }
         break
+      case 'routingThreshold':
+        const routingThresh = Number(value)
+        if (isNaN(routingThresh) || routingThresh < 0.1 || routingThresh > 0.8) {
+          return 'Routing Threshold must be between 0.1 and 0.8'
+        }
+        break
+      case 'routingSampleSize':
+        const sampleSize = Number(value)
+        if (isNaN(sampleSize) || sampleSize < 5 || sampleSize > 100) {
+          return 'Routing Sample Size must be between 5 and 100'
+        }
+        break
 
       case 'dedupThreshold':
         const threshold = Number(value)
@@ -488,12 +497,7 @@ export function SettingsProvider({
         }
         break
 
-      case 'rm3Alpha':
-        const alpha = Number(value)
-        if (isNaN(alpha) || alpha < 0 || alpha > 1) {
-          return 'RM3 Alpha must be between 0 and 1'
-        }
-        break
+
 
       case 'rerankerScoreWeight':
         const weight = Number(value)
@@ -615,19 +619,9 @@ export function SettingsProvider({
         }
         break
 
-      case 'rm3TopDocs':
-        const topDocs = Number(value)
-        if (isNaN(topDocs) || topDocs < 1 || topDocs > 50) {
-          return 'RM3 top documents must be between 1 and 50'
-        }
-        break
 
-      case 'rm3Terms':
-        const terms = Number(value)
-        if (isNaN(terms) || terms < 1 || terms > 50) {
-          return 'RM3 terms must be between 1 and 50'
-        }
-        break
+
+
 
       case 'fuzzyPartialRatioMin':
         const ratio = Number(value)

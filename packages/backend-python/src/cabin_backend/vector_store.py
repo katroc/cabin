@@ -8,7 +8,7 @@ from stopwordsiso import stopwords
 from .config import settings
 from .models import ChildChunk, ParentChunk, DocumentMetadata
 from .dense import ChromaCollectionManager, EmbeddingClient
-from .lexical import BM25Index, RM3Expander
+from .lexical import BM25Index
 from .retriever import (
     filter_by_cosine_floor,
     filter_by_keyword_overlap,
@@ -34,7 +34,6 @@ class VectorStore:
         self.min_keyword_overlap_default = overrides.min_keyword_overlap if overrides.min_keyword_overlap is not None else settings.app_config.retrieval.min_keyword_overlap
         self.use_reranker_default = overrides.use_reranker if overrides.use_reranker is not None else settings.feature_flags.reranker
         self.allow_reranker_fallback_default = overrides.allow_reranker_fallback if overrides.allow_reranker_fallback is not None else settings.feature_flags.heuristic_fallback
-        self.use_rm3_default = overrides.use_rm3 if overrides.use_rm3 is not None else settings.feature_flags.rm3
 
         reranker_url = overrides.reranker_url or settings.app_config.reranker.url
 
@@ -63,13 +62,10 @@ class VectorStore:
             min_token_length=self._min_token_length,
         )
         self.reranker = RerankerClient(base_url=reranker_url)
-        retrieval_cfg = settings.app_config.retrieval
-        self.rm3_expander = RM3Expander(
-            top_docs=retrieval_cfg.rm3_top_docs,
-            expansion_terms=retrieval_cfg.rm3_terms,
-            alpha=retrieval_cfg.rm3_alpha,
-        )
         self._last_lexical_rankings: List[Dict[str, Any]] = []
+        # Cache for recent query results to avoid duplicate expensive operations
+        self._query_cache: Dict[str, Dict[str, Any]] = {}
+        self._query_cache_ttl = 30  # seconds
 
 
     def delete_document(self, document_id: str) -> None:
@@ -172,7 +168,6 @@ class VectorStore:
         top_k: Optional[int] = None,
         filters: Optional[Dict[str, Any]] = None,
         *,
-        use_rm3: Optional[bool] = None,
         use_reranker: Optional[bool] = None,
         allow_reranker_fallback: Optional[bool] = None,
     ) -> List[ParentChunk]:
@@ -186,6 +181,20 @@ class VectorStore:
         )
         metrics.increment("retrieval.vector_store.calls")
         self._last_lexical_rankings = []
+
+        # Create cache key based on query and parameters
+        cache_key = f"{query_text}:{top_k}:{str(filters)}:{use_reranker}:{allow_reranker_fallback}"
+
+        # Check cache first
+        import time
+        current_time = time.time()
+        if cache_key in self._query_cache:
+            cached_result = self._query_cache[cache_key]
+            if current_time - cached_result['timestamp'] < self._query_cache_ttl:
+                logger.debug("Using cached query result for: %s", query_preview)
+                metrics.increment("retrieval.vector_store.cache_hit")
+                return cached_result['chunks']
+
         with metrics.timer("retrieval.vector_store.query_time", query=query_text):
             try:
                 # Check if collection has any documents
@@ -305,16 +314,6 @@ class VectorStore:
         }
 
         query_tokens = self._tokenize_text(query_text)
-
-        rm3_enabled = self.use_rm3_default if use_rm3 is None else use_rm3
-        if rm3_enabled:
-            expanded_tokens = self.rm3_expander.expand(
-                query_tokens,
-                [candidate["tokens"] for candidate in candidates],
-            )
-            if expanded_tokens != query_tokens:
-                metrics.increment("retrieval.rm3.applied")
-                query_tokens = expanded_tokens
 
         candidate_ids = [
             candidate.get("metadata", {}).get("chunk_id") or candidate["chunk"].id
@@ -511,7 +510,21 @@ class VectorStore:
         metrics.increment("retrieval.vector_store.selected", len(selected_chunks))
 
         effective_top_k = top_k or self.default_final_passages
-        return selected_chunks[:effective_top_k]
+        result_chunks = selected_chunks[:effective_top_k]
+
+        # Cache the result
+        self._query_cache[cache_key] = {
+            'chunks': result_chunks,
+            'timestamp': current_time
+        }
+
+        # Clean up old cache entries
+        expired_keys = [k for k, v in self._query_cache.items()
+                       if current_time - v['timestamp'] > self._query_cache_ttl]
+        for k in expired_keys:
+            del self._query_cache[k]
+
+        return result_chunks
 
     def _get_embeddings(self, texts: List[str]) -> List[List[float]]:
         """Generates embeddings for a list of texts."""

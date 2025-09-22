@@ -49,7 +49,6 @@ class RuntimeOverrides:
     # Retrieval - Features
     use_reranker: Optional[bool] = None
     allow_reranker_fallback: Optional[bool] = None
-    use_rm3: Optional[bool] = None
 
     # Retrieval - Database
     chroma_host: Optional[str] = None
@@ -81,10 +80,7 @@ class RuntimeOverrides:
     dedup_method: Optional[str] = None
     dedup_threshold: Optional[float] = None
 
-    # Advanced - RM3
-    rm3_top_docs: Optional[int] = None
-    rm3_terms: Optional[int] = None
-    rm3_alpha: Optional[float] = None
+
 
     # Advanced - Verification
     fuzzy_partial_ratio_min: Optional[int] = None

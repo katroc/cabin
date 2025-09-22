@@ -86,7 +86,6 @@ Cabin is a sophisticated **air-gapped RAG assistant** that intelligently routes 
 - **BGE-M3 Embeddings**: State-of-the-art embedding model for semantic document understanding
 - **Hybrid Retrieval**: Combines BM25 lexical search with dense vector semantic search
 - **BGE-Reranker-V2-M3**: Advanced reranking model for improving retrieval precision
-- **RM3 Query Expansion**: Pseudo-relevance feedback for enhanced query understanding
 - **Configurable Reranking**: Enable/disable reranking with fallback options
 
 ### 🌐 Air-Gapped Operation
@@ -216,7 +215,6 @@ CABIN_RERANKER_MODEL=bge-reranker-v2-m3
 
 # Feature Flags
 CABIN_USE_RERANKER=true
-CABIN_USE_RM3=true
 CABIN_ALLOW_RERANKER_FALLBACK=true
 
 # Performance Settings
