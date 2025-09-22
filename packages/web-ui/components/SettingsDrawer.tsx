@@ -21,6 +21,9 @@ interface SettingsData {
   rerankerPort: number
   logLevel: string
   maxMemoryMessages: number
+  maxTokens: number
+  streamingMaxTokens: number
+  rephrasingMaxTokens: number
 }
 
 interface SettingsDrawerProps {
@@ -221,6 +224,42 @@ export default function SettingsDrawer({ isOpen, onClose, settings, onSave }: Se
                   step="0.1"
                   value={formData.temperature}
                   onChange={(e) => handleInputChange('temperature', parseFloat(e.target.value))}
+                  className="w-full"
+                />
+              </div>
+              <div className="form-group">
+                <label className="label-base">Max Response Tokens: {formData.maxTokens}</label>
+                <input
+                  type="range"
+                  min="1000"
+                  max="16000"
+                  step="500"
+                  value={formData.maxTokens}
+                  onChange={(e) => handleInputChange('maxTokens', parseInt(e.target.value))}
+                  className="w-full"
+                />
+              </div>
+              <div className="form-group">
+                <label className="label-base">Max Streaming Tokens: {formData.streamingMaxTokens}</label>
+                <input
+                  type="range"
+                  min="1000"
+                  max="16000"
+                  step="500"
+                  value={formData.streamingMaxTokens}
+                  onChange={(e) => handleInputChange('streamingMaxTokens', parseInt(e.target.value))}
+                  className="w-full"
+                />
+              </div>
+              <div className="form-group">
+                <label className="label-base">Max Rephrasing Tokens: {formData.rephrasingMaxTokens}</label>
+                <input
+                  type="range"
+                  min="1000"
+                  max="8000"
+                  step="250"
+                  value={formData.rephrasingMaxTokens}
+                  onChange={(e) => handleInputChange('rephrasingMaxTokens', parseInt(e.target.value))}
                   className="w-full"
                 />
               </div>

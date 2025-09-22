@@ -23,3 +23,6 @@ class RuntimeOverrides:
     use_rm3: Optional[bool] = None
     reranker_url: Optional[str] = None
     log_level: Optional[str] = None
+    max_tokens: Optional[int] = None
+    streaming_max_tokens: Optional[int] = None
+    rephrasing_max_tokens: Optional[int] = None

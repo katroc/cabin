@@ -89,6 +89,9 @@ function App() {
     topK, setTopK,
     temperature, setTemperature,
     ragBypass, setRagBypass,
+    maxTokens, setMaxTokens,
+    streamingMaxTokens, setStreamingMaxTokens,
+    rephrasingMaxTokens, setRephrasingMaxTokens,
     theme, setTheme,
     ragConfig, setRagConfig
   } = settingsHook;
@@ -771,6 +774,12 @@ function App() {
         availableModels={availableModels}
         ragConfig={ragConfig}
         setRagConfig={setRagConfig}
+        maxTokens={maxTokens}
+        setMaxTokens={setMaxTokens}
+        streamingMaxTokens={streamingMaxTokens}
+        setStreamingMaxTokens={setStreamingMaxTokens}
+        rephrasingMaxTokens={rephrasingMaxTokens}
+        setRephrasingMaxTokens={setRephrasingMaxTokens}
         crawlerAllSpaces={crawlerAllSpaces}
         setCrawlerAllSpaces={setCrawlerAllSpaces}
         crawlerSpaces={crawlerSpaces}
