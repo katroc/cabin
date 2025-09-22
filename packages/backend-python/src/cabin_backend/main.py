@@ -37,26 +37,86 @@ from .telemetry import setup_logging, metrics
 
 
 class UISettingsPayload(BaseModel):
+    # LLM Provider
     llm_base_url: str = Field(alias="llmBaseUrl")
     llm_model: str = Field(alias="llmModel")
+    llm_api_key: str = Field(alias="llmApiKey", default="")
+    temperature: float = Field(alias="temperature")
+
+    # Embedding Provider
     embedding_base_url: str = Field(alias="embeddingBaseUrl")
     embedding_model: str = Field(alias="embeddingModel")
-    temperature: float = Field(alias="temperature")
-    chroma_host: str = Field(alias="chromaHost")
-    chroma_port: int = Field(alias="chromaPort")
-    final_passages: int = Field(alias="finalPassages")
-    cosine_floor: float = Field(alias="cosineFloor")
-    min_keyword_overlap: int = Field(alias="minKeywordOverlap")
-    use_reranker: bool = Field(alias="useReranker")
-    allow_reranker_fallback: bool = Field(alias="allowRerankerFallback")
-    use_rm3: bool = Field(alias="useRm3")
-    reranker_url: str = Field(alias="rerankerUrl")
-    reranker_port: int = Field(alias="rerankerPort")
-    log_level: str = Field(alias="logLevel")
-    max_memory_messages: int = Field(alias="maxMemoryMessages")
+    embedding_api_key: str = Field(alias="embeddingApiKey", default="")
+    embedding_dimensions: int = Field(alias="embeddingDimensions", default=256)
+    embedding_batch_size: int = Field(alias="embeddingBatchSize", default=16)
+
+    # Generation Settings
     max_tokens: int = Field(alias="maxTokens")
     streaming_max_tokens: int = Field(alias="streamingMaxTokens")
     rephrasing_max_tokens: int = Field(alias="rephrasingMaxTokens")
+    max_citations: int = Field(alias="maxCitations", default=3)
+    require_quotes: bool = Field(alias="requireQuotes", default=True)
+    quote_max_words: int = Field(alias="quoteMaxWords", default=12)
+
+    # Vector Database
+    chroma_host: str = Field(alias="chromaHost")
+    chroma_port: int = Field(alias="chromaPort")
+
+    # Retrieval - Basic
+    final_passages: int = Field(alias="finalPassages")
+    cosine_floor: float = Field(alias="cosineFloor")
+    min_keyword_overlap: int = Field(alias="minKeywordOverlap")
+
+    # Retrieval - Advanced
+    dense_k: int = Field(alias="denseK", default=80)
+    lexical_k: int = Field(alias="lexicalK", default=80)
+    rrf_k: int = Field(alias="rrfK", default=60)
+    mmr_lambda: float = Field(alias="mmrLambda", default=0.5)
+
+    # Retrieval - Features
+    use_reranker: bool = Field(alias="useReranker")
+    allow_reranker_fallback: bool = Field(alias="allowRerankerFallback")
+    use_rm3: bool = Field(alias="useRm3")
+    use_early_reranker: bool = Field(alias="useEarlyReranker", default=True)
+
+    # Reranker
+    reranker_url: str = Field(alias="rerankerUrl")
+    reranker_port: int = Field(alias="rerankerPort")
+    reranker_timeout: int = Field(alias="rerankerTimeout", default=8)
+    reranker_pool_size_multiplier: int = Field(alias="rerankerPoolSizeMultiplier", default=3)
+    reranker_score_weight: float = Field(alias="rerankerScoreWeight", default=0.7)
+
+    # Performance - Caching
+    embedding_cache_enabled: bool = Field(alias="embeddingCacheEnabled", default=True)
+    embedding_cache_max_items: int = Field(alias="embeddingCacheMaxItems", default=512)
+    embedding_cache_ttl_seconds: int = Field(alias="embeddingCacheTtlSeconds", default=600)
+
+    # Performance - Processing
+    chunk_size_tokens: int = Field(alias="chunkSizeTokens", default=250)
+    chunk_stride_tokens: int = Field(alias="chunkStrideTokens", default=75)
+    max_html_chars: int = Field(alias="maxHtmlChars", default=500000)
+
+    # Security
+    drop_boilerplate: bool = Field(alias="dropBoilerplate", default=True)
+    drop_labels: list[str] = Field(alias="dropLabels", default_factory=lambda: ["template", "archive", "index"])
+
+    # Advanced - Deduplication
+    dedup_enabled: bool = Field(alias="dedupEnabled", default=True)
+    dedup_method: str = Field(alias="dedupMethod", default="minhash")
+    dedup_threshold: float = Field(alias="dedupThreshold", default=0.92)
+
+    # Advanced - RM3
+    rm3_top_docs: int = Field(alias="rm3TopDocs", default=10)
+    rm3_terms: int = Field(alias="rm3Terms", default=10)
+    rm3_alpha: float = Field(alias="rm3Alpha", default=0.4)
+
+    # Advanced - Verification
+    fuzzy_partial_ratio_min: int = Field(alias="fuzzyPartialRatioMin", default=70)
+
+    # System
+    log_level: str = Field(alias="logLevel")
+    max_memory_messages: int = Field(alias="maxMemoryMessages")
+    metrics_enabled: bool = Field(alias="metricsEnabled", default=True)
 
     class Config:
         populate_by_name = True
@@ -113,30 +173,97 @@ def load_default_ui_settings() -> UISettingsPayload:
     retrieval_cfg = settings.app_config.retrieval
     feature_flags = settings.feature_flags
     generation_cfg = settings.app_config.generation
-    reranker_url = settings.app_config.reranker.url
+    reranker_cfg = settings.app_config.reranker
+    ingestion_cfg = settings.app_config.ingestion
+    verification_cfg = settings.app_config.verification
+    embedding_cache_cfg = settings.app_config.embedding_cache
+    telemetry_cfg = settings.app_config.telemetry
+
+    reranker_url = reranker_cfg.url
     reranker_port = _parse_port_from_url(reranker_url, default=8000)
-    log_level = os.getenv("CABIN_LOG_LEVEL") or settings.app_config.telemetry.log_level
+    log_level = os.getenv("CABIN_LOG_LEVEL") or telemetry_cfg.log_level
+
     return UISettingsPayload(
+        # LLM Provider
         llmBaseUrl=settings.llm_base_url,
         llmModel=settings.llm_model,
+        llmApiKey="",  # Don't expose API key in UI settings
+        temperature=0.1,
+
+        # Embedding Provider
         embeddingBaseUrl=settings.embedding_base_url,
         embeddingModel=settings.embedding_model,
-        temperature=0.1,
-        chromaHost=settings.chroma_host,
-        chromaPort=settings.chroma_port,
-        finalPassages=retrieval_cfg.final_passages,
-        cosineFloor=retrieval_cfg.cosine_floor,
-        minKeywordOverlap=retrieval_cfg.min_keyword_overlap,
-        useReranker=feature_flags.reranker,
-        allowRerankerFallback=feature_flags.heuristic_fallback,
-        useRm3=feature_flags.rm3,
-        rerankerUrl=reranker_url,
-        rerankerPort=reranker_port,
-        logLevel=log_level,
-        maxMemoryMessages=8,
+        embeddingApiKey="",  # Don't expose API key in UI settings
+        embeddingDimensions=settings.embedding_dimensions,
+        embeddingBatchSize=settings.embedding_batch_size,
+
+        # Generation Settings
         maxTokens=generation_cfg.max_tokens,
         streamingMaxTokens=generation_cfg.streaming_max_tokens,
         rephrasingMaxTokens=generation_cfg.rephrasing_max_tokens,
+        maxCitations=generation_cfg.max_citations,
+        requireQuotes=generation_cfg.require_quotes,
+        quoteMaxWords=generation_cfg.quote_max_words,
+
+        # Vector Database
+        chromaHost=settings.chroma_host,
+        chromaPort=settings.chroma_port,
+
+        # Retrieval - Basic
+        finalPassages=retrieval_cfg.final_passages,
+        cosineFloor=retrieval_cfg.cosine_floor,
+        minKeywordOverlap=retrieval_cfg.min_keyword_overlap,
+
+        # Retrieval - Advanced
+        denseK=retrieval_cfg.dense_k,
+        lexicalK=retrieval_cfg.lexical_k,
+        rrfK=retrieval_cfg.rrf_k,
+        mmrLambda=retrieval_cfg.mmr_lambda,
+
+        # Retrieval - Features
+        useReranker=feature_flags.reranker,
+        allowRerankerFallback=feature_flags.heuristic_fallback,
+        useRm3=feature_flags.rm3,
+        useEarlyReranker=feature_flags.early_reranker,
+
+        # Reranker
+        rerankerUrl=reranker_url,
+        rerankerPort=reranker_port,
+        rerankerTimeout=reranker_cfg.timeout_s,
+        rerankerPoolSizeMultiplier=reranker_cfg.pool_size_multiplier,
+        rerankerScoreWeight=reranker_cfg.score_weight,
+
+        # Performance - Caching
+        embeddingCacheEnabled=embedding_cache_cfg.enabled,
+        embeddingCacheMaxItems=embedding_cache_cfg.max_items,
+        embeddingCacheTtlSeconds=embedding_cache_cfg.ttl_seconds,
+
+        # Performance - Processing
+        chunkSizeTokens=ingestion_cfg.chunk_size_tokens,
+        chunkStrideTokens=ingestion_cfg.chunk_stride_tokens,
+        maxHtmlChars=ingestion_cfg.max_html_chars,
+
+        # Security
+        dropBoilerplate=ingestion_cfg.drop_boilerplate,
+        dropLabels=ingestion_cfg.drop_labels,
+
+        # Advanced - Deduplication
+        dedupEnabled=ingestion_cfg.dedup_enabled,
+        dedupMethod=ingestion_cfg.dedup_method,
+        dedupThreshold=ingestion_cfg.dedup_threshold,
+
+        # Advanced - RM3
+        rm3TopDocs=retrieval_cfg.rm3_top_docs,
+        rm3Terms=retrieval_cfg.rm3_terms,
+        rm3Alpha=retrieval_cfg.rm3_alpha,
+
+        # Advanced - Verification
+        fuzzyPartialRatioMin=verification_cfg.fuzzy_partial_ratio_min,
+
+        # System
+        logLevel=log_level,
+        maxMemoryMessages=8,
+        metricsEnabled=telemetry_cfg.metrics_enabled,
     )
 
 
