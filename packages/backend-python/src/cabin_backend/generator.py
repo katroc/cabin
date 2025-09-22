@@ -71,7 +71,7 @@ class Generator:
             messages=messages,
             stream=False,
             temperature=self.temperature,
-            max_tokens=1000,  # Limit response length to prevent context overflow
+            max_tokens=settings.app_config.generation.max_tokens,
         )
 
         answer = response.choices[0].message.content
@@ -148,7 +148,7 @@ class Generator:
                 messages=messages,
                 stream=True,  # Enable streaming
                 temperature=self.temperature,
-                max_tokens=1000,
+                max_tokens=settings.app_config.generation.streaming_max_tokens,
             )
 
             collected_content = ""
@@ -185,7 +185,7 @@ class Generator:
                 messages=messages,
                 stream=True,  # Enable streaming
                 temperature=self.temperature,
-                max_tokens=1000,
+                max_tokens=settings.app_config.generation.streaming_max_tokens,
             )
 
             for chunk in response_stream:
@@ -468,7 +468,7 @@ Make it sound like you're explaining this to a colleague in a helpful, natural w
                 messages=[{"role": "user", "content": rephrase_prompt}],
                 stream=False,
                 temperature=0.3,  # Lower temperature for consistency
-                max_tokens=1500,  # Allow more tokens for rephrasing
+                max_tokens=settings.app_config.generation.rephrasing_max_tokens,
             )
 
             rephrased = response.choices[0].message.content
@@ -509,7 +509,7 @@ provide a natural conversational response acknowledging their question."""
                 messages=messages,
                 stream=False,
                 temperature=self.temperature,
-                max_tokens=1000,  # Limit response length to prevent context overflow
+                max_tokens=settings.app_config.generation.max_tokens,
             )
 
             answer = response.choices[0].message.content
