@@ -13,37 +13,127 @@ class QueryRouter:
 
     _INTENT_LABEL_EXAMPLES: Dict[str, List[str]] = {
         "information": [
-            "what is the deployment process?",
-            "can you explain the procedure?",
-            "tell me about the compliance requirements",
-            "where can i find the installation guide?",
-            "how do i configure the service?",
-            "describe the system architecture",
-            "give me the policy details",
+            # Process & Procedures
+            "what is the deployment process?", "can you explain the procedure?",
+            "how do I configure the service?", "what are the setup steps?",
+            "walk me through the installation", "what's the workflow?",
+            "how does the approval process work?", "what's the standard procedure?",
+
+            # Documentation & Guides
+            "where can I find the installation guide?", "tell me about the compliance requirements",
+            "give me the policy details", "what are the guidelines?",
+            "show me the documentation", "where is the manual?",
+            "what are the requirements?", "what do the docs say?",
+
+            # Architecture & Technical
+            "describe the system architecture", "how is this designed?",
+            "what's the technical stack?", "how does this component work?",
+            "explain the data flow", "what's the infrastructure?",
+            "how are services connected?", "what's the API structure?",
+
+            # Features & Functionality
+            "what features are available?", "what can this do?",
+            "how does the authentication work?", "what are the capabilities?",
+            "what integrations are supported?", "what options do I have?",
+            "what's included in this package?", "what functionality exists?",
+
+            # Configuration & Settings
+            "how do I change the settings?", "what configuration options exist?",
+            "how do I customize this?", "what parameters can I adjust?",
+            "where are the config files?", "how do I modify the behavior?",
+            "what environment variables are needed?", "how do I tune performance?",
+
+            # Troubleshooting & Support
+            "how do I fix this error?", "what causes this issue?",
+            "why isn't this working?", "how do I troubleshoot?",
+            "what's the solution for?", "how do I resolve?",
+            "what steps should I take?", "how do I debug this?",
+
+            # Policies & Compliance
+            "what are the security policies?", "what compliance standards apply?",
+            "what are the data retention rules?", "what permissions are required?",
+            "what are the access controls?", "what audit requirements exist?",
+            "what privacy policies apply?", "what regulations must we follow?",
         ],
         "analytics": [
-            "do we have p95 latency results?",
-            "show me the latest availability metrics",
-            "what are our error budgets this week?",
-            "can you pull the response time percentiles?",
-            "give me the dashboard stats for uptime",
-            "what is the p99 for api latency?",
-            "summarize the observability metrics for checkout",
+            # Performance Metrics
+            "do we have p95 latency results?", "what is the p99 for api latency?",
+            "show me the latest availability metrics", "can you pull the response time percentiles?",
+            "give me the dashboard stats for uptime", "what's the current throughput?",
+            "how's the response time trending?", "what are the performance numbers?",
+
+            # Error & Reliability Metrics
+            "what are our error budgets this week?", "show me the error rates",
+            "what's the failure rate?", "how many incidents this month?",
+            "what's the MTTR?", "show me the downtime statistics",
+            "what are the SLA metrics?", "how's our reliability?",
+
+            # Usage & Traffic Analytics
+            "how many users are active?", "what's the traffic volume?",
+            "show me the usage patterns", "what are the peak hours?",
+            "how many requests per second?", "what's the load distribution?",
+            "show me the user engagement metrics", "what's the session duration?",
+
+            # Business & Revenue Analytics
+            "what are the conversion rates?", "show me the sales numbers",
+            "what's the revenue growth?", "how many signups today?",
+            "what's the churn rate?", "show me the retention metrics",
+            "what are the customer acquisition costs?", "how's the ARR trending?",
+
+            # System Resource Analytics
+            "what's the CPU utilization?", "show me memory usage",
+            "how's the disk space?", "what's the network bandwidth?",
+            "show me the resource consumption", "what are the capacity metrics?",
+            "how's the database performance?", "what's the cache hit rate?",
+
+            # Observability Requests
+            "summarize the observability metrics for checkout", "pull the monitoring data",
+            "what do the logs show?", "check the traces", "show me the spans",
+            "what alerts fired?", "give me the health check status",
+            "what's in the metrics dashboard?", "show me the telemetry data",
         ],
         "conversational": [
-            "are you sure about that?",
-            "is that correct?",
-            "can you explain that again?",
-            "what do you mean by that?",
-            "tell me more about your previous answer",
-            "elaborate on what you just said",
-            "rephrase that response for me",
+            # Greetings & Basic Interactions
+            "hello", "hi", "hey", "good morning", "good afternoon", "good evening",
+            "how are you?", "how are you doing?", "how are you today?", "how's it going?",
+            "what's up?", "hey there", "hello there", "hi there", "greetings",
+
+            # Politeness & Social
+            "thank you", "thanks", "thank you very much", "thanks a lot", "much appreciated",
+            "you're welcome", "no problem", "please", "excuse me", "sorry",
+            "nice to meet you", "pleasure to meet you", "good to see you",
+
+            # Farewells
+            "goodbye", "bye", "see you later", "catch you later", "take care",
+            "have a good day", "have a great day", "see you soon", "until next time",
+
+            # Conversational Flow & Clarification
+            "are you sure about that?", "is that correct?", "can you explain that again?",
+            "what do you mean by that?", "tell me more about your previous answer",
+            "elaborate on what you just said", "rephrase that response for me",
+            "I don't understand", "that doesn't make sense", "can you clarify?",
+            "what?", "huh?", "pardon?", "come again?", "could you repeat that?",
+
+            # Confirmation & Agreement
+            "okay", "ok", "alright", "sure", "yes", "yeah", "yep", "right",
+            "I see", "I understand", "got it", "makes sense", "fair enough",
+            "absolutely", "exactly", "definitely", "of course", "indeed",
+
+            # Small Talk & Personal
+            "how's your day?", "what's new?", "anything interesting happening?",
+            "how was your weekend?", "what are you up to?", "keeping busy?",
+            "how's work?", "how's life?", "what's going on?", "how have you been?",
+
+            # Expressions & Reactions
+            "wow", "amazing", "incredible", "that's great", "awesome", "cool",
+            "interesting", "really?", "no way", "seriously?", "you're kidding",
+            "that's funny", "haha", "lol", "that's weird", "strange",
         ],
     }
 
     _RAG_INTENTS = {"information", "analytics"}
-    _INTENT_MIN_SCORE = 0.45
-    _INTENT_MIN_MARGIN = 0.12
+    _INTENT_MIN_SCORE = 0.35  # Lowered from 0.45 for better detection
+    _INTENT_MIN_MARGIN = 0.08  # Lowered from 0.12 for better detection
 
     def __init__(self, bge_url: str = "http://localhost:8001", similarity_threshold: float = 0.4):
         self.bge_url = bge_url.rstrip('/')
@@ -79,30 +169,57 @@ class QueryRouter:
             if query_embedding is None:
                 return True, 0.0, "BGE embedding failed, defaulting to RAG"
 
+            # Check for conversational intent FIRST using embeddings
+            intent_prediction = self._classify_intent(query)
+            if intent_prediction:
+                intent_label, intent_score, intent_margin = intent_prediction
+                if intent_label == "conversational" and intent_score > 0.3:  # Lower threshold for conversational
+                    return False, intent_score, f"Conversational intent: score={intent_score:.3f}, margin={intent_margin:.3f}"
+
             # If we have a corpus sample, check similarity
             if corpus_sample and len(corpus_sample) > 0:
-                max_similarity = self._compute_max_similarity(query_embedding, corpus_sample)
+                max_similarity, similarity_gap = self._compute_max_similarity(query_embedding, corpus_sample)
 
                 should_rag = bool(max_similarity >= self.similarity_threshold)
                 reasoning = f"Max similarity: {max_similarity:.3f} vs threshold {self.similarity_threshold}"
 
+                # Add gap information for debugging
+                if similarity_gap > 0:
+                    reasoning += f" (gap: {similarity_gap:.3f})"
+
+                # Use gap analysis for edge cases
+                # If similarity is close to threshold but gap is very small,
+                # it might indicate a generic query that matches many docs weakly
+                if (should_rag and
+                    max_similarity < self.similarity_threshold + 0.1 and  # Close to threshold
+                    similarity_gap < 0.05):  # Very small gap between top matches
+                    should_rag = False
+                    reasoning += "; small gap suggests generic query"
+
                 heuristic_signal = None
 
                 if not should_rag:
-                    intent_prediction = self._classify_intent(query)
-                    if intent_prediction:
-                        intent_label, intent_score, intent_margin = intent_prediction
-                        reasoning += (
-                            f"; intent '{intent_label}'"
-                            f" (score={intent_score:.3f}, margin={intent_margin:.3f})"
-                        )
-                        if intent_label in self._RAG_INTENTS:
-                            should_rag = True
+                    # Try fallback conversational patterns
+                    conversational_fallback = self._looks_like_conversational_fallback(query_lower)
+                    if conversational_fallback:
+                        should_rag = False
+                        reasoning += f"; conversational fallback ('{conversational_fallback}')"
                     else:
-                        heuristic_signal = self._looks_like_information_request(query_lower)
-                        if heuristic_signal:
-                            should_rag = True
-                            reasoning += f"; heuristic information request ('{heuristic_signal}')"
+                        # Try intent classification for remaining cases
+                        intent_prediction = self._classify_intent(query)
+                        if intent_prediction:
+                            intent_label, intent_score, intent_margin = intent_prediction
+                            reasoning += (
+                                f"; intent '{intent_label}'"
+                                f" (score={intent_score:.3f}, margin={intent_margin:.3f})"
+                            )
+                            if intent_label in self._RAG_INTENTS:
+                                should_rag = True
+                        else:
+                            heuristic_signal = self._looks_like_information_request(query_lower)
+                            if heuristic_signal:
+                                should_rag = True
+                                reasoning += f"; heuristic information request ('{heuristic_signal}')"
 
                 logger.debug(
                     "Query router: '%s' -> RAG=%s (sim=%.3f)",
@@ -165,13 +282,13 @@ class QueryRouter:
         self,
         query_embedding: List[float],
         corpus_sample: List[str]
-    ) -> float:
-        """Compute maximum cosine similarity against a corpus sample."""
+    ) -> Tuple[float, float]:
+        """Compute maximum cosine similarity and gap against a corpus sample."""
         try:
             # Get embeddings for corpus sample
             corpus_embeddings = self._get_embeddings_batch(corpus_sample)
             if not corpus_embeddings:
-                return 0.0
+                return 0.0, 0.0
 
             query_vec = np.array(query_embedding)
             similarities = []
@@ -181,11 +298,24 @@ class QueryRouter:
                 similarity = self._cosine_similarity(query_vec, corpus_vec)
                 similarities.append(similarity)
 
-            return max(similarities) if similarities else 0.0
+            if not similarities:
+                return 0.0, 0.0
+
+            # Sort similarities in descending order
+            similarities.sort(reverse=True)
+            max_sim = similarities[0]
+
+            # Calculate gap between first and second best
+            gap = 0.0
+            if len(similarities) > 1:
+                second_best = similarities[1]
+                gap = max_sim - second_best
+
+            return max_sim, gap
 
         except Exception as e:
             logger.warning("Error computing similarity: %s", e)
-            return 0.0
+            return 0.0, 0.0
 
     def _get_embeddings_batch(self, texts: List[str]) -> Optional[List[List[float]]]:
         """Get embeddings for multiple texts."""
@@ -344,6 +474,29 @@ class QueryRouter:
                 for keyword in metrics_keywords:
                     if keyword in query_lower:
                         return f"metrics:{keyword}"
+
+        return None
+
+    def _looks_like_conversational_fallback(self, query_lower: str) -> Optional[str]:
+        """Minimal fallback patterns for high-confidence conversational queries."""
+
+        # Only keep the most obvious, unambiguous patterns
+        obvious_conversational = {
+            # Single word greetings
+            "hi": "greeting", "hello": "greeting", "hey": "greeting",
+            # Single word confirmations
+            "ok": "confirmation", "okay": "confirmation", "yes": "confirmation", "no": "confirmation",
+            # Single word politeness
+            "thanks": "politeness", "bye": "farewell",
+            # Internet slang (very unlikely to be in documentation)
+            "lol": "expression", "haha": "expression"
+        }
+
+        # Strip punctuation for exact matching
+        clean_query = query_lower.replace("!", "").replace(".", "").replace("?", "")
+
+        if clean_query in obvious_conversational:
+            return f"{obvious_conversational[clean_query]}:{clean_query}"
 
         return None
 
