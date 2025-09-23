@@ -17,7 +17,7 @@ export function AIModelsSettingsPanel() {
           title="LLM Model"
           description="Language model used for text generation"
         >
-          <div className="px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-700">
+          <div className="px-3 py-2 bg-[color:var(--bg-tertiary)] border border-[color:var(--border-light)] rounded-lg text-sm text-[color:var(--text-secondary)]">
             {state.data.llmModel || 'Auto-discovering...'}
           </div>
         </SettingField>
@@ -26,7 +26,7 @@ export function AIModelsSettingsPanel() {
           title="Embedding Model"
           description="Model used for text embeddings and semantic search"
         >
-          <div className="px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-700">
+          <div className="px-3 py-2 bg-[color:var(--bg-tertiary)] border border-[color:var(--border-light)] rounded-lg text-sm text-[color:var(--text-secondary)]">
             {state.data.embeddingModel || 'Auto-discovering...'}
           </div>
         </SettingField>
@@ -35,7 +35,7 @@ export function AIModelsSettingsPanel() {
           title="Reranker Model"
           description="Model used for result reranking and relevance scoring"
         >
-          <div className="px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-700">
+          <div className="px-3 py-2 bg-[color:var(--bg-tertiary)] border border-[color:var(--border-light)] rounded-lg text-sm text-[color:var(--text-secondary)]">
             bge-reranker-v2-m3
           </div>
         </SettingField>
