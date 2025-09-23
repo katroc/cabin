@@ -8,7 +8,7 @@ export function AIModelsSettingsPanel() {
   const { state, updateSetting } = useSettings()
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-8 pr-4">
       <SettingGroup
         title="Model Information"
         description="Currently configured models (auto-discovered from running containers)"
@@ -17,7 +17,7 @@ export function AIModelsSettingsPanel() {
           title="LLM Model"
           description="Language model used for text generation"
         >
-          <div className="px-3 py-2 bg-[color:var(--bg-tertiary)] border border-[color:var(--border-light)] rounded-lg text-sm text-[color:var(--text-secondary)]">
+          <div className="input-base opacity-75">
             {state.data.llmModel || 'Auto-discovering...'}
           </div>
         </SettingField>
@@ -26,7 +26,7 @@ export function AIModelsSettingsPanel() {
           title="Embedding Model"
           description="Model used for text embeddings and semantic search"
         >
-          <div className="px-3 py-2 bg-[color:var(--bg-tertiary)] border border-[color:var(--border-light)] rounded-lg text-sm text-[color:var(--text-secondary)]">
+          <div className="input-base opacity-75">
             {state.data.embeddingModel || 'Auto-discovering...'}
           </div>
         </SettingField>
@@ -35,7 +35,7 @@ export function AIModelsSettingsPanel() {
           title="Reranker Model"
           description="Model used for result reranking and relevance scoring"
         >
-          <div className="px-3 py-2 bg-[color:var(--bg-tertiary)] border border-[color:var(--border-light)] rounded-lg text-sm text-[color:var(--text-secondary)]">
+          <div className="input-base opacity-75">
             bge-reranker-v2-m3
           </div>
         </SettingField>
