@@ -1,11 +1,18 @@
 from pydantic import BaseModel, Field, field_validator
 from typing import List, Optional, Dict, Any
 from datetime import datetime
+from enum import Enum
 import uuid
 
 
 def _default_list() -> List[str]:
     return []
+
+class PersonaType(str, Enum):
+    """Chat persona types that modify response style."""
+    STANDARD = "standard"
+    DIRECT = "direct"
+    ELI5 = "eli5"
 
 class DocumentMetadata(BaseModel):
     page_title: str
@@ -139,6 +146,7 @@ class ChatRequest(BaseModel):
     message: str
     conversation_id: Optional[str] = None  # If None, creates new conversation
     filters: Optional[Dict[str, Any]] = None
+    persona: PersonaType = PersonaType.STANDARD  # Response style persona
 
 class ChatResponse(BaseModel):
     response: str

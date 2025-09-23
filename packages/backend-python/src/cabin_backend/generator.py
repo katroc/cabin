@@ -9,7 +9,7 @@ from .generation import build_context_blocks, build_generation_prompt
 
 from .citations import QuoteVerifier, render_citation_payloads
 from .config import settings
-from .models import ParentChunk, ChatResponse, Citation
+from .models import ParentChunk, ChatResponse, Citation, PersonaType
 from .runtime import RuntimeOverrides
 from .telemetry import metrics, sanitize_text
 
@@ -45,12 +45,13 @@ class Generator:
         conversation_id: str,
         conversation_context: Optional[List[Dict[str, str]]] = None,
         enforce_provenance: Optional[bool] = None,
+        persona: PersonaType = PersonaType.STANDARD,
     ) -> ChatResponse:
         """Generates a standard, non-streaming response with enforced citations."""
         if not context_chunks:
             # If provenance is explicitly disabled, generate a conversational response
             if enforce_provenance is False:
-                return self._generate_conversational_response(query, conversation_id, conversation_context)
+                return self._generate_conversational_response(query, conversation_id, conversation_context, persona)
 
             return ChatResponse(
                 response="I couldn't find any relevant information in the documentation to answer your question. You might want to try rephrasing your query or checking if the topic is covered in the available documents.",
@@ -64,7 +65,7 @@ class Generator:
         prompt = build_generation_prompt(query, context_blocks, len(context_chunks))
 
         # Build messages with conversation context
-        messages = [{"role": "system", "content": self._get_citation_system_prompt()}]
+        messages = [{"role": "system", "content": self._get_citation_system_prompt(persona.value)}]
 
         # Add conversation history if available
         if conversation_context:
@@ -122,12 +123,13 @@ class Generator:
         conversation_id: str,
         conversation_context: Optional[List[Dict[str, str]]] = None,
         enforce_provenance: Optional[bool] = None,
+        persona: PersonaType = PersonaType.STANDARD,
     ) -> Iterator[str]:
         """Generates a real streaming response with token-by-token output."""
         if not context_chunks:
             # If provenance is explicitly disabled, generate a streaming conversational response
             if enforce_provenance is False:
-                yield from self._generate_streaming_conversational_response(query, conversation_id, conversation_context)
+                yield from self._generate_streaming_conversational_response(query, conversation_id, conversation_context, persona)
                 return
 
             # No context chunks and provenance required - return fallback message
@@ -139,7 +141,7 @@ class Generator:
         prompt = build_generation_prompt(query, context_blocks, len(context_chunks))
 
         # Prepare conversation messages
-        messages = [{"role": "system", "content": self._get_citation_system_prompt()}]
+        messages = [{"role": "system", "content": self._get_citation_system_prompt(persona.value)}]
 
         # Add conversation context
         if conversation_context:
@@ -173,11 +175,12 @@ class Generator:
         self,
         query: str,
         conversation_id: str,
-        conversation_context: Optional[List[Dict[str, str]]] = None
+        conversation_context: Optional[List[Dict[str, str]]] = None,
+        persona: PersonaType = PersonaType.STANDARD
     ) -> Iterator[str]:
         """Generate a streaming conversational response without RAG context."""
         # Prepare conversation messages
-        messages = [{"role": "system", "content": self._get_conversational_system_prompt()}]
+        messages = [{"role": "system", "content": self._get_conversational_system_prompt(persona.value)}]
 
         # Add conversation context
         if conversation_context:
@@ -203,19 +206,46 @@ class Generator:
             logger.error("Error during streaming conversational generation: %s", str(e))
             yield f"Error generating response: {str(e)}"
 
-    def _get_conversational_system_prompt(self) -> str:
+    def _get_conversational_system_prompt(self, persona: str = "standard") -> str:
         """Returns the system prompt for conversational responses without citations."""
-        return """You are a helpful assistant having a natural conversation.
+        base_prompt = """You are a helpful assistant having a natural conversation.
 You have access to conversation history to understand context and provide relevant responses.
-Be conversational, helpful, and natural. You don't need to cite sources for this response.
+You don't need to cite sources for this response.
 If the user is asking follow-up questions like "ok thanks, and that's it?" or similar,
 provide a natural conversational response acknowledging their question."""
 
-    def _get_citation_system_prompt(self) -> str:
+        if persona == "direct":
+            return base_prompt + """
+
+CRITICAL: ALWAYS use DIRECT, CONCISE responses. Be extremely brief.
+- Maximum 2-3 sentences for simple questions
+- Use bullet points for steps or lists
+- NO explanatory text, examples, or elaboration
+- Start with the direct answer immediately
+- Avoid phrases like "To help you" or "Here's what you need to know"
+- Example: "Q: How to save?" A: "Click File > Save or press Ctrl+S."""
+        elif persona == "eli5":
+            return base_prompt + """
+
+CRITICAL: ALWAYS explain assuming the user has ZERO prior knowledge of the topic.
+- Define any technical terms or concepts before using them
+- Use helpful analogies and real-world comparisons when appropriate
+- Provide context and background information
+- Break down processes into clear, logical steps
+- Explain WHY things work the way they do, not just HOW
+- Use clear, accessible language without being condescending
+- Example: "Q: What's an API?" A: "An API (Application Programming Interface) is a way for different software programs to communicate with each other. Think of it like a waiter in a restaurant - you tell the waiter your order, they take it to the kitchen, and bring back your food. The waiter is like an API, carrying messages between you and the kitchen."""
+        else:  # standard
+            return base_prompt + """
+
+Be conversational, helpful, and natural with balanced detail level."""
+
+    def _get_citation_system_prompt(self, persona: str = "standard") -> str:
         """Returns the system prompt that enforces natural response generation with citations."""
         max_citations = settings.app_config.generation.max_citations
         quote_limit = settings.app_config.generation.quote_max_words
-        return f"""You are a knowledgeable assistant that provides helpful, natural responses based on documentation with full conversation awareness.
+
+        base_prompt = f"""You are a knowledgeable assistant that provides helpful responses based on documentation with full conversation awareness.
 
 CONVERSATION HANDLING:
 - You have access to previous conversation history to understand context and follow-up questions
@@ -223,21 +253,44 @@ CONVERSATION HANDLING:
 - If users question accuracy ("are you sure?"), acknowledge their concern and re-examine the information
 - For clarification requests, build upon what was already discussed
 
-RESPONSE STYLE:
-- Write in a natural, conversational tone as if explaining to a colleague
-- Synthesize and rephrase information rather than copying text verbatim
-- Provide comprehensive, well-structured answers
-- Use clear markdown formatting with headings and lists when helpful
-- Maintain conversation flow by referencing previous topics when relevant
-
 CITATION REQUIREMENTS:
 - Support factual claims with citations using [1], [2] format
 - Use at most {max_citations} citations from the most relevant sources
 - Include direct quotes of at most {quote_limit} words for each citation
 - Only cite information that directly supports your statements
 
-IMPORTANT: Always process information through your reasoning and provide a natural response. Use conversation history to better understand the user's intent and provide contextually appropriate answers.
-"""
+IMPORTANT: Always process information through your reasoning and provide a natural response. Use conversation history to better understand the user's intent and provide contextually appropriate answers."""
+
+        if persona == "direct":
+            return base_prompt + """
+
+CRITICAL: MANDATORY DIRECT STYLE - NO EXCEPTIONS:
+- Maximum 2-3 sentences total
+- Start with the exact answer immediately
+- Use bullet points for multiple items
+- NO introductory phrases like "To answer your question" or "Here's how"
+- NO explanations unless specifically asked
+- Example: "Q: How to get refund?" A: "File support ticket with Atlassian. Use: https://atlassian.com/contact/purchasing-licensing [1]"""
+        elif persona == "eli5":
+            return base_prompt + """
+
+CRITICAL: MANDATORY BEGINNER-FRIENDLY STYLE - ASSUME ZERO KNOWLEDGE:
+- Define concepts and terms before using them
+- Provide helpful context and background information
+- Use analogies when they clarify complex concepts
+- Explain the reasoning behind processes and requirements
+- Break down multi-step processes clearly
+- Use accessible language without being childish
+- Example: "Q: How to get refund?" A: "When you purchase software through a platform like Atlassian (which hosts draw.io), refunds aren't handled directly by the software company. Instead, you need to contact the platform that processed your payment. This is similar to how if you bought something on Amazon, you'd contact Amazon for returns, not the individual seller..."""
+        else:  # standard
+            return base_prompt + """
+
+RESPONSE STYLE:
+- Write in a natural, conversational tone as if explaining to a colleague
+- Provide balanced detail - not too brief, not too verbose
+- Use clear structure with helpful context
+- Be informative but approachable
+- Explain the "what" and "why" when relevant"""
 
     def _build_provenance_context(self, context_chunks: List[ParentChunk]) -> Tuple[Dict[str, Dict[str, Any]], str]:
         provenance: Dict[str, Dict[str, Any]] = {}
@@ -542,19 +595,13 @@ Make it sound like you're explaining this to a colleague in a helpful, natural w
         self,
         query: str,
         conversation_id: str,
-        conversation_context: Optional[List[Dict[str, str]]] = None
+        conversation_context: Optional[List[Dict[str, str]]] = None,
+        persona: PersonaType = PersonaType.STANDARD
     ) -> ChatResponse:
         """Generate a conversational response without requiring citations."""
         try:
-            # Build conversational system prompt
-            system_prompt = """You are a helpful assistant having a natural conversation.
-You have access to conversation history to understand context and provide relevant responses.
-Be conversational, helpful, and natural. You don't need to cite sources for this response.
-If the user is asking follow-up questions like "ok thanks, and that's it?" or similar,
-provide a natural conversational response acknowledging their question."""
-
             # Build messages with conversation context
-            messages = [{"role": "system", "content": system_prompt}]
+            messages = [{"role": "system", "content": self._get_conversational_system_prompt(persona.value)}]
 
             # Add conversation history if available
             if conversation_context:

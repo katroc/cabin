@@ -944,6 +944,40 @@ input[type="checkbox"] {
   height: 16px;
 }
 
+/* Select dropdown styling */
+select {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+select option {
+  background: var(--bg-secondary) !important;
+  color: var(--text-primary) !important;
+  padding: var(--space-2) var(--space-3);
+}
+
+/* Browser-specific dropdown styling */
+select::-webkit-scrollbar {
+  width: 8px;
+}
+
+select::-webkit-scrollbar-track {
+  background: var(--bg-tertiary);
+}
+
+select::-webkit-scrollbar-thumb {
+  background: var(--border-light);
+  border-radius: var(--radius-md);
+}
+
+/* Firefox dropdown styling */
+@-moz-document url-prefix() {
+  select option {
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+  }
+}
+
 /* Labels */
 .label-base {
   color: var(--text-secondary);

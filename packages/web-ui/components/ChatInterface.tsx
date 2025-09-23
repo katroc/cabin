@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Loader2, Send, StopCircle } from 'lucide-react'
 import SmartResponse from './SmartResponse'
 import ExportDropdown from './ExportDropdown'
+import PersonaSelector from './PersonaSelector'
+import { useUIPreferences, PersonaType, ChatMode } from './contexts/UIPreferencesProvider'
 
 interface Citation {
   id: string
@@ -44,7 +46,6 @@ const CHAT_STREAM_ENDPOINT = 'http://localhost:8788/api/chat/stream'
 const CHAT_DIRECT_ENDPOINT = 'http://localhost:8788/api/chat/direct'
 const CHAT_DIRECT_STREAM_ENDPOINT = 'http://localhost:8788/api/chat/direct/stream'
 
-type ChatMode = 'rag' | 'llm'
 
 export default function ChatInterface({
   conversation,
@@ -55,7 +56,8 @@ export default function ChatInterface({
   const [input, setInput] = useState('')
   const [isProcessing, setIsProcessing] = useState(false)
   const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null)
-  const [chatMode, setChatMode] = useState<ChatMode>('rag')
+  const { preferences, setPersona, setChatMode } = useUIPreferences()
+  const { persona, chatMode } = preferences
   const messagesEndRef = useRef<HTMLDivElement | null>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
   const lastAssistantIdRef = useRef<string | null>(null)
@@ -103,7 +105,8 @@ export default function ChatInterface({
         },
         body: JSON.stringify({
           message: prompt,
-          conversation_id: conversation?.id
+          conversation_id: conversation?.id,
+          persona: persona
         }),
         signal: controller.signal
       })
@@ -141,9 +144,10 @@ export default function ChatInterface({
             } catch (e) {
               console.warn('Failed to parse streaming metadata:', e)
             }
-            // Remove the metadata from the aggregated text
-            aggregated = aggregated.replace(/\n?---METADATA---\{.*?\}---END---\n?$/, '')
           }
+          // Add the chunk to aggregated but remove any metadata parts
+          const cleanChunk = chunk.replace(/---METADATA---\{.*?\}---END---/g, '')
+          aggregated += cleanChunk
         } else {
           aggregated += chunk
         }
@@ -165,11 +169,18 @@ export default function ChatInterface({
         }
       }
 
+      // Ensure final update with complete text
+      updateAssistantMessage(assistantId, message => ({
+        ...message,
+        content: aggregated,
+        citations: message.citations || []
+      }))
+
       setStreamingMessageId(null)
       abortControllerRef.current = null
       return aggregated
     },
-    [chatMode, updateAssistantMessage]
+    [chatMode, persona, updateAssistantMessage]
   )
 
   const requestFullResponse = useCallback(async (prompt: string) => {
@@ -183,7 +194,8 @@ export default function ChatInterface({
       },
       body: JSON.stringify({
         message: prompt,
-        conversation_id: conversation?.id
+        conversation_id: conversation?.id,
+        persona: persona
       }),
       signal: controller.signal
     })
@@ -193,7 +205,7 @@ export default function ChatInterface({
     }
 
     return response.json()
-  }, [chatMode])
+  }, [chatMode, persona])
 
   const handleStopGeneration = useCallback(() => {
     abortControllerRef.current?.abort()
@@ -441,7 +453,9 @@ export default function ChatInterface({
               <div className="text-xs ui-text-muted">
                 Press Enter to send · Shift + Enter for a new line
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-3">
+                {/* Persona Selector */}
+                <PersonaSelector value={persona} onChange={setPersona} />
                 {canStop && (
                   <button
                     type="button"
@@ -455,21 +469,21 @@ export default function ChatInterface({
 
                 {/* RAG/LLM Toggle */}
                 <div
-                  className="relative flex items-center bg-[var(--bg-tertiary)] rounded-full border ui-border-light p-1 cursor-pointer"
+                  className="relative flex items-center bg-[var(--bg-tertiary)] rounded-full border ui-border-light p-0.5 cursor-pointer"
                   onClick={() => setChatMode(chatMode === 'rag' ? 'llm' : 'rag')}
                 >
                   {/* Sliding background indicator */}
                   <div
-                    className={`absolute top-1 bottom-1 rounded-full transition-all duration-200 ease-in-out ${
+                    className={`absolute top-0.5 bottom-0.5 rounded-full transition-all duration-200 ease-in-out ${
                       chatMode === 'rag'
-                        ? 'left-1 right-1/2 bg-[var(--accent)]'
-                        : 'left-1/2 right-1 bg-orange-500'
+                        ? 'left-0.5 right-1/2 bg-[var(--accent)]'
+                        : 'left-1/2 right-0.5 bg-orange-500'
                     }`}
                   />
 
                   {/* Toggle options */}
                   <div
-                    className={`relative z-10 px-3 py-1.5 text-xs font-medium rounded-full transition-colors duration-200 ${
+                    className={`relative z-10 px-2.5 py-1 text-xs font-medium rounded-full transition-colors duration-200 ${
                       chatMode === 'rag'
                         ? 'text-white'
                         : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
@@ -478,7 +492,7 @@ export default function ChatInterface({
                     RAG
                   </div>
                   <div
-                    className={`relative z-10 px-3 py-1.5 text-xs font-medium rounded-full transition-colors duration-200 ${
+                    className={`relative z-10 px-2.5 py-1 text-xs font-medium rounded-full transition-colors duration-200 ${
                       chatMode === 'llm'
                         ? 'text-white'
                         : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
@@ -491,8 +505,8 @@ export default function ChatInterface({
                 <button
                   type="submit"
                   disabled={!input.trim()}
-                  className={`flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition-all duration-200 disabled:opacity-50 text-white ui-shadow-elevated ${
-                    chatMode === 'rag' ? 'bg-[var(--accent)] hover:bg-[var(--accent-hover)]' : 'bg-orange-500 hover:bg-orange-600'
+                  className={`flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium transition-all duration-200 disabled:opacity-50 text-white ui-shadow-elevated ${
+                    chatMode === 'rag' ? 'bg-[var(--accent)] hover:bg-[var(--accent-hover)] border-[var(--accent)]' : 'bg-orange-500 hover:bg-orange-600 border-orange-500'
                   }`}
                 >
                   <Send size={16} />

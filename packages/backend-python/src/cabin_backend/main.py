@@ -16,7 +16,7 @@ from typing import List, Optional
 from pydantic import BaseModel, Field
 
 from .models import (
-    IngestRequest, ChatRequest, ChatResponse,
+    IngestRequest, ChatRequest, ChatResponse, PersonaType,
     DataSourceIndexRequest, DataSourceDiscoveryRequest, DataSourceTestRequest,
     DataSourceIndexResponse, DataSourceProgressResponse, DataSourceInfoResponse,
     FileUploadRequest, FileUploadResponse,
@@ -399,9 +399,9 @@ def apply_ui_settings(payload: UISettingsPayload) -> None:
     new_generator = Generator(overrides=overrides)
     new_data_manager = DataSourceManager(chunker_service, new_vector_store)
     new_query_router = QueryRouter(
-        bge_url=payload.embeddingBaseUrl.replace('/v1', '') if payload.embeddingBaseUrl.endswith('/v1') else payload.embeddingBaseUrl,
+        bge_url=payload.embedding_base_url.replace('/v1', '') if payload.embedding_base_url.endswith('/v1') else payload.embedding_base_url,
         similarity_threshold=payload.routing_threshold,
-        embedding_model=payload.embeddingModel or "bge-m3"
+        embedding_model=payload.embedding_model or "bge-m3"
     )
     logger.info(f"Created new QueryRouter with threshold: {payload.routing_threshold}")
 
@@ -554,7 +554,8 @@ def chat(request: ChatRequest) -> ChatResponse:
             context_chunks,
             conversation_id=conversation_id,
             conversation_context=conversation_context,
-            enforce_provenance=should_use_rag
+            enforce_provenance=should_use_rag,
+            persona=request.persona
         )
         generation_duration = (time.time() - generation_start) * 1000
         metrics.add_timing("response_generation", generation_duration, metadata={
@@ -584,7 +585,8 @@ def chat(request: ChatRequest) -> ChatResponse:
                 [],
                 conversation_id=conversation_id,
                 conversation_context=conversation_context,
-                enforce_provenance=False
+                enforce_provenance=False,
+                persona=request.persona
             )
             fallback_duration = (time.time() - fallback_start) * 1000
 
@@ -711,7 +713,8 @@ def chat_stream(request: ChatRequest):
                     context_chunks,
                     conversation_id=conversation_id,
                     conversation_context=conversation_context,
-                    enforce_provenance=should_use_rag
+                    enforce_provenance=should_use_rag,
+                    persona=request.persona
                 ):
                     collected_response += chunk
                     yield chunk
@@ -833,7 +836,8 @@ def chat_direct(request: ChatRequest) -> ChatResponse:
             [],  # No context chunks for direct LLM mode
             conversation_id=conversation_id,
             conversation_context=conversation_context,
-            enforce_provenance=False  # Never enforce citations in direct mode
+            enforce_provenance=False,  # Never enforce citations in direct mode
+            persona=request.persona
         )
         generation_duration = (time.time() - generation_start) * 1000
         metrics.add_timing("response_generation", generation_duration, metadata={
@@ -921,7 +925,8 @@ def chat_direct_stream(request: ChatRequest):
                     [],  # No context chunks for direct LLM mode
                     conversation_id=conversation_id,
                     conversation_context=conversation_context,
-                    enforce_provenance=False  # Never enforce citations in direct mode
+                    enforce_provenance=False,  # Never enforce citations in direct mode
+                    persona=request.persona
                 ):
                     collected_response += chunk
                     yield chunk
