@@ -39,7 +39,7 @@ export default function SettingsDrawer({ isOpen, onClose, settings, onSave }: Se
 
   return (
     <div className="drawer-overlay" onClick={onClose}>
-      <div className="drawer-panel fixed right-0 top-0 h-full w-full max-w-4xl flex flex-col" onClick={(e) => e.stopPropagation()}>
+      <div className="drawer-panel fixed right-0 top-0 h-full w-full max-w-5xl flex flex-col" onClick={(e) => e.stopPropagation()}>
         {/* Header */}
         <div className="drawer-header flex-shrink-0">
           <h2 className="drawer-title">
