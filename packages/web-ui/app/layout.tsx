@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import './globals.css'
 import { ToastProvider } from '../components/ToastProvider'
 import { Toast } from '../components/Toast'
+import { UIPreferencesProvider } from '../components/contexts/UIPreferencesProvider'
 
 export const metadata: Metadata = {
   title: 'Cabin',
@@ -21,10 +22,12 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="h-screen" style={{ background: 'var(--bg-primary)', color: 'var(--text-primary)' }}>
-        <ToastProvider>
-          {children}
-          <Toast />
-        </ToastProvider>
+        <UIPreferencesProvider>
+          <ToastProvider>
+            {children}
+            <Toast />
+          </ToastProvider>
+        </UIPreferencesProvider>
       </body>
     </html>
   )

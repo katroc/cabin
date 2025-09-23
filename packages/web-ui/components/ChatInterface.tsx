@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Loader2, Send, StopCircle } from 'lucide-react'
 import SmartResponse from './SmartResponse'
 import ExportDropdown from './ExportDropdown'
+import { useUIPreferences, PersonaType, ChatMode } from './contexts/UIPreferencesProvider'
 
 interface Citation {
   id: string
@@ -44,7 +45,6 @@ const CHAT_STREAM_ENDPOINT = 'http://localhost:8788/api/chat/stream'
 const CHAT_DIRECT_ENDPOINT = 'http://localhost:8788/api/chat/direct'
 const CHAT_DIRECT_STREAM_ENDPOINT = 'http://localhost:8788/api/chat/direct/stream'
 
-type ChatMode = 'rag' | 'llm'
 
 export default function ChatInterface({
   conversation,
@@ -55,7 +55,8 @@ export default function ChatInterface({
   const [input, setInput] = useState('')
   const [isProcessing, setIsProcessing] = useState(false)
   const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null)
-  const [chatMode, setChatMode] = useState<ChatMode>('rag')
+  const { preferences, setPersona, setChatMode } = useUIPreferences()
+  const { persona, chatMode } = preferences
   const messagesEndRef = useRef<HTMLDivElement | null>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
   const lastAssistantIdRef = useRef<string | null>(null)
@@ -103,7 +104,8 @@ export default function ChatInterface({
         },
         body: JSON.stringify({
           message: prompt,
-          conversation_id: conversation?.id
+          conversation_id: conversation?.id,
+          persona: persona
         }),
         signal: controller.signal
       })
@@ -169,7 +171,7 @@ export default function ChatInterface({
       abortControllerRef.current = null
       return aggregated
     },
-    [chatMode, updateAssistantMessage]
+    [chatMode, persona, updateAssistantMessage]
   )
 
   const requestFullResponse = useCallback(async (prompt: string) => {
@@ -183,7 +185,8 @@ export default function ChatInterface({
       },
       body: JSON.stringify({
         message: prompt,
-        conversation_id: conversation?.id
+        conversation_id: conversation?.id,
+        persona: persona
       }),
       signal: controller.signal
     })
@@ -193,7 +196,7 @@ export default function ChatInterface({
     }
 
     return response.json()
-  }, [chatMode])
+  }, [chatMode, persona])
 
   const handleStopGeneration = useCallback(() => {
     abortControllerRef.current?.abort()
@@ -441,7 +444,20 @@ export default function ChatInterface({
               <div className="text-xs ui-text-muted">
                 Press Enter to send · Shift + Enter for a new line
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-3">
+                {/* Persona Selector */}
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs font-medium ui-text-secondary">Persona:</span>
+                  <select
+                    value={persona}
+                    onChange={(e) => setPersona(e.target.value as PersonaType)}
+                    className="text-xs bg-[var(--bg-tertiary)] border ui-border-light rounded-full px-3 py-2 ui-text-primary focus:outline-none min-w-0"
+                  >
+                    <option value="standard">Standard</option>
+                    <option value="direct">Direct</option>
+                    <option value="eli5">ELI5</option>
+                  </select>
+                </div>
                 {canStop && (
                   <button
                     type="button"
