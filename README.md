@@ -182,11 +182,13 @@ npm install
 ```
 
 **Model Setup (Local Models)**
-The system uses three specialized models that run entirely on-premises:
+Cabin features **dynamic model discovery** - it automatically detects whatever models you load in your vLLM containers. Default models include:
 
 - **BGE-M3** (`BAAI/bge-m3`): Advanced embedding model for semantic understanding
 - **BGE-Reranker-V2-M3** (`BAAI/bge-reranker-v2-m3`): Precision reranking model
-- **GPT-OSS-20B**: High-quality language model for response generation
+- **Any LLM**: Compatible with any model supported by vLLM (Qwen, Llama, etc.)
+
+**🔍 Model Discovery**: Use the "Discover Models" feature in Settings → AI Models to automatically detect and configure whatever models are running in your vLLM containers. No manual configuration needed!
 
 All models are containerized and run locally - no external API calls required.
 
@@ -199,11 +201,11 @@ Create a `.env` file in the project root:
 ```env
 # LLM Configuration
 CABIN_LLM_BASE_URL=http://localhost:8000/v1
-CABIN_LLM_MODEL=gpt-oss-20b
+CABIN_LLM_MODEL=  # Auto-discovered from vLLM containers (or specify manually)
 
 # Embedding Configuration
 CABIN_EMBEDDING_BASE_URL=http://localhost:8001/v1
-CABIN_EMBEDDING_MODEL=bge-m3
+CABIN_EMBEDDING_MODEL=  # Auto-discovered from vLLM containers (or specify manually)
 
 # Vector Store Configuration
 CABIN_CHROMA_HOST=localhost
@@ -211,7 +213,7 @@ CABIN_CHROMA_PORT=8000
 
 # Reranker Configuration
 CABIN_RERANKER_URL=http://localhost:8002/v1
-CABIN_RERANKER_MODEL=bge-reranker-v2-m3
+CABIN_RERANKER_MODEL=  # Auto-discovered from vLLM containers (or specify manually)
 
 # Feature Flags
 CABIN_USE_RERANKER=true

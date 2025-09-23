@@ -10,16 +10,16 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - ~/models/gpt-oss-20b:/models/Qwen3-4B-Instruct-2507
+      - ~/models/Qwen3-4B-Instruct-2507:/models/Qwen3-4B-Instruct-2507
     command:
       - --model
       - /models/Qwen3-4B-Instruct-2507
       - --served-model-name
       - Qwen3-4B-Instruct-2507
       - --max-model-len
-      - "4096"
+      - "15360"
       - --gpu-memory-utilization
-      - "0.75"
+      - "0.55"
       - --max-num-batched-tokens
       - "16384"
       - --max-num-seqs

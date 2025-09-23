@@ -69,7 +69,7 @@ class RerankerSettings(BaseModel):
     url: str = "http://localhost:8002/rerank"
     top_n: int = 8
     timeout_s: int = 8
-    model: str = "bge-reranker-v2-m3"
+    model: str = ""  # Auto-discovered from reranker service
     api_key: Optional[str] = None
     # Pool size for early reranking (before MMR selection)
     pool_size_multiplier: int = 3
@@ -174,14 +174,14 @@ class Settings(BaseSettings):
     child_collection_name: str = Field("cabin_child_chunks", description="Name of the collection for child chunks")
 
     # LLM Provider Configuration (OpenAI-compatible)
-    llm_base_url: str = Field("http://localhost:1234/v1", description="Base URL for the OpenAI-compatible LLM API")
+    llm_base_url: str = Field("http://localhost:8000/v1", description="Base URL for the OpenAI-compatible LLM API")
     llm_api_key: str = Field("dummy-key", description="API key for the LLM API")
-    llm_model: str = Field("local-model", description="The model name to use for chat completions")
+    llm_model: str = Field("", description="The model name to use for chat completions (auto-discovered if empty)")
 
     # Embedding Provider Configuration
     embedding_base_url: str = Field(default="", description="Base URL for the embedding API. Defaults to llm_base_url if not set.")
     embedding_api_key: str = Field(default="", description="API key for the embedding API. Defaults to llm_api_key if not set.")
-    embedding_model: str = Field("text-embedding-bge-m3", description="The model name to use for generating embeddings")
+    embedding_model: str = Field("", description="The model name to use for generating embeddings (auto-discovered if empty)")
     embedding_dimensions: int = Field(256, description="The dimension of the embeddings")
     embedding_batch_size: int = Field(16, description="Batch size for embedding requests")
 

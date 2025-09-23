@@ -115,12 +115,12 @@ const defaultSettings: ExtendedSettingsData = {
   maxMemoryMessages: 8,
 
   // AI Models
-  llmBaseUrl: 'http://localhost:1234/v1',
-  llmModel: 'openai/gpt-oss-20b',
+  llmBaseUrl: 'http://localhost:8000/v1',
+  llmModel: '',  // Auto-discovered from vLLM containers
   llmApiKey: '',
   temperature: 0.1,
-  embeddingBaseUrl: 'http://localhost:1234/v1',
-  embeddingModel: 'text-embedding-bge-m3',
+  embeddingBaseUrl: 'http://localhost:8001/v1',
+  embeddingModel: '',  // Auto-discovered from vLLM containers
   embeddingApiKey: '',
   embeddingDimensions: 256,
   embeddingBatchSize: 16,

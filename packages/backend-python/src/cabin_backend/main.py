@@ -351,7 +351,11 @@ try:
     generator_service = Generator(overrides=current_overrides)
     data_source_manager = DataSourceManager(chunker_service, vector_store_service)
     conversation_memory = ConversationMemoryManager()
-    query_router = QueryRouter(similarity_threshold=current_ui_settings.routing_threshold)
+    query_router = QueryRouter(
+        bge_url=settings.embedding_base_url.replace('/v1', '') if settings.embedding_base_url.endswith('/v1') else settings.embedding_base_url,
+        similarity_threshold=current_ui_settings.routing_threshold,
+        embedding_model=settings.embedding_model or "bge-m3"
+    )
 except Exception as e:
     # If services fail to initialize (e.g., can't connect to ChromaDB),
     # log the error and prevent the app from starting gracefully.
@@ -394,7 +398,11 @@ def apply_ui_settings(payload: UISettingsPayload) -> None:
     new_vector_store = VectorStore(overrides=overrides)
     new_generator = Generator(overrides=overrides)
     new_data_manager = DataSourceManager(chunker_service, new_vector_store)
-    new_query_router = QueryRouter(similarity_threshold=payload.routing_threshold)
+    new_query_router = QueryRouter(
+        bge_url=payload.embeddingBaseUrl.replace('/v1', '') if payload.embeddingBaseUrl.endswith('/v1') else payload.embeddingBaseUrl,
+        similarity_threshold=payload.routing_threshold,
+        embedding_model=payload.embeddingModel or "bge-m3"
+    )
     logger.info(f"Created new QueryRouter with threshold: {payload.routing_threshold}")
 
     vector_store_service = new_vector_store

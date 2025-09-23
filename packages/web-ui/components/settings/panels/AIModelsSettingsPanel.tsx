@@ -48,8 +48,8 @@ export function AIModelsSettingsPanel() {
 
       if (languageModels.length > 0) {
         const currentLlmModel = state.data.llmModel
-        // If current model is the default or not found, use discovered model
-        if (currentLlmModel === 'openai/gpt-oss-20b' || currentLlmModel === 'local-model') {
+        // If current model is empty or a known default, use discovered model
+        if (!currentLlmModel || currentLlmModel === 'openai/gpt-oss-20b' || currentLlmModel === 'local-model') {
           updateSetting('llmModel', languageModels[0].id)
           updateSetting('llmBaseUrl', languageModels[0].url + '/v1')
         }
@@ -57,8 +57,8 @@ export function AIModelsSettingsPanel() {
 
       if (embeddingModels.length > 0) {
         const currentEmbeddingModel = state.data.embeddingModel
-        // If current model is the default, use discovered model
-        if (currentEmbeddingModel === 'text-embedding-bge-m3') {
+        // If current model is empty or a known default, use discovered model
+        if (!currentEmbeddingModel || currentEmbeddingModel === 'text-embedding-bge-m3' || currentEmbeddingModel === 'bge-m3') {
           updateSetting('embeddingModel', embeddingModels[0].id)
           updateSetting('embeddingBaseUrl', embeddingModels[0].url + '/v1')
         }
@@ -173,7 +173,7 @@ export function AIModelsSettingsPanel() {
               label="LLM Model"
               value={state.data.llmModel}
               onChange={(value) => updateSetting('llmModel', value)}
-              placeholder="openai/gpt-oss-20b"
+              placeholder="e.g. Qwen3-4B-Instruct-2507"
               description="Model identifier or name (discover models above for dropdown)"
               error={state.validationErrors.llmModel}
             />
@@ -265,7 +265,7 @@ export function AIModelsSettingsPanel() {
               label="Embedding Model"
               value={state.data.embeddingModel}
               onChange={(value) => updateSetting('embeddingModel', value)}
-              placeholder="text-embedding-bge-m3"
+              placeholder="e.g. bge-m3"
               description="Embedding model identifier (discover models above for dropdown)"
               error={state.validationErrors.embeddingModel}
             />
