@@ -135,9 +135,10 @@ class QueryRouter:
     _INTENT_MIN_SCORE = 0.35  # Lowered from 0.45 for better detection
     _INTENT_MIN_MARGIN = 0.08  # Lowered from 0.12 for better detection
 
-    def __init__(self, bge_url: str = "http://localhost:8001", similarity_threshold: float = 0.4):
+    def __init__(self, bge_url: str = "http://localhost:8001", similarity_threshold: float = 0.4, embedding_model: str = "bge-m3"):
         self.bge_url = bge_url.rstrip('/')
         self.similarity_threshold = similarity_threshold
+        self.embedding_model = embedding_model
         self._intent_label_embeddings: Optional[Dict[str, np.ndarray]] = None
 
     def should_use_rag(
@@ -262,7 +263,7 @@ class QueryRouter:
                 f"{self.bge_url}/v1/embeddings",
                 json={
                     "input": [text],
-                    "model": "bge-m3"
+                    "model": self.embedding_model
                 },
                 timeout=5  # Fast timeout for routing
             )
@@ -328,7 +329,7 @@ class QueryRouter:
                 f"{self.bge_url}/v1/embeddings",
                 json={
                     "input": sample_texts,
-                    "model": "bge-m3"
+                    "model": self.embedding_model
                 },
                 timeout=8  # Slightly longer for batch
             )

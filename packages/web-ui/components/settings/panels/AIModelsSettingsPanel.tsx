@@ -8,7 +8,39 @@ export function AIModelsSettingsPanel() {
   const { state, updateSetting } = useSettings()
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-8 pr-4">
+      <SettingGroup
+        title="Model Information"
+        description="Currently configured models (auto-discovered from running containers)"
+      >
+        <SettingField
+          title="LLM Model"
+          description="Language model used for text generation"
+        >
+          <div className="input-base opacity-75">
+            {state.data.llmModel || 'Auto-discovering...'}
+          </div>
+        </SettingField>
+
+        <SettingField
+          title="Embedding Model"
+          description="Model used for text embeddings and semantic search"
+        >
+          <div className="input-base opacity-75">
+            {state.data.embeddingModel || 'Auto-discovering...'}
+          </div>
+        </SettingField>
+
+        <SettingField
+          title="Reranker Model"
+          description="Model used for result reranking and relevance scoring"
+        >
+          <div className="input-base opacity-75">
+            bge-reranker-v2-m3
+          </div>
+        </SettingField>
+      </SettingGroup>
+
       <SettingGroup
         title="LLM Provider"
         description="Configure the language model provider for text generation"
@@ -29,21 +61,6 @@ export function AIModelsSettingsPanel() {
           />
         </SettingField>
 
-        <SettingField
-          title="Model"
-          description="The specific model to use for text generation"
-        >
-          <SettingControl
-            type="text"
-            id="llmModel"
-            label="LLM Model"
-            value={state.data.llmModel}
-            onChange={(value) => updateSetting('llmModel', value)}
-            placeholder="openai/gpt-oss-20b"
-            description="Model identifier or name"
-            error={state.validationErrors.llmModel}
-          />
-        </SettingField>
 
         <SettingField
           title="API Key"
@@ -101,21 +118,6 @@ export function AIModelsSettingsPanel() {
           />
         </SettingField>
 
-        <SettingField
-          title="Model"
-          description="The specific model to use for text embeddings"
-        >
-          <SettingControl
-            type="text"
-            id="embeddingModel"
-            label="Embedding Model"
-            value={state.data.embeddingModel}
-            onChange={(value) => updateSetting('embeddingModel', value)}
-            placeholder="text-embedding-bge-m3"
-            description="Embedding model identifier"
-            error={state.validationErrors.embeddingModel}
-          />
-        </SettingField>
 
         <SettingField
           title="API Key"

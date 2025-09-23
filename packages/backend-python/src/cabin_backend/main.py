@@ -351,7 +351,11 @@ try:
     generator_service = Generator(overrides=current_overrides)
     data_source_manager = DataSourceManager(chunker_service, vector_store_service)
     conversation_memory = ConversationMemoryManager()
-    query_router = QueryRouter(similarity_threshold=current_ui_settings.routing_threshold)
+    query_router = QueryRouter(
+        bge_url=settings.embedding_base_url.replace('/v1', '') if settings.embedding_base_url.endswith('/v1') else settings.embedding_base_url,
+        similarity_threshold=current_ui_settings.routing_threshold,
+        embedding_model=settings.embedding_model or "bge-m3"
+    )
 except Exception as e:
     # If services fail to initialize (e.g., can't connect to ChromaDB),
     # log the error and prevent the app from starting gracefully.
@@ -394,7 +398,11 @@ def apply_ui_settings(payload: UISettingsPayload) -> None:
     new_vector_store = VectorStore(overrides=overrides)
     new_generator = Generator(overrides=overrides)
     new_data_manager = DataSourceManager(chunker_service, new_vector_store)
-    new_query_router = QueryRouter(similarity_threshold=payload.routing_threshold)
+    new_query_router = QueryRouter(
+        bge_url=payload.embeddingBaseUrl.replace('/v1', '') if payload.embeddingBaseUrl.endswith('/v1') else payload.embeddingBaseUrl,
+        similarity_threshold=payload.routing_threshold,
+        embedding_model=payload.embeddingModel or "bge-m3"
+    )
     logger.info(f"Created new QueryRouter with threshold: {payload.routing_threshold}")
 
     vector_store_service = new_vector_store
@@ -2024,3 +2032,88 @@ async def debug_vllm_metrics(service_name: str) -> dict:
                 }
     except Exception as e:
         return {"error": str(e)}
+
+@app.get("/api/models/discover")
+async def discover_available_models() -> dict:
+    """Discover available models from vLLM containers with fallback to configuration."""
+    import aiohttp
+    import asyncio
+
+    # Common vLLM ports based on docker-compose.yml
+    vllm_services = [
+        {"name": "llm", "url": "http://localhost:8000", "type": "language_model"},
+        {"name": "embedding", "url": "http://localhost:8001", "type": "embedding_model"},
+        {"name": "reranker", "url": "http://localhost:8002", "type": "reranker_model"},
+    ]
+
+    discovered_models = []
+    service_status = {}
+    fallback_models = []
+
+    # Try to discover models from running services
+    async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=5)) as session:
+        for service in vllm_services:
+            try:
+                # Try to get models from vLLM OpenAI-compatible endpoint
+                async with session.get(f"{service['url']}/v1/models") as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        models = data.get("data", [])
+
+                        for model in models:
+                            discovered_models.append({
+                                "id": model.get("id"),
+                                "name": model.get("id"),
+                                "service": service["name"],
+                                "url": service["url"],
+                                "type": service["type"],
+                                "status": "available",
+                                "source": "discovered"
+                            })
+
+                        service_status[service["name"]] = "healthy"
+                    else:
+                        service_status[service["name"]] = f"error_http_{response.status}"
+
+            except asyncio.TimeoutError:
+                service_status[service["name"]] = "timeout"
+            except aiohttp.ClientConnectionError:
+                service_status[service["name"]] = "connection_refused"
+            except Exception as e:
+                service_status[service["name"]] = f"error_{str(e)[:50]}"
+
+    # Add fallback models from configuration if discovery failed or found fewer models
+    if len([m for m in discovered_models if m["type"] == "language_model"]) == 0:
+        fallback_models.append({
+            "id": settings.llm_model,
+            "name": f"{settings.llm_model} (from config)",
+            "service": "llm",
+            "url": settings.llm_base_url.replace('/v1', '') if settings.llm_base_url.endswith('/v1') else settings.llm_base_url,
+            "type": "language_model",
+            "status": "configured",
+            "source": "configuration"
+        })
+
+    if len([m for m in discovered_models if m["type"] == "embedding_model"]) == 0:
+        fallback_models.append({
+            "id": settings.embedding_model,
+            "name": f"{settings.embedding_model} (from config)",
+            "service": "embedding",
+            "url": settings.embedding_base_url.replace('/v1', '') if settings.embedding_base_url.endswith('/v1') else settings.embedding_base_url,
+            "type": "embedding_model",
+            "status": "configured",
+            "source": "configuration"
+        })
+
+    # Combine discovered and fallback models
+    all_models = discovered_models + fallback_models
+
+    return {
+        "models": all_models,
+        "service_status": service_status,
+        "timestamp": datetime.utcnow().isoformat(),
+        "total_models_found": len(all_models),
+        "discovered_count": len(discovered_models),
+        "fallback_count": len(fallback_models),
+        "has_fallbacks": len(fallback_models) > 0
+    }

@@ -113,7 +113,7 @@ export function SettingGroup({
           onClick={collapsible ? () => setIsCollapsed(!isCollapsed) : undefined}
         >
           <div className="space-y-1">
-            <h3 className="text-base font-semibold text-[color:var(--text-primary)]">
+            <h3 className="text-base font-semibold text-[color:var(--accent)]">
               {title}
             </h3>
             {description && (

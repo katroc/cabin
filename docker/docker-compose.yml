@@ -1,7 +1,7 @@
 services:
-  gpt-oss-20b:
+  Qwen3-4B-Instruct-2507:
     image: vllm/vllm-openai:latest
-    container_name: gpt-oss-20b
+    container_name: Qwen3-4B-Instruct-2507
     runtime: nvidia
     environment:
       NVIDIA_VISIBLE_DEVICES: "all"
@@ -10,16 +10,16 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - ~/models/gpt-oss-20b:/models/gpt-oss-20b
+      - ~/models/Qwen3-4B-Instruct-2507:/models/Qwen3-4B-Instruct-2507
     command:
       - --model
-      - /models/gpt-oss-20b
+      - /models/Qwen3-4B-Instruct-2507
       - --served-model-name
-      - gpt-oss-20b
+      - Qwen3-4B-Instruct-2507
       - --max-model-len
-      - "4096"
+      - "15360"
       - --gpu-memory-utilization
-      - "0.75"
+      - "0.55"
       - --max-num-batched-tokens
       - "16384"
       - --max-num-seqs
@@ -47,7 +47,7 @@ services:
       - --gpu-memory-utilization
       - "0.05"
       - --max-model-len
-      - "512"
+      - "1024"
 
   bge-reranker-v2-m3:
     image: vllm/vllm-openai:latest
@@ -70,3 +70,21 @@ services:
       - "0.10"
       - --max-model-len
       - "512"
+
+  chromadb:
+    image: chromadb/chroma:latest
+    container_name: chromadb
+    environment:
+      IS_PERSISTENT: "TRUE"
+      PERSIST_DIRECTORY: "/chroma/chroma"
+      CHROMA_SERVER_HOST: "0.0.0.0"
+      CHROMA_SERVER_HTTP_PORT: "8000"
+      ANONYMIZED_TELEMETRY: "false"
+    ports:
+      - "8100:8000"
+    volumes:
+      - chroma-data:/chroma/chroma
+    restart: unless-stopped
+
+volumes:
+  chroma-data:

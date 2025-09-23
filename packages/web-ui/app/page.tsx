@@ -101,10 +101,10 @@ export default function Home() {
   const [isHydrated, setIsHydrated] = useState(false)
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
   const [settings, setSettings] = useState<SettingsData>({
-    llmBaseUrl: 'http://localhost:1234/v1',
-    llmModel: 'openai/gpt-oss-20b',
-    embeddingBaseUrl: 'http://localhost:1234/v1',
-    embeddingModel: 'text-embedding-bge-m3',
+    llmBaseUrl: 'http://localhost:8000/v1',
+    llmModel: '',  // Auto-discovered
+    embeddingBaseUrl: 'http://localhost:8001/v1',
+    embeddingModel: '',  // Auto-discovered
     temperature: 0.1,
     chromaHost: 'localhost',
     chromaPort: 8000,
