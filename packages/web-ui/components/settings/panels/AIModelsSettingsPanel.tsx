@@ -1,125 +1,42 @@
 'use client'
 
-import { useState, useCallback } from 'react'
 import { SettingField, SettingGroup } from '../SettingField'
 import { SettingControl } from '../SettingControl'
 import { useSettings } from '../SettingsProvider'
 
-interface DiscoveredModel {
-  id: string
-  name: string
-  service: string
-  url: string
-  type: string
-  status: string
-}
-
-interface ModelDiscoveryResponse {
-  models: DiscoveredModel[]
-  service_status: Record<string, string>
-  timestamp: string
-  total_models_found: number
-}
-
 export function AIModelsSettingsPanel() {
   const { state, updateSetting } = useSettings()
-  const [discoveredModels, setDiscoveredModels] = useState<DiscoveredModel[]>([])
-  const [isDiscovering, setIsDiscovering] = useState(false)
-  const [discoveryError, setDiscoveryError] = useState<string | null>(null)
-  const [lastDiscoveryTime, setLastDiscoveryTime] = useState<string | null>(null)
-
-  const discoverModels = useCallback(async () => {
-    setIsDiscovering(true)
-    setDiscoveryError(null)
-
-    try {
-      const response = await fetch('http://localhost:8788/api/models/discover')
-      if (!response.ok) {
-        throw new Error(`Discovery failed: ${response.status}`)
-      }
-
-      const data: ModelDiscoveryResponse = await response.json()
-      setDiscoveredModels(data.models)
-      setLastDiscoveryTime(data.timestamp)
-
-      // Auto-select discovered models if current settings are still defaults
-      const languageModels = data.models.filter(m => m.type === 'language_model')
-      const embeddingModels = data.models.filter(m => m.type === 'embedding_model')
-
-      if (languageModels.length > 0) {
-        const currentLlmModel = state.data.llmModel
-        // If current model is empty or a known default, use discovered model
-        if (!currentLlmModel || currentLlmModel === 'openai/gpt-oss-20b' || currentLlmModel === 'local-model') {
-          updateSetting('llmModel', languageModels[0].id)
-          updateSetting('llmBaseUrl', languageModels[0].url + '/v1')
-        }
-      }
-
-      if (embeddingModels.length > 0) {
-        const currentEmbeddingModel = state.data.embeddingModel
-        // If current model is empty or a known default, use discovered model
-        if (!currentEmbeddingModel || currentEmbeddingModel === 'text-embedding-bge-m3' || currentEmbeddingModel === 'bge-m3') {
-          updateSetting('embeddingModel', embeddingModels[0].id)
-          updateSetting('embeddingBaseUrl', embeddingModels[0].url + '/v1')
-        }
-      }
-
-    } catch (error) {
-      setDiscoveryError(error instanceof Error ? error.message : 'Failed to discover models')
-    } finally {
-      setIsDiscovering(false)
-    }
-  }, [state.data.llmModel, state.data.embeddingModel, updateSetting])
-
-  // Get available models for dropdowns
-  const languageModelOptions = discoveredModels
-    .filter(m => m.type === 'language_model')
-    .map(m => ({ value: m.id, label: `${m.id} (${m.service})` }))
-
-  const embeddingModelOptions = discoveredModels
-    .filter(m => m.type === 'embedding_model')
-    .map(m => ({ value: m.id, label: `${m.id} (${m.service})` }))
 
   return (
     <div className="space-y-8">
       <SettingGroup
-        title="Model Discovery"
-        description="Automatically discover available models from running vLLM containers"
+        title="Model Information"
+        description="Currently configured models (auto-discovered from running containers)"
       >
         <SettingField
-          title="Discover Models"
-          description="Scan for available models in your vLLM containers"
+          title="LLM Model"
+          description="Language model used for text generation"
         >
-          <div className="space-y-3">
-            <button
-              onClick={discoverModels}
-              disabled={isDiscovering}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isDiscovering ? (
-                <>
-                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  Discovering...
-                </>
-              ) : (
-                <>
-                  🔍 Discover Models
-                </>
-              )}
-            </button>
+          <div className="px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-700">
+            {state.data.llmModel || 'Auto-discovering...'}
+          </div>
+        </SettingField>
 
-            {discoveryError && (
-              <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
-                {discoveryError}
-              </div>
-            )}
+        <SettingField
+          title="Embedding Model"
+          description="Model used for text embeddings and semantic search"
+        >
+          <div className="px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-700">
+            {state.data.embeddingModel || 'Auto-discovering...'}
+          </div>
+        </SettingField>
 
-            {discoveredModels.length > 0 && (
-              <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-green-700 text-sm">
-                ✅ Found {discoveredModels.length} model(s)
-                {lastDiscoveryTime && ` at ${new Date(lastDiscoveryTime).toLocaleTimeString()}`}
-              </div>
-            )}
+        <SettingField
+          title="Reranker Model"
+          description="Model used for result reranking and relevance scoring"
+        >
+          <div className="px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-700">
+            bge-reranker-v2-m3
           </div>
         </SettingField>
       </SettingGroup>
@@ -144,41 +61,6 @@ export function AIModelsSettingsPanel() {
           />
         </SettingField>
 
-        <SettingField
-          title="Model"
-          description="The specific model to use for text generation"
-        >
-          {languageModelOptions.length > 0 ? (
-            <SettingControl
-              type="select"
-              id="llmModel"
-              label="LLM Model"
-              value={state.data.llmModel}
-              onChange={(value) => {
-                updateSetting('llmModel', value)
-                // Auto-update base URL when model is selected
-                const selectedModel = discoveredModels.find(m => m.id === value)
-                if (selectedModel) {
-                  updateSetting('llmBaseUrl', selectedModel.url + '/v1')
-                }
-              }}
-              options={languageModelOptions}
-              description="Select from discovered models"
-              error={state.validationErrors.llmModel}
-            />
-          ) : (
-            <SettingControl
-              type="text"
-              id="llmModel"
-              label="LLM Model"
-              value={state.data.llmModel}
-              onChange={(value) => updateSetting('llmModel', value)}
-              placeholder="e.g. Qwen3-4B-Instruct-2507"
-              description="Model identifier or name (discover models above for dropdown)"
-              error={state.validationErrors.llmModel}
-            />
-          )}
-        </SettingField>
 
         <SettingField
           title="API Key"
@@ -236,41 +118,6 @@ export function AIModelsSettingsPanel() {
           />
         </SettingField>
 
-        <SettingField
-          title="Model"
-          description="The specific model to use for text embeddings"
-        >
-          {embeddingModelOptions.length > 0 ? (
-            <SettingControl
-              type="select"
-              id="embeddingModel"
-              label="Embedding Model"
-              value={state.data.embeddingModel}
-              onChange={(value) => {
-                updateSetting('embeddingModel', value)
-                // Auto-update base URL when model is selected
-                const selectedModel = discoveredModels.find(m => m.id === value)
-                if (selectedModel) {
-                  updateSetting('embeddingBaseUrl', selectedModel.url + '/v1')
-                }
-              }}
-              options={embeddingModelOptions}
-              description="Select from discovered models"
-              error={state.validationErrors.embeddingModel}
-            />
-          ) : (
-            <SettingControl
-              type="text"
-              id="embeddingModel"
-              label="Embedding Model"
-              value={state.data.embeddingModel}
-              onChange={(value) => updateSetting('embeddingModel', value)}
-              placeholder="e.g. bge-m3"
-              description="Embedding model identifier (discover models above for dropdown)"
-              error={state.validationErrors.embeddingModel}
-            />
-          )}
-        </SettingField>
 
         <SettingField
           title="API Key"
