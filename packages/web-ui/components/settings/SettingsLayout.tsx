@@ -181,7 +181,7 @@ export function SettingsLayout({
 
         {/* Scrollable Content */}
         <div className="settings-content-body flex-1 overflow-y-auto p-6 bg-[color:var(--bg-primary)]">
-          <div className="max-w-2xl">
+          <div className="max-w-xl">
             {activeTabData.component}
           </div>
         </div>
