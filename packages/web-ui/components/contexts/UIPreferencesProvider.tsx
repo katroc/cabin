@@ -29,6 +29,7 @@ interface UIPreferencesProviderProps {
 
 export function UIPreferencesProvider({ children }: UIPreferencesProviderProps) {
   const [preferences, setPreferences] = useState<UIPreferences>(defaultPreferences)
+  const [hasLoaded, setHasLoaded] = useState(false)
 
   // Load preferences from localStorage on mount
   useEffect(() => {
@@ -36,24 +37,28 @@ export function UIPreferencesProvider({ children }: UIPreferencesProviderProps) 
       const stored = localStorage.getItem('cabin-ui-preferences')
       if (stored) {
         const parsed = JSON.parse(stored)
-        setPreferences({
+        const newPreferences = {
           persona: parsed.persona || defaultPreferences.persona,
           chatMode: parsed.chatMode || defaultPreferences.chatMode
-        })
+        }
+        setPreferences(newPreferences)
       }
     } catch (error) {
       console.warn('Failed to load UI preferences from localStorage:', error)
     }
+    setHasLoaded(true)
   }, [])
 
-  // Save preferences to localStorage whenever they change
+  // Save preferences to localStorage whenever they change (but not on initial load)
   useEffect(() => {
+    if (!hasLoaded) return
+
     try {
       localStorage.setItem('cabin-ui-preferences', JSON.stringify(preferences))
     } catch (error) {
       console.warn('Failed to save UI preferences to localStorage:', error)
     }
-  }, [preferences])
+  }, [preferences, hasLoaded])
 
   const setPersona = (persona: PersonaType) => {
     setPreferences(prev => ({ ...prev, persona }))
