@@ -174,89 +174,89 @@ def load_default_ui_settings() -> UISettingsPayload:
     verification_cfg = settings.app_config.verification
     embedding_cache_cfg = settings.app_config.embedding_cache
     telemetry_cfg = settings.app_config.telemetry
+    ui_cfg = settings.app_config.ui_settings
 
-    reranker_url = reranker_cfg.url
-    reranker_port = _parse_port_from_url(reranker_url, default=8000)
-    log_level = os.getenv("CABIN_LOG_LEVEL") or telemetry_cfg.log_level
+    reranker_url = ui_cfg.reranker_url
+    reranker_port = ui_cfg.reranker_port
+    # UI settings log level takes precedence over environment and telemetry settings
+    log_level = ui_cfg.log_level
 
     return UISettingsPayload(
         # LLM Provider
-        llmBaseUrl=settings.llm_base_url,
-        llmModel=settings.llm_model,
+        llmBaseUrl=ui_cfg.llm_base_url,
+        llmModel=ui_cfg.llm_model,
         llmApiKey="",  # Don't expose API key in UI settings
-        temperature=0.1,
+        temperature=ui_cfg.temperature,
 
         # Embedding Provider
-        embeddingBaseUrl=settings.embedding_base_url,
-        embeddingModel=settings.embedding_model,
+        embeddingBaseUrl=ui_cfg.embedding_base_url if ui_cfg.embedding_base_url else ui_cfg.llm_base_url,
+        embeddingModel=ui_cfg.embedding_model,
         embeddingApiKey="",  # Don't expose API key in UI settings
-        embeddingDimensions=settings.embedding_dimensions,
-        embeddingBatchSize=settings.embedding_batch_size,
+        embeddingDimensions=ui_cfg.embedding_dimensions,
+        embeddingBatchSize=ui_cfg.embedding_batch_size,
 
         # Generation Settings
-        maxTokens=generation_cfg.max_tokens,
-        streamingMaxTokens=generation_cfg.streaming_max_tokens,
-        rephrasingMaxTokens=generation_cfg.rephrasing_max_tokens,
-        maxCitations=generation_cfg.max_citations,
-        requireQuotes=generation_cfg.require_quotes,
-        quoteMaxWords=generation_cfg.quote_max_words,
+        maxTokens=ui_cfg.max_tokens,
+        streamingMaxTokens=ui_cfg.streaming_max_tokens,
+        rephrasingMaxTokens=ui_cfg.rephrasing_max_tokens,
+        maxCitations=ui_cfg.max_citations,
+        requireQuotes=ui_cfg.require_quotes,
+        quoteMaxWords=ui_cfg.quote_max_words,
 
         # Vector Database
-        chromaHost=settings.chroma_host,
-        chromaPort=settings.chroma_port,
+        chromaHost=ui_cfg.chroma_host,
+        chromaPort=ui_cfg.chroma_port,
 
         # Retrieval - Basic
-        finalPassages=retrieval_cfg.final_passages,
-        cosineFloor=retrieval_cfg.cosine_floor,
-        minKeywordOverlap=retrieval_cfg.min_keyword_overlap,
+        finalPassages=ui_cfg.final_passages,
+        cosineFloor=ui_cfg.cosine_floor,
+        minKeywordOverlap=ui_cfg.min_keyword_overlap,
 
         # Retrieval - Advanced
-        denseK=retrieval_cfg.dense_k,
-        lexicalK=retrieval_cfg.lexical_k,
-        rrfK=retrieval_cfg.rrf_k,
-        mmrLambda=retrieval_cfg.mmr_lambda,
-        routingThreshold=0.4,  # Default routing threshold for smart routing
-        routingSampleSize=20,  # Default corpus sample size for routing
+        denseK=ui_cfg.dense_k,
+        lexicalK=ui_cfg.lexical_k,
+        rrfK=ui_cfg.rrf_k,
+        mmrLambda=ui_cfg.mmr_lambda,
+        routingThreshold=ui_cfg.routing_threshold,
+        routingSampleSize=ui_cfg.routing_sample_size,
 
         # Retrieval - Features
-        useReranker=feature_flags.reranker,
-        allowRerankerFallback=feature_flags.heuristic_fallback,
+        useReranker=ui_cfg.use_reranker,
+        allowRerankerFallback=ui_cfg.allow_reranker_fallback,
 
         # Reranker
         rerankerUrl=reranker_url,
         rerankerPort=reranker_port,
-        rerankerTimeout=reranker_cfg.timeout_s,
-        rerankerPoolSizeMultiplier=reranker_cfg.pool_size_multiplier,
-        rerankerScoreWeight=reranker_cfg.score_weight,
+        rerankerTimeout=ui_cfg.reranker_timeout,
+        rerankerPoolSizeMultiplier=ui_cfg.reranker_pool_size_multiplier,
+        rerankerScoreWeight=ui_cfg.reranker_score_weight,
 
         # Performance - Caching
-        embeddingCacheEnabled=embedding_cache_cfg.enabled,
-        embeddingCacheMaxItems=embedding_cache_cfg.max_items,
-        embeddingCacheTtlSeconds=embedding_cache_cfg.ttl_seconds,
+        embeddingCacheEnabled=ui_cfg.embedding_cache_enabled,
+        embeddingCacheMaxItems=ui_cfg.embedding_cache_max_items,
+        embeddingCacheTtlSeconds=ui_cfg.embedding_cache_ttl_seconds,
 
         # Performance - Processing
-        chunkSizeTokens=ingestion_cfg.chunk_size_tokens,
-        chunkStrideTokens=ingestion_cfg.chunk_stride_tokens,
-        maxHtmlChars=ingestion_cfg.max_html_chars,
+        chunkSizeTokens=ui_cfg.chunk_size_tokens,
+        chunkStrideTokens=ui_cfg.chunk_stride_tokens,
+        maxHtmlChars=ui_cfg.max_html_chars,
 
         # Security
-        dropBoilerplate=ingestion_cfg.drop_boilerplate,
-        dropLabels=ingestion_cfg.drop_labels,
+        dropBoilerplate=ui_cfg.drop_boilerplate,
+        dropLabels=ui_cfg.drop_labels,
 
         # Advanced - Deduplication
-        dedupEnabled=ingestion_cfg.dedup_enabled,
-        dedupMethod=ingestion_cfg.dedup_method,
-        dedupThreshold=ingestion_cfg.dedup_threshold,
-
-
+        dedupEnabled=ui_cfg.dedup_enabled,
+        dedupMethod=ui_cfg.dedup_method,
+        dedupThreshold=ui_cfg.dedup_threshold,
 
         # Advanced - Verification
-        fuzzyPartialRatioMin=verification_cfg.fuzzy_partial_ratio_min,
+        fuzzyPartialRatioMin=ui_cfg.fuzzy_partial_ratio_min,
 
         # System
         logLevel=log_level,
-        maxMemoryMessages=8,
-        metricsEnabled=telemetry_cfg.metrics_enabled,
+        maxMemoryMessages=ui_cfg.max_memory_messages,
+        metricsEnabled=ui_cfg.metrics_enabled,
     )
 
 
@@ -383,6 +383,8 @@ def store_performance_metrics(metrics: RAGPerformanceMetrics) -> None:
 
 
 def apply_ui_settings(payload: UISettingsPayload) -> None:
+    from .config import save_ui_settings_to_yaml
+
     global current_ui_settings, current_overrides
     global vector_store_service, generator_service, data_source_manager, query_router
 
@@ -391,6 +393,14 @@ def apply_ui_settings(payload: UISettingsPayload) -> None:
     setup_logging(payload.log_level)
     current_ui_settings = payload
     current_overrides = overrides
+
+    # Save settings to YAML file for persistence
+    try:
+        save_ui_settings_to_yaml(payload)
+        logger.info("UI settings saved to config file")
+    except Exception as exc:
+        logger.error(f"Failed to save UI settings: {exc}")
+        # Continue with applying settings even if save fails
 
     if chunker_service is None:
         raise RuntimeError("Chunker service not available")
@@ -1057,8 +1067,45 @@ def get_query_router_stats():
         raise HTTPException(status_code=500, detail=f"Failed to get query router stats: {e}")
 
 @app.get("/api/settings")
-def get_runtime_settings():
-    return current_ui_settings.model_dump(by_alias=True)
+async def get_runtime_settings():
+    settings_dict = current_ui_settings.model_dump(by_alias=True)
+
+    # Auto-discover model names if they're empty
+    if not settings_dict.get('llmModel') or not settings_dict.get('embeddingModel'):
+        try:
+            import aiohttp
+            import asyncio
+
+            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=3)) as session:
+                # Discover LLM model if empty
+                if not settings_dict.get('llmModel'):
+                    try:
+                        llm_url = settings_dict.get('llmBaseUrl', 'http://localhost:8000/v1')
+                        async with session.get(f"{llm_url.replace('/v1', '')}/v1/models") as response:
+                            if response.status == 200:
+                                data = await response.json()
+                                models = data.get("data", [])
+                                if models:
+                                    settings_dict['llmModel'] = models[0].get("id", "")
+                    except Exception:
+                        pass  # Ignore discovery errors
+
+                # Discover embedding model if empty
+                if not settings_dict.get('embeddingModel'):
+                    try:
+                        embed_url = settings_dict.get('embeddingBaseUrl', 'http://localhost:8001/v1')
+                        async with session.get(f"{embed_url.replace('/v1', '')}/v1/models") as response:
+                            if response.status == 200:
+                                data = await response.json()
+                                models = data.get("data", [])
+                                if models:
+                                    settings_dict['embeddingModel'] = models[0].get("id", "")
+                    except Exception:
+                        pass  # Ignore discovery errors
+        except Exception:
+            pass  # Ignore any discovery errors
+
+    return settings_dict
 
 
 @app.post("/api/settings")

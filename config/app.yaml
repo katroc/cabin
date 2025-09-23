@@ -3,20 +3,18 @@ features:
   FEATURE_RERANKER: true
   FEATURE_EARLY_RERANKER: true
   FEATURE_HEURISTIC_FALLBACK: true
-
 ingestion:
   chunk_size_tokens: 250
   chunk_stride_tokens: 75
   drop_labels:
-    - template
-    - archive
-    - index
+  - template
+  - archive
+  - index
   drop_boilerplate: true
   dedup_enabled: true
   dedup_method: minhash
   dedup_threshold: 0.92
   max_html_chars: 500000
-
 retrieval:
   dense_k: 80
   lexical_backend: bm25
@@ -26,18 +24,14 @@ retrieval:
   cosine_floor: 0.05
   min_keyword_overlap: 2
   final_passages: 8
-
 reranker:
-  url: "http://localhost:8002/rerank"
+  url: http://localhost:8002/rerank
   top_n: 8
   timeout_s: 8
-  model: "bge-reranker-v2-m3"
+  model: bge-reranker-v2-m3
   api_key: null
-  # Pool size multiplier for early reranking (top_n * pool_size_multiplier candidates will be reranked)
   pool_size_multiplier: 3
-  # Score weight for combining fusion and reranker scores (0.0 = all fusion, 1.0 = all reranker)
   score_weight: 0.7
-
 generation:
   max_citations: 3
   require_quotes: true
@@ -45,15 +39,64 @@ generation:
   max_tokens: 8000
   streaming_max_tokens: 8000
   rephrasing_max_tokens: 4000
-
 verification:
   fuzzy_partial_ratio_min: 70
-
 embedding_cache:
   enabled: true
   max_items: 512
   ttl_seconds: 600
-
 telemetry:
   log_level: info
+  metrics_enabled: true
+ui_settings:
+  llm_base_url: http://localhost:8000/v1
+  llm_model: ''
+  llm_api_key: ''
+  temperature: 0.1
+  embedding_base_url: http://localhost:8001/v1
+  embedding_model: ''
+  embedding_api_key: ''
+  embedding_dimensions: 256
+  embedding_batch_size: 16
+  max_tokens: 8000
+  streaming_max_tokens: 8000
+  rephrasing_max_tokens: 4000
+  max_citations: 3
+  require_quotes: true
+  quote_max_words: 12
+  chroma_host: localhost
+  chroma_port: 8100
+  final_passages: 8
+  cosine_floor: 0.05
+  min_keyword_overlap: 2
+  dense_k: 80
+  lexical_k: 80
+  rrf_k: 60
+  mmr_lambda: 0.5
+  routing_threshold: 0.2
+  routing_sample_size: 20
+  use_reranker: true
+  allow_reranker_fallback: true
+  reranker_url: http://localhost:8002/rerank
+  reranker_port: 8002
+  reranker_timeout: 8
+  reranker_pool_size_multiplier: 3
+  reranker_score_weight: 0.7
+  embedding_cache_enabled: true
+  embedding_cache_max_items: 512
+  embedding_cache_ttl_seconds: 600
+  chunk_size_tokens: 250
+  chunk_stride_tokens: 75
+  max_html_chars: 500000
+  drop_boilerplate: true
+  drop_labels:
+  - template
+  - archive
+  - index
+  dedup_enabled: true
+  dedup_method: minhash
+  dedup_threshold: 0.92
+  fuzzy_partial_ratio_min: 70
+  log_level: DEBUG
+  max_memory_messages: 9
   metrics_enabled: true
