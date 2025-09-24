@@ -500,9 +500,18 @@ RESPONSE STYLE:
                 used_rag=False  # This was RAG processing but failed
             )
 
-        rendered = render_citation_payloads(consistent_citations)
+        rendered, citation_mapping = render_citation_payloads(consistent_citations)
+
+        # Debug logging to trace citation merging
+        logger.info(f"Citation mapping: {citation_mapping}")
+        logger.info(f"Original response citations: {self._extract_citation_indices(cleaned)}")
+
+        # Renumber citation markers in response text based on merged citations
+        renumbered_response = self._renumber_citations(cleaned, citation_mapping)
+        logger.info(f"Renumbered response citations: {self._extract_citation_indices(renumbered_response)}")
+
         return ChatResponse(
-            response=cleaned,
+            response=renumbered_response,
             conversation_id=conversation_id or "unknown",
             citations=consistent_citations,
             rendered_citations=rendered,
@@ -537,6 +546,15 @@ RESPONSE STYLE:
 
     def _extract_citation_indices(self, text: str) -> List[str]:
         return [match.group(1) for match in CITATION_PATTERN.finditer(text)]
+
+    def _renumber_citations(self, text: str, citation_mapping: Dict[str, str]) -> str:
+        """Renumber citation markers in text based on merged citation mapping."""
+        def replacement(match: re.Match[str]) -> str:
+            original_index = match.group(1)
+            new_index = citation_mapping.get(original_index, original_index)
+            return f"[{new_index}]"
+
+        return CITATION_PATTERN.sub(replacement, text)
 
     def _remove_citations(self, text: str, indices: set[str]) -> str:
         def replacement(match: re.Match[str]) -> str:
