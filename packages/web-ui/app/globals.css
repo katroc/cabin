@@ -298,6 +298,17 @@ body {
   color: var(--text-secondary);
 }
 
+/* Enhanced styling for better readability */
+.response-content .markdown-body strong {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+/* Subtle highlight for important paragraphs starting with bold text */
+.response-content .markdown-body p strong:first-child {
+  color: var(--accent-hover);
+}
+
 .response-content .markdown-body table {
   width: 100%;
   border-collapse: collapse;
