@@ -94,3 +94,6 @@ tmp/
 
 # Virtual environments
 cabin-venv/
+
+# Intent classifier (temporary - will come back to it)
+docker/intent_classifier/

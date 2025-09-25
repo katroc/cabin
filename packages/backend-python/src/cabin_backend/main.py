@@ -23,7 +23,7 @@ from .models import (
     RAGPerformanceMetrics, PerformanceSummary, PerformanceStatsRequest
 )
 from .conversation_memory import ConversationMemoryManager
-from .query_router import QueryRouter
+from .query_router import LLMQueryRouter
 from .chunker import SemanticChunker
 from .vector_store import VectorStore
 from .generator import Generator
@@ -72,8 +72,6 @@ class UISettingsPayload(BaseModel):
     lexical_k: int = Field(alias="lexicalK", default=80)
     rrf_k: int = Field(alias="rrfK", default=60)
     mmr_lambda: float = Field(alias="mmrLambda", default=0.5)
-    routing_threshold: float = Field(alias="routingThreshold", default=0.4)
-    routing_sample_size: int = Field(alias="routingSampleSize", default=20)
 
     # Retrieval - Features
     use_reranker: bool = Field(alias="useReranker")
@@ -217,8 +215,6 @@ def load_default_ui_settings() -> UISettingsPayload:
         lexicalK=ui_cfg.lexical_k,
         rrfK=ui_cfg.rrf_k,
         mmrLambda=ui_cfg.mmr_lambda,
-        routingThreshold=ui_cfg.routing_threshold,
-        routingSampleSize=ui_cfg.routing_sample_size,
 
         # Retrieval - Features
         useReranker=ui_cfg.use_reranker,
@@ -351,10 +347,9 @@ try:
     generator_service = Generator(overrides=current_overrides)
     data_source_manager = DataSourceManager(chunker_service, vector_store_service)
     conversation_memory = ConversationMemoryManager()
-    query_router = QueryRouter(
-        bge_url=settings.embedding_base_url.replace('/v1', '') if settings.embedding_base_url.endswith('/v1') else settings.embedding_base_url,
-        similarity_threshold=current_ui_settings.routing_threshold,
-        embedding_model=settings.embedding_model or "bge-m3"
+    query_router = LLMQueryRouter(
+        router_url="http://localhost:8000",
+        confidence_threshold=0.65
     )
 except Exception as e:
     # If services fail to initialize (e.g., can't connect to ChromaDB),
@@ -388,7 +383,7 @@ def apply_ui_settings(payload: UISettingsPayload) -> None:
     global current_ui_settings, current_overrides
     global vector_store_service, generator_service, data_source_manager, query_router
 
-    logger.info(f"Applying UI settings - routing threshold: {payload.routing_threshold}")
+    logger.info("Applying UI settings")
     overrides = payload.to_overrides()
     setup_logging(payload.log_level)
     current_ui_settings = payload
@@ -408,18 +403,17 @@ def apply_ui_settings(payload: UISettingsPayload) -> None:
     new_vector_store = VectorStore(overrides=overrides)
     new_generator = Generator(overrides=overrides)
     new_data_manager = DataSourceManager(chunker_service, new_vector_store)
-    new_query_router = QueryRouter(
-        bge_url=payload.embedding_base_url.replace('/v1', '') if payload.embedding_base_url.endswith('/v1') else payload.embedding_base_url,
-        similarity_threshold=payload.routing_threshold,
-        embedding_model=payload.embedding_model or "bge-m3"
+    new_query_router = LLMQueryRouter(
+        router_url="http://localhost:8000",
+        confidence_threshold=0.65
     )
-    logger.info(f"Created new QueryRouter with threshold: {payload.routing_threshold}")
+    logger.info("Created new LLMQueryRouter")
 
     vector_store_service = new_vector_store
     generator_service = new_generator
     data_source_manager = new_data_manager
     query_router = new_query_router
-    logger.info(f"QueryRouter updated - new threshold: {query_router.similarity_threshold}")
+    logger.info("LLMQueryRouter updated")
 
 # --- Health Check ---
 @app.get("/health")
@@ -515,30 +509,30 @@ def chat(request: ChatRequest) -> ChatResponse:
         setup_duration = (time.time() - setup_start) * 1000
         metrics.add_timing("conversation_setup", setup_duration)
 
-        # Query routing timing
+        # Query routing timing with corpus context
         routing_start = time.time()
-        corpus_sample = vector_store_service.get_corpus_sample_for_routing(sample_size=current_ui_settings.routing_sample_size)
-        should_use_rag, similarity_score, routing_reason = query_router.should_use_rag(
+        corpus_context = vector_store_service.get_context_for_routing(request.message, max_samples=8)
+        should_use_rag, confidence_score, routing_reason = query_router.should_use_rag(
             request.message,
             conversation_context=conversation_context,
-            corpus_sample=corpus_sample
+            corpus_sample=corpus_context
         )
         routing_duration = (time.time() - routing_start) * 1000
         metrics.add_timing("query_routing", routing_duration, metadata={
-            "similarity_score": similarity_score,
+            "confidence_score": confidence_score,
             "routing_reason": routing_reason,
-            "corpus_sample_size": len(corpus_sample)
+            "context_docs_found": len(corpus_context)
         })
 
         # Store routing metadata
         metrics.used_rag = bool(should_use_rag)  # Convert numpy bool to Python bool
         metrics.query_type = "rag" if should_use_rag else "direct"
-        metrics.routing_similarity_score = similarity_score
+        metrics.routing_similarity_score = confidence_score
         metrics.routing_reason = routing_reason
 
         logger.debug(
-            "Query routing: '%s' -> RAG=%s (sim=%.3f, reason=%s)",
-            request.message[:50], should_use_rag, similarity_score, routing_reason
+            "Query routing: '%s' -> RAG=%s (confidence=%.3f, reason=%s)",
+            request.message[:50], should_use_rag, confidence_score, routing_reason
         )
 
         # Document retrieval timing (only if using RAG)
@@ -671,27 +665,28 @@ def chat_stream(request: ChatRequest):
         setup_duration = (time.time() - setup_start) * 1000
         metrics.add_timing("conversation_setup", setup_duration)
 
-        # Query routing timing
+        # Query routing timing with corpus context
         routing_start = time.time()
-        corpus_sample = vector_store_service.get_corpus_sample_for_routing(sample_size=current_ui_settings.routing_sample_size)
-        should_use_rag, similarity_score, routing_reason = query_router.should_use_rag(
+        corpus_context = vector_store_service.get_context_for_routing(request.message, max_samples=8)
+        should_use_rag, confidence_score, routing_reason = query_router.should_use_rag(
             request.message,
             conversation_context=conversation_context,
-            corpus_sample=corpus_sample
+            corpus_sample=corpus_context
         )
         routing_duration = (time.time() - routing_start) * 1000
         metrics.add_timing("query_routing", routing_duration, metadata={
             "should_use_rag": should_use_rag,
-            "similarity_score": similarity_score,
-            "routing_reason": routing_reason
+            "confidence_score": confidence_score,
+            "routing_reason": routing_reason,
+            "context_docs_found": len(corpus_context)
         })
         metrics.query_type = "rag" if should_use_rag else "direct"
-        metrics.routing_similarity_score = similarity_score
+        metrics.routing_similarity_score = confidence_score
         metrics.routing_reason = routing_reason
 
         logger.debug(
-            "Streaming query routing: '%s' -> RAG=%s (sim=%.3f, reason=%s)",
-            request.message[:50], should_use_rag, similarity_score, routing_reason
+            "Streaming query routing: '%s' -> RAG=%s (confidence=%.3f, reason=%s)",
+            request.message[:50], should_use_rag, confidence_score, routing_reason
         )
 
         # Document retrieval timing

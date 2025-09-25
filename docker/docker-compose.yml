@@ -71,6 +71,35 @@ services:
       - --max-model-len
       - "512"
 
+  # Qwen3-4B-AWQ-router:
+  #   image: vllm/vllm-openai:latest
+  #   container_name: Qwen3-4B-AWQ-router
+  #   runtime: nvidia
+  #   environment:
+  #     NVIDIA_VISIBLE_DEVICES: "all"
+  #     TORCH_CUDA_ARCH_LIST: "12.0"
+  #     VLLM_LOG_LEVEL: "INFO"
+  #   ports:
+  #     - "8003:8000"       # incremented from 8000 → 8003
+  #   volumes:
+  #     - ~/models/qwen3-4b-awq:/models/qwen3-4b-awq
+  #   command:
+  #     - --model
+  #     - /models/qwen3-4b-awq
+  #     - --served-model-name
+  #     - Qwen3-4B-AWQ-router
+  #     - --quantization
+  #     - awq
+  #     - --dtype
+  #     - auto
+  #     - --max-model-len
+  #     - "1024"
+  #     - --gpu-memory-utilization
+  #     - "0.60"
+  #     - --max-num-seqs
+  #     - "16"
+
+
   chromadb:
     image: chromadb/chroma:latest
     container_name: chromadb
