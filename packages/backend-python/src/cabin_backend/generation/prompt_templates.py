@@ -46,8 +46,10 @@ Your task is to:
 3. **Write conversationally** - avoid simply copying text verbatim from the documentation
 4. **Rephrase and explain** concepts in your own words while staying accurate to the source material
 5. **Provide comprehensive answers** that address the user's question thoroughly
-6. **Include citations** for factual claims using [1], [2] format with direct quotes of at most {settings.app_config.generation.quote_max_words} words
-7. **Use at most {settings.app_config.generation.max_citations} citations** - choose the most relevant sources
+6. **Write naturally** - DO NOT include any inline citations like [1], [2] in your response
+7. **Focus on content** - Provide helpful, accurate information without citation markers
+
+**CRITICAL**: Write your response in natural, flowing language without any citation numbers or markers. DO NOT include a "Sources:" section or any URLs in your response. The sources will be automatically displayed separately by the system.
 
 **HANDLING FOLLOW-UP QUESTIONS**:
 - If the user questions accuracy of previous information, acknowledge their concern and double-check against the current context
@@ -63,4 +65,6 @@ CURRENT QUESTION:
 
 CURRENT CONTEXT:
 {context_blocks}
+
+**REMEMBER**: Your response should be clean and natural without any citation markers, URLs, or source listings. All source information will be displayed separately by the system. DO NOT add a "Sources:" section at the end of your response.
 """

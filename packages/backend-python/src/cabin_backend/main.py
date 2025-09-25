@@ -20,7 +20,8 @@ from .models import (
     DataSourceIndexRequest, DataSourceDiscoveryRequest, DataSourceTestRequest,
     DataSourceIndexResponse, DataSourceProgressResponse, DataSourceInfoResponse,
     FileUploadRequest, FileUploadResponse,
-    RAGPerformanceMetrics, PerformanceSummary, PerformanceStatsRequest
+    RAGPerformanceMetrics, PerformanceSummary, PerformanceStatsRequest,
+    Citation
 )
 from .conversation_memory import ConversationMemoryManager
 from .query_router import LLMQueryRouter
@@ -28,6 +29,7 @@ from .chunker import SemanticChunker
 from .vector_store import VectorStore
 from .generator import Generator
 from .data_sources.manager import DataSourceManager
+from .citations import render_citation_payloads
 from .data_sources.confluence import ConfluenceDataSource  # Import to register
 from .data_sources.file_upload import FileUploadDataSource  # Import to register
 from .config import settings
@@ -724,33 +726,79 @@ def chat_stream(request: ChatRequest):
                     collected_response += chunk
                     yield chunk
 
-                # Generate citations from the collected response and context
+                # Generate citations from top-ranked context chunks (trust the reranker)
                 citations = []
+                logger.info("STREAMING DEBUG: should_use_rag=%s, context_chunks=%d", should_use_rag, len(context_chunks) if context_chunks else 0)
                 if should_use_rag and context_chunks:
-                    logger.debug("DEBUG: Collected response for citation extraction: %s", collected_response[:500])
-                    logger.debug("DEBUG: Number of context chunks: %d", len(context_chunks))
-                    # Extract citations from the response text
-                    citations = generator_service._extract_citations_from_response(
-                        collected_response, context_chunks
-                    )
-                    logger.debug("Extracted %d citations from streaming response: %s", len(citations), [c.id for c in citations])
-                    if citations:
-                        logger.debug("First citation data: %s", citations[0].model_dump() if hasattr(citations[0], 'model_dump') else citations[0].__dict__)
+                    logger.info("STREAMING: Processing %d context chunks for citation creation", len(context_chunks))
+                    # Create citations from top-ranked chunks only, respecting max_citations limit
+                    import uuid
 
-                # Send citations as JSON in the final chunk
+                    max_sources = min(len(context_chunks), settings.app_config.generation.max_citations)
+                    quote_limit = settings.app_config.generation.quote_max_words
+
+                    logger.debug("Creating citations from top %d chunks (limited by max_citations=%d)",
+                               max_sources, settings.app_config.generation.max_citations)
+
+                    for i, chunk in enumerate(context_chunks[:max_sources]):
+                        # Create a simple quote from the chunk (first sentence or truncated text)
+                        chunk_text = chunk.text
+                        if chunk_text:
+                            # Take first sentence or truncate to quote limit
+                            sentences = chunk_text.split(". ")
+                            if len(sentences) > 1 and len(sentences[0]) <= quote_limit * 6:  # ~6 chars per word
+                                quote = sentences[0] + "."
+                            else:
+                                words = chunk_text.split()[:quote_limit]
+                                quote = " ".join(words) + ("..." if len(words) == quote_limit else "")
+                        else:
+                            quote = ""
+
+                        citation = Citation(
+                            id=str(uuid.uuid4()),
+                            chunk_id=chunk.id,
+                            page_title=chunk.metadata.page_title,
+                            source_url=chunk.metadata.source_url,
+                            url=chunk.metadata.url,
+                            quote=quote,
+                            space_name=chunk.metadata.space_name,
+                            page_version=chunk.metadata.page_version
+                        )
+                        citations.append(citation)
+
+                    logger.debug("Created %d citations from streaming response (limited from %d chunks)",
+                               len(citations), len(context_chunks))
+
+                # Render citations with merging for duplicate sources
                 import json
                 citations_data = []
+                rendered_citations_data = []
+
                 for cite in citations:
                     cite_dict = cite.model_dump() if hasattr(cite, 'model_dump') else cite.__dict__
                     # Ensure we have the expected field names for frontend
                     cite_dict['source_url'] = cite_dict.get('source_url') or cite_dict.get('url', '')
                     citations_data.append(cite_dict)
+
+                # Create merged/rendered citations to eliminate duplicates
+                if citations:
+                    rendered_citations, citation_mapping = render_citation_payloads(citations)
+                    rendered_citations_data = rendered_citations
+                    logger.info(f"Streaming: Merged {len(citations)} citations into {len(rendered_citations)} rendered citations")
+                    logger.debug(f"Streaming citation mapping: {citation_mapping}")
+
                 metadata = {
                     "citations": citations_data,
+                    "rendered_citations": rendered_citations_data,
                     "conversation_id": conversation_id
                 }
+                logger.info("STREAMING: Final metadata - citations: %d, rendered_citations: %d",
+                          len(citations_data), len(rendered_citations_data))
                 if citations_data:
+                    logger.info("STREAMING: Sending metadata to frontend")
                     yield f"\n---METADATA---{json.dumps(metadata)}---END---\n"
+                else:
+                    logger.warning("STREAMING: No citations_data, not sending metadata")
 
                 # Record generation timing
                 generation_duration = (time.time() - generation_start) * 1000

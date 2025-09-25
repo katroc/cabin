@@ -12,8 +12,24 @@ interface Citation {
   page_title: string
   space_name?: string
   source_url?: string
+  url?: string
+  quote?: string
   page_section?: string
   last_modified?: string
+  chunk_id?: string
+  page_version?: number
+}
+
+interface RenderedCitation {
+  index: number
+  chunk_id: string
+  title: string
+  url: string
+  quote: string
+  space?: string
+  page_version?: number
+  merged_from?: number
+  all_chunk_ids?: string[]
 }
 
 interface Message {
@@ -21,6 +37,7 @@ interface Message {
   role: 'user' | 'assistant'
   content: string
   citations?: Citation[]
+  rendered_citations?: RenderedCitation[]
   timestamp: Date
 }
 
@@ -139,7 +156,8 @@ export default function ChatInterface({
               // Immediately update the message with citations when we receive them
               updateAssistantMessage(assistantId, message => ({
                 ...message,
-                citations: citations
+                citations: citations,
+                rendered_citations: metadata.rendered_citations || []
               }))
             } catch (e) {
               console.warn('Failed to parse streaming metadata:', e)
@@ -160,7 +178,8 @@ export default function ChatInterface({
             ...message,
             content: currentText,
             // Preserve existing citations if they exist
-            citations: message.citations || []
+            citations: message.citations || [],
+            rendered_citations: message.rendered_citations || []
           }))
           lastUpdate = now
 
@@ -173,7 +192,8 @@ export default function ChatInterface({
       updateAssistantMessage(assistantId, message => ({
         ...message,
         content: aggregated,
-        citations: message.citations || []
+        citations: message.citations || [],
+        rendered_citations: message.rendered_citations || []
       }))
 
       setStreamingMessageId(null)
@@ -277,6 +297,7 @@ export default function ChatInterface({
           ...message,
           content: fullResponse.response || 'No response received',
           citations: fullResponse.citations || [],
+          rendered_citations: fullResponse.rendered_citations || [],
           timestamp: new Date()
         }))
 
@@ -287,6 +308,7 @@ export default function ChatInterface({
           ...message,
           content: 'Sorry, I encountered an error processing your request.',
           citations: [],
+          rendered_citations: [],
           timestamp: new Date()
         }))
           }
@@ -392,6 +414,7 @@ export default function ChatInterface({
                         answer={message.content}
                         query={messages[index - 1]?.content || ''}
                         citations={message.citations || []}
+                        renderedCitations={message.rendered_citations || []}
                         isVerifyingSources={false}
                         isStreaming={streamingMessageId === message.id}
                       />

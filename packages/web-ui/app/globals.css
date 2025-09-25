@@ -1282,6 +1282,25 @@ select::-webkit-scrollbar-thumb {
   margin-top: var(--space-1);
 }
 
+/* Enhanced citation features */
+.citation-quote {
+  font-style: italic;
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  margin-top: var(--space-2);
+  padding: var(--space-2);
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-sm);
+  border-left: 2px solid var(--accent);
+}
+
+.citation-merged-info {
+  color: var(--accent);
+  font-size: var(--text-xs);
+  margin-top: var(--space-1);
+  font-weight: 500;
+}
+
 /* Routing analysis animation */
 .routing-section {
   display: flex;
