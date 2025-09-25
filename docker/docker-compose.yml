@@ -47,7 +47,7 @@ services:
       - --gpu-memory-utilization
       - "0.05"
       - --max-model-len
-      - "1024"
+      - "2048"
 
   bge-reranker-v2-m3:
     image: vllm/vllm-openai:latest

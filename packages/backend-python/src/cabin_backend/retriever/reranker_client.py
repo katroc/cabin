@@ -164,10 +164,29 @@ class RerankerClient:
 
     def _build_vllm_payload(self, query: str, candidates: Dict[str, str]) -> Dict:
         """Build payload for vLLM reranker API."""
+        # Truncate documents to prevent reranker errors with very long content
+        max_doc_length = 8000  # Conservative limit for reranker models
+        processed_docs = []
+
+        for doc_text in candidates.values():
+            # Clean problematic characters that might cause issues
+            cleaned_text = doc_text.encode('utf-8', errors='ignore').decode('utf-8')
+
+            if len(cleaned_text) > max_doc_length:
+                # Truncate but try to end at a sentence boundary
+                truncated = cleaned_text[:max_doc_length]
+                last_period = truncated.rfind('.')
+                if last_period > max_doc_length // 2:  # Only if we find a reasonable cutoff point
+                    truncated = truncated[:last_period + 1]
+                processed_docs.append(truncated)
+                logger.debug("Truncated document from %d to %d chars for reranker", len(doc_text), len(truncated))
+            else:
+                processed_docs.append(cleaned_text)
+
         return {
             "model": settings.app_config.reranker.model,
             "query": query,
-            "documents": list(candidates.values()),
+            "documents": processed_docs,
             "top_n": self.top_n,
         }
 

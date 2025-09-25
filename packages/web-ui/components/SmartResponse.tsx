@@ -10,14 +10,31 @@ interface Citation {
   page_title: string;
   space_name?: string;
   source_url?: string;
+  url?: string;
+  quote?: string;
   page_section?: string;
   last_modified?: string;
+  chunk_id?: string;
+  page_version?: number;
+}
+
+interface RenderedCitation {
+  index: number;
+  chunk_id: string;
+  title: string;
+  url: string;
+  quote: string;
+  space?: string;
+  page_version?: number;
+  merged_from?: number; // Debug info - how many citations were merged
+  all_chunk_ids?: string[]; // Debug info - all chunk IDs that were merged
 }
 
 interface SmartResponseProps {
   answer: string;
   query: string;
   citations?: Citation[];
+  renderedCitations?: RenderedCitation[];
   animate?: boolean;
   isVerifyingSources?: boolean;
   isStreaming?: boolean;
@@ -73,6 +90,7 @@ const SmartResponse: React.FC<SmartResponseProps> = ({
   answer,
   query,
   citations = [],
+  renderedCitations = [],
   animate = false,
   isVerifyingSources = false,
   isStreaming = false
@@ -195,8 +213,16 @@ const SmartResponse: React.FC<SmartResponseProps> = ({
   };
 
   const renderCitationPill = (num: string, key: string | number) => {
-    const cite = citations.find(c => String(c.id) === String(num));
-    const title = cite?.page_title || `Source ${num}`;
+    // Use rendered citations if available, otherwise fall back to regular citations
+    const displayCitations = renderedCitations.length > 0 ? renderedCitations : [];
+    const cite = displayCitations.length > 0
+      ? displayCitations.find(c => String(c.index) === String(num))
+      : citations.find(c => String(c.id) === String(num));
+
+    const title = cite
+      ? ('title' in cite ? cite.title : cite.page_title) || `Source ${num}`
+      : `Source ${num}`;
+
     return (
       <span key={`cite-pill-${key}`} className="citation-pill-inline" data-cite={num}>
         <a
@@ -489,7 +515,7 @@ const SmartResponse: React.FC<SmartResponseProps> = ({
         ))}
 
         {/* Citations Section */}
-        {((citations && citations.length > 0) || isVerifyingSources) && (
+        {(((renderedCitations && renderedCitations.length > 0) || (citations && citations.length > 0)) || isVerifyingSources) && (
           <div className="citations-section">
             <div className="citations-header">
               {isVerifyingSources ? (
@@ -506,7 +532,7 @@ const SmartResponse: React.FC<SmartResponseProps> = ({
               </span>
             </div>
             <div className="citations-list">
-              {isVerifyingSources && citations.length === 0 ? (
+              {isVerifyingSources && renderedCitations.length === 0 && citations.length === 0 ? (
                 <div className="citation-item citation-verifying">
                   <div className="citation-verifying-content">
                     <div className="citation-verifying-dots">
@@ -518,38 +544,52 @@ const SmartResponse: React.FC<SmartResponseProps> = ({
                   </div>
                 </div>
               ) : (
-                citations.map((citation) => (
-                <div key={citation.id} id={`src-${citation.id}`} className="citation-item">
-                  <div className="citation-id">{citation.id}</div>
-                  <div className="citation-content">
-                    <div className="citation-title">{citation.page_title}</div>
-                    {citation.space_name && (
-                      <div className="citation-space">Space: {citation.space_name}</div>
-                    )}
-                    {citation.page_section && (
-                      <div className="citation-section">Section: {citation.page_section}</div>
-                    )}
-                    {citation.source_url && (
-                      <a
-                        href={citation.source_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="citation-link"
-                      >
-                        View Source
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-                          <path d="M19 19H5V5h7V3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z"/>
-                        </svg>
-                      </a>
-                    )}
-                    {citation.last_modified && (
-                      <div className="citation-date">
-                        Last modified: {new Date(citation.last_modified).toLocaleDateString()}
+                (() => {
+                  // Use rendered citations if available, otherwise fall back to regular citations
+                  const displayCitations = renderedCitations.length > 0 ? renderedCitations : citations;
+                  const useRendered = renderedCitations.length > 0;
+
+                  return displayCitations.map((citation: Citation | RenderedCitation) => (
+                    <div key={useRendered ? (citation as RenderedCitation).index : (citation as Citation).id} id={`src-${useRendered ? (citation as RenderedCitation).index : (citation as Citation).id}`} className="citation-item">
+                      <div className="citation-id">{useRendered ? (citation as RenderedCitation).index : (citation as Citation).id}</div>
+                      <div className="citation-content">
+                        <div className="citation-title">{useRendered ? (citation as RenderedCitation).title : (citation as Citation).page_title}</div>
+                        {(useRendered ? (citation as RenderedCitation).space : (citation as Citation).space_name) && (
+                          <div className="citation-space">Space: {useRendered ? (citation as RenderedCitation).space : (citation as Citation).space_name}</div>
+                        )}
+                        {!useRendered && (citation as Citation).page_section && (
+                          <div className="citation-section">Section: {(citation as Citation).page_section}</div>
+                        )}
+                        {useRendered && (citation as RenderedCitation).quote && (
+                          <div className="citation-quote">"{(citation as RenderedCitation).quote}"</div>
+                        )}
+                        {(useRendered ? (citation as RenderedCitation).url : (citation as Citation).source_url) && (
+                          <a
+                            href={useRendered ? (citation as RenderedCitation).url : (citation as Citation).source_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="citation-link"
+                          >
+                            View Source
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                              <path d="M19 19H5V5h7V3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z"/>
+                            </svg>
+                          </a>
+                        )}
+                        {!useRendered && (citation as Citation).last_modified && (
+                          <div className="citation-date">
+                            Last modified: {new Date((citation as Citation).last_modified!).toLocaleDateString()}
+                          </div>
+                        )}
+                        {useRendered && (citation as RenderedCitation).merged_from && (citation as RenderedCitation).merged_from! > 1 && (
+                          <div className="citation-merged-info">
+                            Merged from {(citation as RenderedCitation).merged_from} sources
+                          </div>
+                        )}
                       </div>
-                    )}
-                  </div>
-                </div>
-                ))
+                    </div>
+                  ))
+                })()
               )}
             </div>
           </div>

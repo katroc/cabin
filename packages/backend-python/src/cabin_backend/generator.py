@@ -140,8 +140,8 @@ class Generator:
         provenance, context_blocks = self._build_provenance_context(context_chunks)
         prompt = build_generation_prompt(query, context_blocks, len(context_chunks))
 
-        # Prepare conversation messages
-        messages = [{"role": "system", "content": self._get_citation_system_prompt(persona.value)}]
+        # Prepare conversation messages - use conversational prompt for citation-free responses
+        messages = [{"role": "system", "content": self._get_conversational_system_prompt(persona.value)}]
 
         # Add conversation context
         if conversation_context:
@@ -326,42 +326,22 @@ RESPONSE STYLE:
         response: str,
         context_chunks: List[ParentChunk],
     ) -> List[Citation]:
-        """Extract citations from response text using context chunks."""
-        # Find all citation markers like [1], [2], etc.
-        matches = CITATION_PATTERN.findall(response)
-
+        """Create citations from all context chunks used in the response."""
         citations = []
-        seen_indices = set()
 
-        # Build provenance mapping from context chunks
-        provenance = {}
+        # Create citations from all context chunks since we're not using inline citations
         for i, chunk in enumerate(context_chunks, 1):
             idx = str(i)
-            provenance[idx] = {
-                "chunk": chunk,
-                "page_title": chunk.metadata.page_title or "",
-                "source_url": chunk.metadata.source_url or chunk.metadata.url or "",
-                "space_name": chunk.metadata.space_name or "",
-            }
 
-        for match in matches:
-            idx = match
-            if idx in seen_indices or idx not in provenance:
-                continue
-            seen_indices.add(idx)
-
-            data = provenance[idx]
-            chunk = data["chunk"]
-
-            # Extract quote from response (simplified - take text around citation)
+            # Extract a representative quote from the chunk
             quote = self._default_quote(chunk.text, settings.app_config.generation.quote_max_words)
 
             citation = Citation(
                 id=idx,
                 chunk_id=chunk.metadata.chunk_id or chunk.id,
-                page_title=data["page_title"] or data["source_url"] or f"Source {idx}",
-                source_url=data["source_url"],
-                space_name=data["space_name"],
+                page_title=chunk.metadata.page_title or chunk.metadata.source_url or f"Source {idx}",
+                source_url=chunk.metadata.source_url or chunk.metadata.url or "",
+                space_name=chunk.metadata.space_name or "",
                 quote=quote,
             )
             citations.append(citation)
@@ -391,131 +371,43 @@ RESPONSE STYLE:
         log_ctx = {"query_preview": query_preview, "query_len": len(query or "")}
         logger.debug("LLM response preview %s | %s", preview, log_ctx)
 
-        indices = self._extract_citation_indices(cleaned)
-
-        if not indices:
-            logger.warning(
-                "No citation markers detected; returning fallback | %s",
-                log_ctx,
-            )
-            metrics.increment("generator.citation_fallback", reason="no_markers")
-            return ChatResponse(
-                response="I couldn't find reliable citations for this information in the available documentation. Please try rephrasing your question or checking if the topic is covered in the docs.",
-                conversation_id=conversation_id or "unknown",
-                citations=[],
-                rendered_citations=[],
-                used_rag=False  # This was RAG processing but failed
-            )
-
-        seen: List[str] = []
-        for idx in indices:
-            if idx in provenance and idx not in seen:
-                seen.append(idx)
-
-        max_citations = settings.app_config.generation.max_citations
-        allowed = seen[:max_citations]
-        trimmed = set(seen[max_citations:])
-
-        if trimmed:
-            logger.debug(
-                "Trimming citations beyond limit (%d) for query '%s': %s",
-                max_citations,
-                query,
-                sorted(trimmed),
-            )
-            cleaned = self._remove_citations(cleaned, trimmed)
-
+        # Create citations from top-ranked chunks (trust the reranker's judgment)
         citations: List[Citation] = []
-        invalid: set[str] = set()
         quote_limit = settings.app_config.generation.quote_max_words
 
-        for idx in allowed:
-            data = provenance[idx]
-            chunk = data["chunk"]  # type: ignore
-            quote = self._extract_quote(cleaned, idx)
-            fallback_used = False
-            if not quote:
-                logger.warning(
-                    "Citation [%s] missing quote; generating fallback snippet | %s",
-                    idx,
-                    log_ctx,
-                )
-                quote = self._default_quote(chunk.text, quote_limit)
-                fallback_used = True
-                metrics.increment("generator.citation_repair", reason="missing_quote")
+        # Limit to top chunks to avoid showing too many sources
+        max_sources = min(len(provenance), settings.app_config.generation.max_citations)
 
-            truncated_quote = self._truncate_quote(quote, quote_limit)
-            if not self.quote_verifier.verify(truncated_quote, chunk.text):
-                if fallback_used:
-                    logger.warning(
-                        "Fallback quote for citation [%s] failed verification | %s",
-                        idx,
-                        log_ctx,
-                    )
-                else:
-                    logger.warning(
-                        "Citation [%s] quote failed verification | %s",
-                        idx,
-                        log_ctx,
-                    )
-                metrics.increment("generator.citation_repair", reason="verification_failed")
-                invalid.add(idx)
-                continue
+        for i, (idx, data) in enumerate(list(provenance.items())[:max_sources]):
+            chunk = data["chunk"]
+            quote = self._default_quote(chunk.text, quote_limit)
+
             citation = Citation(
                 id=idx,
-                page_title=data["page_title"] or data["url"] or f"Source {idx}",
-                space_name=data["space_name"] or None,
-                space_key=data["space_key"] or None,
-                source_url=data["url"] or None,
+                page_title=data["page_title"] or data.get("url", "") or f"Source {idx}",
+                space_name=data.get("space_name", "") or None,
+                space_key=data.get("space_key", "") or None,
+                source_url=data.get("url", "") or None,
                 chunk_id=data["chunk_id"],
                 page_version=int(data["page_version"]) if data["page_version"] else None,
-                page_section=data["section"] or None,
-                quote=truncated_quote,
-                last_modified=data["last_modified"] or None,
+                page_section=data.get("section", "") or None,
+                quote=quote,
+                last_modified=data.get("last_modified", "") or None,
             )
             citations.append(citation)
 
-        if invalid:
-            logger.warning(
-                "Removed invalid citations %s | %s",
-                sorted(invalid),
-                log_ctx,
-            )
-            cleaned = self._remove_citations(cleaned, invalid)
-            metrics.increment("generator.citation_repair", value=len(invalid), reason="invalid_removed")
+        # Apply citation merging to eliminate duplicates
+        rendered, citation_mapping = render_citation_payloads(citations)
 
-        # Ensure citations and response text are consistent
-        # Only include citations that are still present in the final cleaned response
-        final_citation_indices = set(self._extract_citation_indices(cleaned))
-        consistent_citations = [citation for citation in citations if citation.id in final_citation_indices]
-
-        if not consistent_citations:
-            logger.warning("No citations remained after consistency check; returning fallback | %s", log_ctx)
-            metrics.increment("generator.citation_fallback", reason="no_consistent_citations")
-            return ChatResponse(
-                response="I couldn't find reliable citations for this information in the available documentation. Please try rephrasing your question or checking if the topic is covered in the docs.",
-                conversation_id=conversation_id or "unknown",
-                citations=[],
-                rendered_citations=[],
-                used_rag=False  # This was RAG processing but failed
-            )
-
-        rendered, citation_mapping = render_citation_payloads(consistent_citations)
-
-        # Debug logging to trace citation merging
-        logger.info(f"Citation mapping: {citation_mapping}")
-        logger.info(f"Original response citations: {self._extract_citation_indices(cleaned)}")
-
-        # Renumber citation markers in response text based on merged citations
-        renumbered_response = self._renumber_citations(cleaned, citation_mapping)
-        logger.info(f"Renumbered response citations: {self._extract_citation_indices(renumbered_response)}")
+        logger.info(f"Created {len(citations)} citations from top {max_sources} reranked chunks (of {len(provenance)} total), merged into {len(rendered)} rendered citations")
+        logger.debug(f"Citation mapping: {citation_mapping}")
 
         return ChatResponse(
-            response=renumbered_response,
+            response=cleaned,  # Clean response without citation markers
             conversation_id=conversation_id or "unknown",
-            citations=consistent_citations,
+            citations=citations,
             rendered_citations=rendered,
-            used_rag=True  # Successful RAG response with citations
+            used_rag=True  # Successful RAG response with sources
         )
 
     def _extract_quote(self, text: str, index: str) -> Optional[str]:
