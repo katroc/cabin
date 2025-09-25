@@ -23,7 +23,7 @@ ui_settings:
   lexical_k: 80
   rrf_k: 60
   mmr_lambda: 0.5
-  routing_threshold: 0.35
+  routing_threshold: 0.6
   routing_sample_size: 20
   use_reranker: true
   allow_reranker_fallback: true

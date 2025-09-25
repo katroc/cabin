@@ -655,6 +655,57 @@ class VectorStore:
         """Return lexical rankings from the most recent query call."""
         return list(self._last_lexical_rankings)
 
+    def get_context_for_routing(self, query: str, max_samples: int = 10) -> List[str]:
+        """
+        Get relevant document context for query routing decisions.
+        Uses BM25 search for relevant context, falls back to random sample.
+
+        Args:
+            query: Query to find relevant context for
+            max_samples: Maximum number of document snippets to return
+
+        Returns:
+            List of document text snippets relevant to the query
+        """
+        try:
+            if not self.chroma:
+                logger.warning("ChromaDB not available for routing context")
+                return []
+
+            collection = self.chroma.collection
+            if not collection or collection.count() == 0:
+                logger.debug("No documents available for routing context")
+                return []
+
+            # Try using the existing query system for context (lightweight approach)
+            # Perform a small query to get potentially relevant documents
+            try:
+                # Use the existing query method with a small k to get relevant context
+                parent_chunks = self.query(query, top_k=max_samples)
+
+                if parent_chunks:
+                    # Extract text from parent chunks for context
+                    context_docs = []
+                    for chunk in parent_chunks[:max_samples]:
+                        # Use chunk text for context, truncated for efficiency
+                        context_text = chunk.text[:300] + "..." if len(chunk.text) > 300 else chunk.text
+                        context_docs.append(context_text)
+
+                    if context_docs:
+                        logger.debug("Found %d relevant documents for routing context via query", len(context_docs))
+                        return context_docs
+
+            except Exception as e:
+                logger.warning("Query-based context search failed: %s", e)
+
+            # Fallback to random corpus sample if query doesn't work
+            logger.debug("Using random corpus sample for routing context")
+            return self.get_corpus_sample(max_samples)
+
+        except Exception as e:
+            logger.error("Error getting routing context: %s", e)
+            return []
+
     def get_corpus_sample(self, sample_size: int = 50) -> List[str]:
         """
         Get a representative sample of documents from the corpus for similarity comparison.
@@ -701,14 +752,3 @@ class VectorStore:
             logger.error("Error sampling corpus: %s", e)
             return []
 
-    def get_corpus_sample_for_routing(self, sample_size: int = 20) -> List[str]:
-        """
-        Get a small, fast sample of corpus for query routing decisions.
-
-        Args:
-            sample_size: Number of documents to sample (kept small for speed)
-
-        Returns:
-            List of document texts for routing similarity checks
-        """
-        return self.get_corpus_sample(sample_size)

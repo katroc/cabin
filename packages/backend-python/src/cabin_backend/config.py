@@ -116,6 +116,87 @@ class TelemetrySettings(BaseModel):
         extra = "ignore"
 
 
+class UISettings(BaseModel):
+    # LLM Provider
+    llm_base_url: str = "http://localhost:8000/v1"
+    llm_model: str = ""
+    llm_api_key: str = "dummy-key"
+    temperature: float = 0.1
+
+    # Embedding Provider
+    embedding_base_url: str = ""
+    embedding_model: str = ""
+    embedding_api_key: str = ""
+    embedding_dimensions: int = 256
+    embedding_batch_size: int = 16
+
+    # Generation Settings
+    max_tokens: int = 8000
+    streaming_max_tokens: int = 8000
+    rephrasing_max_tokens: int = 4000
+    max_citations: int = 3
+    require_quotes: bool = True
+    quote_max_words: int = 12
+
+    # Vector Database
+    chroma_host: str = "localhost"
+    chroma_port: int = 8100
+
+    # Retrieval - Basic
+    final_passages: int = 8
+    cosine_floor: float = 0.05
+    min_keyword_overlap: int = 2
+
+    # Retrieval - Advanced
+    dense_k: int = 80
+    lexical_k: int = 80
+    rrf_k: int = 60
+    mmr_lambda: float = 0.5
+    routing_threshold: float = 0.4
+    routing_sample_size: int = 20
+
+    # Retrieval - Features
+    use_reranker: bool = True
+    allow_reranker_fallback: bool = True
+
+    # Reranker
+    reranker_url: str = "http://localhost:8002/rerank"
+    reranker_port: int = 8002
+    reranker_timeout: int = 8
+    reranker_pool_size_multiplier: int = 3
+    reranker_score_weight: float = 0.7
+
+    # Performance - Caching
+    embedding_cache_enabled: bool = True
+    embedding_cache_max_items: int = 512
+    embedding_cache_ttl_seconds: int = 600
+
+    # Performance - Processing
+    chunk_size_tokens: int = 250
+    chunk_stride_tokens: int = 75
+    max_html_chars: int = 500000
+
+    # Security
+    drop_boilerplate: bool = True
+    drop_labels: List[str] = Field(default_factory=lambda: ["template", "archive", "index"])
+
+    # Advanced - Deduplication
+    dedup_enabled: bool = True
+    dedup_method: str = "minhash"
+    dedup_threshold: float = 0.92
+
+    # Advanced - Verification
+    fuzzy_partial_ratio_min: int = 70
+
+    # System
+    log_level: str = "INFO"
+    max_memory_messages: int = 8
+    metrics_enabled: bool = True
+
+    class Config:
+        extra = "ignore"
+
+
 class AppConfig(BaseModel):
     features: FeatureFlags = Field(default_factory=FeatureFlags)
     ingestion: IngestionSettings = Field(default_factory=IngestionSettings)
@@ -125,6 +206,7 @@ class AppConfig(BaseModel):
     verification: VerificationSettings = Field(default_factory=VerificationSettings)
     embedding_cache: EmbeddingCacheSettings = Field(default_factory=EmbeddingCacheSettings)
     telemetry: TelemetrySettings = Field(default_factory=TelemetrySettings)
+    ui_settings: UISettings = Field(default_factory=UISettings)
 
     class Config:
         extra = "ignore"
@@ -165,6 +247,136 @@ def _load_app_config_cached(resolved_path: str) -> AppConfig:
 def get_app_config(path_str: str) -> AppConfig:
     resolved = _resolve_config_path(path_str)
     return _load_app_config_cached(str(resolved))
+
+
+def save_ui_settings_to_yaml(ui_settings_payload: 'UISettingsPayload', path_str: str = None) -> None:
+    """Save UI settings back to the YAML configuration file."""
+    import tempfile
+    import shutil
+    from typing import TYPE_CHECKING
+
+    if TYPE_CHECKING:
+        from .main import UISettingsPayload
+
+    if path_str is None:
+        path_str = settings.app_config_path
+
+    config_path = _resolve_config_path(path_str)
+
+    # Create backup first
+    backup_path = config_path.with_suffix('.yaml.backup')
+    if config_path.exists():
+        shutil.copy2(config_path, backup_path)
+
+    try:
+        # Load existing config
+        if config_path.exists():
+            with config_path.open("r", encoding="utf-8") as handle:
+                config_data: Dict[str, Any] = yaml.safe_load(handle) or {}
+        else:
+            config_data = {}
+
+        # Convert UISettingsPayload to dict with snake_case keys
+        ui_data = {
+            # LLM Provider
+            "llm_base_url": ui_settings_payload.llm_base_url,
+            "llm_model": ui_settings_payload.llm_model,
+            "llm_api_key": ui_settings_payload.llm_api_key,
+            "temperature": ui_settings_payload.temperature,
+
+            # Embedding Provider
+            "embedding_base_url": ui_settings_payload.embedding_base_url,
+            "embedding_model": ui_settings_payload.embedding_model,
+            "embedding_api_key": ui_settings_payload.embedding_api_key,
+            "embedding_dimensions": ui_settings_payload.embedding_dimensions,
+            "embedding_batch_size": ui_settings_payload.embedding_batch_size,
+
+            # Generation Settings
+            "max_tokens": ui_settings_payload.max_tokens,
+            "streaming_max_tokens": ui_settings_payload.streaming_max_tokens,
+            "rephrasing_max_tokens": ui_settings_payload.rephrasing_max_tokens,
+            "max_citations": ui_settings_payload.max_citations,
+            "require_quotes": ui_settings_payload.require_quotes,
+            "quote_max_words": ui_settings_payload.quote_max_words,
+
+            # Vector Database
+            "chroma_host": ui_settings_payload.chroma_host,
+            "chroma_port": ui_settings_payload.chroma_port,
+
+            # Retrieval - Basic
+            "final_passages": ui_settings_payload.final_passages,
+            "cosine_floor": ui_settings_payload.cosine_floor,
+            "min_keyword_overlap": ui_settings_payload.min_keyword_overlap,
+
+            # Retrieval - Advanced
+            "dense_k": ui_settings_payload.dense_k,
+            "lexical_k": ui_settings_payload.lexical_k,
+            "rrf_k": ui_settings_payload.rrf_k,
+            "mmr_lambda": ui_settings_payload.mmr_lambda,
+            "routing_threshold": ui_settings_payload.routing_threshold,
+            "routing_sample_size": ui_settings_payload.routing_sample_size,
+
+            # Retrieval - Features
+            "use_reranker": ui_settings_payload.use_reranker,
+            "allow_reranker_fallback": ui_settings_payload.allow_reranker_fallback,
+
+            # Reranker
+            "reranker_url": ui_settings_payload.reranker_url,
+            "reranker_port": ui_settings_payload.reranker_port,
+            "reranker_timeout": ui_settings_payload.reranker_timeout,
+            "reranker_pool_size_multiplier": ui_settings_payload.reranker_pool_size_multiplier,
+            "reranker_score_weight": ui_settings_payload.reranker_score_weight,
+
+            # Performance - Caching
+            "embedding_cache_enabled": ui_settings_payload.embedding_cache_enabled,
+            "embedding_cache_max_items": ui_settings_payload.embedding_cache_max_items,
+            "embedding_cache_ttl_seconds": ui_settings_payload.embedding_cache_ttl_seconds,
+
+            # Performance - Processing
+            "chunk_size_tokens": ui_settings_payload.chunk_size_tokens,
+            "chunk_stride_tokens": ui_settings_payload.chunk_stride_tokens,
+            "max_html_chars": ui_settings_payload.max_html_chars,
+
+            # Security
+            "drop_boilerplate": ui_settings_payload.drop_boilerplate,
+            "drop_labels": ui_settings_payload.drop_labels,
+
+            # Advanced - Deduplication
+            "dedup_enabled": ui_settings_payload.dedup_enabled,
+            "dedup_method": ui_settings_payload.dedup_method,
+            "dedup_threshold": ui_settings_payload.dedup_threshold,
+
+            # Advanced - Verification
+            "fuzzy_partial_ratio_min": ui_settings_payload.fuzzy_partial_ratio_min,
+
+            # System
+            "log_level": ui_settings_payload.log_level,
+            "max_memory_messages": ui_settings_payload.max_memory_messages,
+            "metrics_enabled": ui_settings_payload.metrics_enabled,
+        }
+
+        # Update config with UI settings
+        config_data["ui_settings"] = ui_data
+
+        # Write to temporary file first
+        with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.yaml') as temp_file:
+            yaml.safe_dump(config_data, temp_file, default_flow_style=False, sort_keys=False)
+            temp_path = temp_file.name
+
+        # Atomically replace the original file
+        shutil.move(temp_path, config_path)
+
+        # Clear the cache so next load picks up the new settings
+        _load_app_config_cached.cache_clear()
+
+        logger.info(f"Successfully saved UI settings to {config_path}")
+
+    except Exception as exc:
+        # Restore backup if something went wrong
+        if backup_path.exists():
+            shutil.copy2(backup_path, config_path)
+        logger.error(f"Failed to save UI settings to {config_path}: {exc}")
+        raise
 
 
 class Settings(BaseSettings):
