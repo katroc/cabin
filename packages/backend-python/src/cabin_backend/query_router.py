@@ -7,6 +7,8 @@ from enum import Enum
 import requests
 from pydantic import BaseModel, ValidationError
 
+from .config import settings
+
 logger = logging.getLogger(__name__)
 
 
@@ -155,8 +157,10 @@ Examples:
                 {"role": "user", "content": query}
             ]
 
+            model_name = settings.llm_model
+            logger.debug(f"Query router using model: '{model_name}'")
             payload = {
-                "model": "Qwen3-4B-Instruct-2507",
+                "model": model_name,
                 "messages": messages,
                 "temperature": 0.0,  # More deterministic
                 "max_tokens": 100,   # Shorter for JSON only

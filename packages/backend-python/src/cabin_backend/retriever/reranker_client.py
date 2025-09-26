@@ -45,12 +45,17 @@ class RerankerClient:
                 if self._is_vllm_endpoint(url):
                     payload = self._build_vllm_payload(query, candidates)
                     resolved_url = self._resolve_vllm_url(url)
+                    logger.debug("Sending vLLM reranker request to %s with payload keys: %s", resolved_url, list(payload.keys()))
+                    logger.debug("Documents count: %d, query length: %d", len(payload.get('documents', [])), len(payload.get('query', '')))
                     response = requests.post(
                         resolved_url,
                         json=payload,
                         timeout=self.timeout,
                         headers=self._headers,
                     )
+                    logger.debug("Reranker response status: %d", response.status_code)
+                    if response.status_code != 200:
+                        logger.error("Reranker error response: %s", response.text[:500])
                     response.raise_for_status()
                     data = response.json()
                     results = self._parse_vllm_response(data, candidates)
@@ -165,7 +170,9 @@ class RerankerClient:
     def _build_vllm_payload(self, query: str, candidates: Dict[str, str]) -> Dict:
         """Build payload for vLLM reranker API."""
         # Truncate documents to prevent reranker errors with very long content
-        max_doc_length = 8000  # Conservative limit for reranker models
+        # Reranker has 2048 token limit, use conservative char limit to stay under token limit
+        # Assuming ~1.2 chars per token on average, use ~6000 chars to stay under 2048 tokens
+        max_doc_length = 6000  # Conservative limit for 2048 token reranker models
         processed_docs = []
 
         for doc_text in candidates.values():
