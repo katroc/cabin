@@ -1,6 +1,6 @@
 ui_settings:
   llm_base_url: http://localhost:8000/v1
-  llm_model: Qwen3-4B-Instruct-2507
+  llm_model: gpt-oss-20b
   llm_api_key: ''
   temperature: 0.2
   embedding_base_url: http://localhost:8001/v1
