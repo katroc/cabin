@@ -71,7 +71,13 @@ export default function ConversationSourcesPanel({ open, onClose, sources }: Con
                     <div className="sources-panel__item-meta">
                       <span>{source.usageCount} mention{source.usageCount === 1 ? '' : 's'}</span>
                       <span>·</span>
-                      <span>Last used {source.lastUsed.toLocaleString()}</span>
+                      <span>Last used {source.lastUsed.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+                      {source.firstUsed.getTime() !== source.lastUsed.getTime() && (
+                        <>
+                          <span>·</span>
+                          <span>First seen {source.firstUsed.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+                        </>
+                      )}
                     </div>
                   </div>
                   {source.url && (
