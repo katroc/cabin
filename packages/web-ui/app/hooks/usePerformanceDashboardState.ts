@@ -6,6 +6,7 @@ import { useState, useEffect, useCallback } from 'react'
 interface PerformanceSummary {
   total_requests: number
   avg_total_duration_ms: number
+  avg_response_latency_ms?: number
   avg_component_durations: Record<string, number>
   rag_request_percentage: number
   most_common_bottleneck?: string
