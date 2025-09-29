@@ -583,7 +583,8 @@ def chat(request: ChatRequest) -> ChatResponse:
         conversation_memory.add_assistant_message(
             conversation_id,
             response.response,
-            response.citations
+            response.citations,
+            response.thinking
         )
         memory_duration = (time.time() - memory_start) * 1000
         metrics.add_timing("memory_storage", memory_duration)
@@ -612,7 +613,8 @@ def chat(request: ChatRequest) -> ChatResponse:
                 conversation_memory.update_last_assistant_message(
                     conversation_id,
                     response.response,
-                    response.citations
+                    response.citations,
+                    response.thinking
                 )
 
             metrics.add_timing("fallback_generation", fallback_duration, metadata={
@@ -733,14 +735,16 @@ def chat_stream(request: ChatRequest):
             first_chunk_latency_ms: Optional[float] = None
             response_generation_timing: Optional[ComponentTiming] = None
             try:
-                for chunk in generator_service.ask_stream(
+                stream = generator_service.ask_stream(
                     request.message,
                     context_chunks,
                     conversation_id=conversation_id,
                     conversation_context=conversation_context,
                     enforce_provenance=should_use_rag,
                     persona=request.persona
-                ):
+                )
+
+                for chunk in stream:
                     if first_chunk_latency_ms is None:
                         first_chunk_latency_ms = (time.time() - generation_start) * 1000
                         metrics.add_timing(
@@ -754,6 +758,9 @@ def chat_stream(request: ChatRequest):
                         response_generation_timing = metrics.component_timings[-1]
                     collected_response += chunk
                     yield chunk
+
+                stream_state = getattr(stream, "state", {})
+                thinking_text = stream_state.get("thinking", "") if isinstance(stream_state, dict) else ""
 
                 # Generate citations from top-ranked context chunks (trust the reranker)
                 citations = []
@@ -819,15 +826,16 @@ def chat_stream(request: ChatRequest):
                 metadata = {
                     "citations": citations_data,
                     "rendered_citations": rendered_citations_data,
-                    "conversation_id": conversation_id
+                    "conversation_id": conversation_id,
+                    "thinking": thinking_text,
                 }
                 logger.info("STREAMING: Final metadata - citations: %d, rendered_citations: %d",
                           len(citations_data), len(rendered_citations_data))
-                if citations_data:
+                if citations_data or thinking_text:
                     logger.info("STREAMING: Sending metadata to frontend")
                     yield f"\n---METADATA---{json.dumps(metadata)}---END---\n"
                 else:
-                    logger.warning("STREAMING: No citations_data, not sending metadata")
+                    logger.warning("STREAMING: No citations or thinking; metadata not sent")
 
                 # Record generation timing focusing on latency to first streamed chunk
                 total_stream_duration_ms = (time.time() - generation_start) * 1000
@@ -858,7 +866,8 @@ def chat_stream(request: ChatRequest):
                 conversation_memory.add_assistant_message(
                     conversation_id,
                     collected_response,
-                    citations
+                    citations,
+                    thinking_text
                 )
 
                 # Calculate total duration and store metrics
@@ -970,7 +979,8 @@ def chat_direct(request: ChatRequest) -> ChatResponse:
         conversation_memory.add_assistant_message(
             conversation_id,
             response.response,
-            response.citations
+            response.citations,
+            response.thinking
         )
 
         # Complete performance tracking
@@ -989,7 +999,8 @@ def chat_direct(request: ChatRequest) -> ChatResponse:
         return ChatResponse(
             response=response.response,
             citations=response.citations or [],
-            conversation_id=conversation_id
+            conversation_id=conversation_id,
+            thinking=response.thinking
         )
 
     except Exception as e:
@@ -1040,16 +1051,31 @@ def chat_direct_stream(request: ChatRequest):
             collected_response = ""
             generation_start = time.time()
             try:
-                for chunk in generator_service.ask_stream(
+                stream = generator_service.ask_stream(
                     request.message,
                     [],  # No context chunks for direct LLM mode
                     conversation_id=conversation_id,
                     conversation_context=conversation_context,
                     enforce_provenance=False,  # Never enforce citations in direct mode
                     persona=request.persona
-                ):
+                )
+
+                for chunk in stream:
                     collected_response += chunk
                     yield chunk
+
+                stream_state = getattr(stream, "state", {})
+                thinking_text = stream_state.get("thinking", "") if isinstance(stream_state, dict) else ""
+
+                if thinking_text:
+                    import json
+                    metadata = {
+                        "citations": [],
+                        "rendered_citations": [],
+                        "conversation_id": conversation_id,
+                        "thinking": thinking_text,
+                    }
+                    yield f"\n---METADATA---{json.dumps(metadata)}---END---\n"
 
                 # Record generation timing
                 generation_duration = (time.time() - generation_start) * 1000
@@ -1062,7 +1088,8 @@ def chat_direct_stream(request: ChatRequest):
                 conversation_memory.add_assistant_message(
                     conversation_id,
                     collected_response,
-                    []  # No citations in direct mode
+                    [],  # No citations in direct mode
+                    thinking_text
                 )
 
                 # Calculate total duration and store metrics
@@ -1121,7 +1148,8 @@ def get_conversation_history(conversation_id: str):
                     "role": msg.role,
                     "content": msg.content,
                     "timestamp": msg.timestamp,
-                    "citations": msg.citations
+                    "citations": msg.citations,
+                    "thinking": msg.thinking
                 }
                 for msg in history.messages
             ]

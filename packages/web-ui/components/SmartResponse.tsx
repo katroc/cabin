@@ -35,6 +35,7 @@ interface SmartResponseProps {
   query: string;
   citations?: Citation[];
   renderedCitations?: RenderedCitation[];
+  thinking?: string;
   animate?: boolean;
   isVerifyingSources?: boolean;
   isStreaming?: boolean;
@@ -91,6 +92,7 @@ const SmartResponse: React.FC<SmartResponseProps> = ({
   query,
   citations = [],
   renderedCitations = [],
+  thinking = '',
   animate = false,
   isVerifyingSources = false,
   isStreaming = false
@@ -98,6 +100,7 @@ const SmartResponse: React.FC<SmartResponseProps> = ({
   const [displayedAnswer, setDisplayedAnswer] = React.useState(animate ? '' : answer);
   const [isAnimating, setIsAnimating] = React.useState(animate);
   const containerRef = React.useRef<HTMLDivElement | null>(null);
+  const [showThinking, setShowThinking] = React.useState(false);
 
   // Animation effect
   React.useEffect(() => {
@@ -129,6 +132,10 @@ const SmartResponse: React.FC<SmartResponseProps> = ({
 
     return () => clearInterval(interval);
   }, [answer, animate]);
+
+  React.useEffect(() => {
+    setShowThinking(false);
+  }, [thinking]);
 
   // Detect query type based on patterns
   const detectQueryType = (query: string): QueryType => {
@@ -389,6 +396,27 @@ const SmartResponse: React.FC<SmartResponseProps> = ({
     <div ref={containerRef} className={`smart-response ${getResponseClass(queryType)}`}>
       {/* Main content */}
       <div className={`response-content ${isStreaming ? 'streaming-content' : ''}`} onClick={onContentClick}>
+        {thinking && (
+          <div className="thinking-disclosure">
+            <button
+              type="button"
+              className="thinking-toggle"
+              onClick={() => setShowThinking(prev => !prev)}
+              aria-expanded={showThinking}
+              aria-controls="thinking-content"
+            >
+              <span className="chevron" aria-hidden>{showThinking ? '▾' : '▸'}</span>
+              <span className="thinking-label">{showThinking ? 'Hide thinking' : 'Show thinking'}</span>
+            </button>
+            {showThinking && (
+              <div id="thinking-content" className="thinking-block" aria-label="Model thinking">
+                <div className="thinking-header">Thinking</div>
+                <pre className="thinking-text">{thinking}</pre>
+              </div>
+            )}
+          </div>
+        )}
+
         {headings.length > 1 && (
           <nav className="response-toc">
             <div className="response-toc-title">On this page</div>
