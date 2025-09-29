@@ -1,11 +1,12 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Loader2, Send, StopCircle } from 'lucide-react'
+import { Loader2, Send, StopCircle, BookOpen } from 'lucide-react'
 import SmartResponse from './SmartResponse'
 import ExportDropdown from './ExportDropdown'
 import PersonaSelector from './PersonaSelector'
 import { useUIPreferences, PersonaType, ChatMode } from './contexts/UIPreferencesProvider'
+import ConversationSourcesPanel, { AggregatedSource } from './ConversationSourcesPanel'
 import { splitThinking, deriveAnswerFromThinking } from '../utils/thinking'
 
 interface Citation {
@@ -75,6 +76,7 @@ export default function ChatInterface({
   const [input, setInput] = useState('')
   const [isProcessing, setIsProcessing] = useState(false)
   const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null)
+  const [isSourcesPanelOpen, setIsSourcesPanelOpen] = useState(false)
   const { preferences, setPersona, setChatMode } = useUIPreferences()
   const { persona, chatMode } = preferences
   const messagesEndRef = useRef<HTMLDivElement | null>(null)
@@ -83,6 +85,66 @@ export default function ChatInterface({
   const inputRef = useRef<HTMLTextAreaElement | null>(null)
 
   const messages = conversation?.messages ?? []
+
+  const aggregatedSources = useMemo<AggregatedSource[]>(() => {
+    if (!conversation) return []
+    const map = new Map<string, AggregatedSource>()
+
+    for (const message of conversation.messages) {
+      if (message.role !== 'assistant') continue
+
+      const citations = (message.rendered_citations && message.rendered_citations.length > 0
+        ? message.rendered_citations
+        : message.citations) || []
+
+      if (citations.length === 0) continue
+
+      const timestamp = message.timestamp instanceof Date
+        ? message.timestamp
+        : new Date(message.timestamp)
+
+      citations.forEach((citation, index) => {
+        const resolvedTitle = ('title' in citation && citation.title)
+          || (citation as any).page_title
+          || citation.source_url
+          || citation.url
+          || `Source ${index + 1}`
+
+        const resolvedUrl = citation.url || (citation as any).source_url || undefined
+        const key = `${resolvedUrl || resolvedTitle || index}`
+        const existing = map.get(key)
+        const trimmedQuote = (citation.quote || '').trim()
+
+        if (existing) {
+          existing.usageCount += 1
+          existing.lastUsed = timestamp
+          if (trimmedQuote && !existing.quotes.includes(trimmedQuote) && existing.quotes.length < 3) {
+            existing.quotes.push(trimmedQuote)
+          }
+        } else {
+          map.set(key, {
+            key,
+            title: resolvedTitle || 'Untitled source',
+            url: resolvedUrl,
+            usageCount: 1,
+            firstUsed: timestamp,
+            lastUsed: timestamp,
+            quotes: trimmedQuote ? [trimmedQuote] : []
+          })
+        }
+      })
+    }
+
+    return Array.from(map.values()).sort(
+      (a, b) => b.lastUsed.getTime() - a.lastUsed.getTime()
+    )
+  }, [conversation])
+
+  useEffect(() => {
+    if (isSourcesPanelOpen && aggregatedSources.length === 0) {
+      setIsSourcesPanelOpen(false)
+    }
+  }, [aggregatedSources.length, isSourcesPanelOpen])
 
   useEffect(() => {
     setInput('')
@@ -400,16 +462,39 @@ export default function ChatInterface({
 
   const hasMessages = messages.length > 0
   const canStop = isProcessing && Boolean(abortControllerRef.current)
+  const totalSourceMentions = useMemo(
+    () => aggregatedSources.reduce((acc, source) => acc + source.usageCount, 0),
+    [aggregatedSources]
+  )
+  const sourcesButtonClasses = aggregatedSources.length
+    ? 'flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium transition ui-bg-secondary ui-border-light ui-text-secondary hover:text-white hover:border-[var(--accent)]'
+    : 'flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium ui-bg-secondary ui-border-light ui-text-muted opacity-50 cursor-not-allowed'
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col ui-bg-primary">
       <div
-        className="sticky top-0 z-10 flex justify-end border-b px-4 py-3 sm:px-6 ui-bg-primary/95 backdrop-blur border-[color:var(--border-faint)]"
+        className="sticky top-0 z-10 flex items-center justify-between border-b px-4 py-3 sm:px-6 ui-bg-primary/95 backdrop-blur border-[color:var(--border-faint)]"
       >
-        <ExportDropdown
-          onDownloadConversation={onDownloadConversation}
-          disabled={!hasMessages}
-        />
+        <div className="text-xs sm:text-sm ui-text-secondary">
+          {aggregatedSources.length === 0
+            ? 'No sources cited yet'
+            : `${aggregatedSources.length} source${aggregatedSources.length === 1 ? '' : 's'} · ${totalSourceMentions} mention${totalSourceMentions === 1 ? '' : 's'}`}
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            className={sourcesButtonClasses}
+            onClick={() => setIsSourcesPanelOpen(true)}
+            disabled={aggregatedSources.length === 0}
+          >
+            <BookOpen size={14} />
+            Sources
+          </button>
+          <ExportDropdown
+            onDownloadConversation={onDownloadConversation}
+            disabled={!hasMessages}
+          />
+        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 pb-10 pt-6 sm:px-10 min-h-0">
@@ -567,6 +652,12 @@ export default function ChatInterface({
           </div>
         </form>
       </footer>
+
+      <ConversationSourcesPanel
+        open={isSourcesPanelOpen}
+        onClose={() => setIsSourcesPanelOpen(false)}
+        sources={aggregatedSources}
+      />
     </div>
   )
 }
