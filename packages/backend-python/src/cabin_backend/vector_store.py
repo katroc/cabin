@@ -1,7 +1,7 @@
 import json
 import logging
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, NamedTuple
 
 from stopwordsiso import stopwords
 
@@ -20,6 +20,11 @@ from .runtime import RuntimeOverrides
 from .telemetry import metrics, sanitize_text
 
 logger = logging.getLogger(__name__)
+
+class RoutingContext(NamedTuple):
+    documents: List[str]
+    strategy: str
+
 
 class VectorStore:
     def __init__(self, overrides: Optional[RuntimeOverrides] = None):
@@ -655,7 +660,7 @@ class VectorStore:
         """Return lexical rankings from the most recent query call."""
         return list(self._last_lexical_rankings)
 
-    def get_context_for_routing(self, query: str, max_samples: int = 10) -> List[str]:
+    def get_context_for_routing(self, query: str, max_samples: int = 10) -> RoutingContext:
         """
         Get relevant document context for query routing decisions.
         Uses BM25 search for relevant context, falls back to random sample.
@@ -665,46 +670,54 @@ class VectorStore:
             max_samples: Maximum number of document snippets to return
 
         Returns:
-            List of document text snippets relevant to the query
+            RoutingContext containing document snippets and the sampling strategy used
         """
         try:
+            configured_sample_size = settings.app_config.ui_settings.routing_sample_size
+            effective_max_samples = max(1, min(max_samples, configured_sample_size)) if configured_sample_size else max_samples
+
             if not self.chroma:
                 logger.warning("ChromaDB not available for routing context")
-                return []
+                return RoutingContext([], "unavailable")
 
             collection = self.chroma.collection
             if not collection or collection.count() == 0:
                 logger.debug("No documents available for routing context")
-                return []
+                return RoutingContext([], "empty")
 
             # Try using the existing query system for context (lightweight approach)
             # Perform a small query to get potentially relevant documents
             try:
                 # Use the existing query method with a small k to get relevant context
-                parent_chunks = self.query(query, top_k=max_samples)
+                parent_chunks = self.query(
+                    query,
+                    top_k=effective_max_samples,
+                    use_reranker=False,
+                    allow_reranker_fallback=False,
+                )
 
                 if parent_chunks:
                     # Extract text from parent chunks for context
                     context_docs = []
-                    for chunk in parent_chunks[:max_samples]:
+                    for chunk in parent_chunks[:effective_max_samples]:
                         # Use chunk text for context, truncated for efficiency
-                        context_text = chunk.text[:300] + "..." if len(chunk.text) > 300 else chunk.text
+                        context_text = chunk.text[:180] + "..." if len(chunk.text) > 180 else chunk.text
                         context_docs.append(context_text)
 
                     if context_docs:
                         logger.debug("Found %d relevant documents for routing context via query", len(context_docs))
-                        return context_docs
+                        return RoutingContext(context_docs, "vector_query")
 
             except Exception as e:
                 logger.warning("Query-based context search failed: %s", e)
 
             # Fallback to random corpus sample if query doesn't work
             logger.debug("Using random corpus sample for routing context")
-            return self.get_corpus_sample(max_samples)
+            return RoutingContext(self.get_corpus_sample(effective_max_samples), "corpus_sample")
 
         except Exception as e:
             logger.error("Error getting routing context: %s", e)
-            return []
+            return RoutingContext([], "error")
 
     def get_corpus_sample(self, sample_size: int = 50) -> List[str]:
         """

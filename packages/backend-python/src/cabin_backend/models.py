@@ -288,6 +288,7 @@ class PerformanceSummary(BaseModel):
     """Aggregated performance statistics."""
     total_requests: int
     avg_total_duration_ms: float
+    avg_response_latency_ms: float = 0
     avg_component_durations: Dict[str, float]  # component -> avg duration
     rag_request_percentage: float
     most_common_bottleneck: Optional[str] = None

@@ -41,6 +41,7 @@ interface RAGPerformanceMetrics {
 interface PerformanceSummary {
   total_requests: number
   avg_total_duration_ms: number
+  avg_response_latency_ms?: number
   avg_component_durations: Record<string, number>
   rag_request_percentage: number
   most_common_bottleneck?: string
@@ -262,7 +263,9 @@ export default function PerformanceDashboard({ isOpen, onClose }: PerformanceDas
                     <h3 className="text-sm font-medium ui-text-secondary">Avg Response Time</h3>
                   </div>
                   <div className="text-2xl font-bold ui-text-primary">
-                    {summary ? `${summary.avg_total_duration_ms.toFixed(0)}ms` : 'N/A'}
+                    {summary
+                      ? `${(summary.avg_response_latency_ms ?? summary.avg_total_duration_ms ?? 0).toFixed(0)}ms`
+                      : 'N/A'}
                   </div>
                   <div className="text-xs ui-text-muted mt-1">
                     {summary ? `${summary.total_requests} requests` : 'No data'}

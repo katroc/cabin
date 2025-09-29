@@ -21,7 +21,7 @@ from .models import (
     DataSourceIndexResponse, DataSourceProgressResponse, DataSourceInfoResponse,
     FileUploadRequest, FileUploadResponse,
     RAGPerformanceMetrics, PerformanceSummary, PerformanceStatsRequest,
-    Citation
+    Citation, ComponentTiming
 )
 from .conversation_memory import ConversationMemoryManager
 from .query_router import LLMQueryRouter
@@ -513,17 +513,25 @@ def chat(request: ChatRequest) -> ChatResponse:
 
         # Query routing timing with corpus context
         routing_start = time.time()
-        corpus_context = vector_store_service.get_context_for_routing(request.message, max_samples=8)
+        context_fetch_start = routing_start
+        routing_context = vector_store_service.get_context_for_routing(request.message, max_samples=8)
+        corpus_context = routing_context.documents
+        context_duration = (time.time() - context_fetch_start) * 1000
+        router_start = time.time()
         should_use_rag, confidence_score, routing_reason = query_router.should_use_rag(
             request.message,
             conversation_context=conversation_context,
             corpus_sample=corpus_context
         )
-        routing_duration = (time.time() - routing_start) * 1000
+        router_duration = (time.time() - router_start) * 1000
+        routing_duration = context_duration + router_duration
         metrics.add_timing("query_routing", routing_duration, metadata={
             "confidence_score": confidence_score,
             "routing_reason": routing_reason,
-            "context_docs_found": len(corpus_context)
+            "context_docs_found": len(corpus_context),
+            "context_strategy": routing_context.strategy,
+            "context_ms": context_duration,
+            "router_llm_ms": router_duration
         })
 
         # Store routing metadata
@@ -669,18 +677,26 @@ def chat_stream(request: ChatRequest):
 
         # Query routing timing with corpus context
         routing_start = time.time()
-        corpus_context = vector_store_service.get_context_for_routing(request.message, max_samples=8)
+        context_fetch_start = routing_start
+        routing_context = vector_store_service.get_context_for_routing(request.message, max_samples=8)
+        corpus_context = routing_context.documents
+        context_duration = (time.time() - context_fetch_start) * 1000
+        router_start = time.time()
         should_use_rag, confidence_score, routing_reason = query_router.should_use_rag(
             request.message,
             conversation_context=conversation_context,
             corpus_sample=corpus_context
         )
-        routing_duration = (time.time() - routing_start) * 1000
+        router_duration = (time.time() - router_start) * 1000
+        routing_duration = context_duration + router_duration
         metrics.add_timing("query_routing", routing_duration, metadata={
             "should_use_rag": should_use_rag,
             "confidence_score": confidence_score,
             "routing_reason": routing_reason,
-            "context_docs_found": len(corpus_context)
+            "context_docs_found": len(corpus_context),
+            "context_strategy": routing_context.strategy,
+            "context_ms": context_duration,
+            "router_llm_ms": router_duration
         })
         metrics.query_type = "rag" if should_use_rag else "direct"
         metrics.routing_similarity_score = confidence_score
@@ -714,6 +730,8 @@ def chat_stream(request: ChatRequest):
             nonlocal metrics
             collected_response = ""
             generation_start = time.time()
+            first_chunk_latency_ms: Optional[float] = None
+            response_generation_timing: Optional[ComponentTiming] = None
             try:
                 for chunk in generator_service.ask_stream(
                     request.message,
@@ -723,6 +741,17 @@ def chat_stream(request: ChatRequest):
                     enforce_provenance=should_use_rag,
                     persona=request.persona
                 ):
+                    if first_chunk_latency_ms is None:
+                        first_chunk_latency_ms = (time.time() - generation_start) * 1000
+                        metrics.add_timing(
+                            "response_generation",
+                            first_chunk_latency_ms,
+                            metadata={
+                                "streaming": True,
+                                "first_chunk_latency_ms": first_chunk_latency_ms
+                            }
+                        )
+                        response_generation_timing = metrics.component_timings[-1]
                     collected_response += chunk
                     yield chunk
 
@@ -800,12 +829,30 @@ def chat_stream(request: ChatRequest):
                 else:
                     logger.warning("STREAMING: No citations_data, not sending metadata")
 
-                # Record generation timing
-                generation_duration = (time.time() - generation_start) * 1000
-                metrics.add_timing("response_generation", generation_duration, metadata={
-                    "response_length": len(collected_response),
-                    "num_citations": len(citations)
-                })
+                # Record generation timing focusing on latency to first streamed chunk
+                total_stream_duration_ms = (time.time() - generation_start) * 1000
+                latency_ms = first_chunk_latency_ms if first_chunk_latency_ms is not None else total_stream_duration_ms
+
+                if response_generation_timing is None:
+                    # No chunks yielded; record timing now to avoid dropping the metric
+                    metrics.add_timing(
+                        "response_generation",
+                        latency_ms,
+                        metadata={
+                            "streaming": True,
+                            "first_chunk_latency_ms": latency_ms,
+                            "total_stream_duration_ms": total_stream_duration_ms,
+                            "response_length": len(collected_response),
+                            "num_citations": len(citations),
+                            "empty_stream": True
+                        }
+                    )
+                else:
+                    response_generation_timing.metadata.update({
+                        "response_length": len(collected_response),
+                        "num_citations": len(citations),
+                        "total_stream_duration_ms": total_stream_duration_ms
+                    })
 
                 # Add assistant response to conversation history after streaming is complete
                 conversation_memory.add_assistant_message(
@@ -824,7 +871,27 @@ def chat_stream(request: ChatRequest):
             except Exception as e:
                 # Record error timing
                 error_duration = (time.time() - generation_start) * 1000
-                metrics.add_timing("response_generation", error_duration, success=False, error_message=str(e))
+                latency_ms = first_chunk_latency_ms if first_chunk_latency_ms is not None else error_duration
+
+                if response_generation_timing is None:
+                    metrics.add_timing(
+                        "response_generation",
+                        latency_ms,
+                        success=False,
+                        error_message=str(e),
+                        metadata={
+                            "streaming": True,
+                            "first_chunk_latency_ms": latency_ms,
+                            "total_stream_duration_ms": error_duration
+                        }
+                    )
+                else:
+                    response_generation_timing.success = False
+                    response_generation_timing.error_message = str(e)
+                    response_generation_timing.metadata.update({
+                        "total_stream_duration_ms": error_duration,
+                        "error_after_first_chunk_ms": error_duration
+                    })
 
                 # Store error metrics
                 total_duration = (time.time() - start_time) * 1000
@@ -1834,6 +1901,7 @@ def get_performance_summary(
         return PerformanceSummary(
             total_requests=0,
             avg_total_duration_ms=0,
+            avg_response_latency_ms=0,
             avg_component_durations={},
             rag_request_percentage=0,
             time_period_start=start_dt,
@@ -1848,14 +1916,19 @@ def get_performance_summary(
 
     # Calculate average durations per component
     component_durations = defaultdict(list)
+    response_generation_durations = []
     for metric in filtered_metrics:
         for timing in metric.component_timings:
             component_durations[timing.component].append(timing.duration_ms)
+            if timing.component == "response_generation":
+                response_generation_durations.append(timing.duration_ms)
 
     avg_component_durations = {
         component: statistics.mean(durations)
         for component, durations in component_durations.items()
     }
+
+    avg_response_latency = statistics.mean(response_generation_durations) if response_generation_durations else 0
 
     # Find bottlenecks
     slowest_component = max(avg_component_durations.items(), key=lambda x: x[1])[0] if avg_component_durations else None
@@ -1872,6 +1945,7 @@ def get_performance_summary(
     return PerformanceSummary(
         total_requests=total_requests,
         avg_total_duration_ms=avg_total_duration,
+        avg_response_latency_ms=avg_response_latency,
         avg_component_durations=avg_component_durations,
         rag_request_percentage=rag_percentage,
         most_common_bottleneck=most_common_bottleneck,
