@@ -1,7 +1,7 @@
 services:
-  Qwen3-4B-Instruct-2507:
+  qwen3-4b-awq:
     image: vllm/vllm-openai:latest
-    container_name: Qwen3-4B-Instruct-2507
+    container_name: qwen3-4b-awq
     runtime: nvidia
     environment:
       NVIDIA_VISIBLE_DEVICES: "all"
@@ -10,12 +10,12 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - ~/models/Qwen3-4B-Instruct-2507:/models/Qwen3-4B-Instruct-2507
+      - ~/models/qwen3-4b-awq:/models/qwen3-4b-awq
     command:
       - --model
-      - /models/Qwen3-4B-Instruct-2507
+      - /models/qwen3-4b-awq
       - --served-model-name
-      - Qwen3-4B-Instruct-2507
+      - qwen3-4b-awq
       - --max-model-len
       - "15360"
       - --gpu-memory-utilization
