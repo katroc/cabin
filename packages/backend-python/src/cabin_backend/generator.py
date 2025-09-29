@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Dict, Iterator, List, Optional, Tuple, cast
+from typing import Any, Dict, Iterator, List, Optional, Tuple, cast, Set
 import openai
 from openai.types.chat import ChatCompletionMessageParam
 import re
@@ -16,6 +16,37 @@ from .thinking import extract_visible_answer, split_thinking, derive_answer_from
 
 
 logger = logging.getLogger(__name__)
+
+_QUERY_STOPWORDS = {
+    "what",
+    "when",
+    "where",
+    "which",
+    "whose",
+    "that",
+    "have",
+    "with",
+    "this",
+    "will",
+    "from",
+    "about",
+    "there",
+    "would",
+    "could",
+    "should",
+    "your",
+    "their",
+    "into",
+    "using",
+    "does",
+    "been",
+    "after",
+    "before",
+    "through",
+    "please",
+    "thank",
+    "thanks",
+}
 
 class Generator:
     def __init__(self, overrides: Optional[RuntimeOverrides] = None):
@@ -396,6 +427,15 @@ RESPONSE STYLE:
         context_blocks = build_context_blocks(entries) if entries else ""
         return provenance, context_blocks
 
+    def _extract_query_terms(self, query: Optional[str]) -> Set[str]:
+        if not query:
+            return set()
+        tokens = re.findall(r"[A-Za-z0-9]+", query.lower())
+        return {
+            token for token in tokens
+            if len(token) > 3 and token not in _QUERY_STOPWORDS
+        }
+
     def _extract_citations_from_response(
         self,
         response: str,
@@ -455,9 +495,17 @@ RESPONSE STYLE:
         # Limit to top chunks to avoid showing too many sources
         max_sources = min(len(provenance), settings.app_config.generation.max_citations)
 
+        query_terms = self._extract_query_terms(query)
+        candidate_citations: List[Tuple[Citation, bool]] = []
+
         for i, (idx, data) in enumerate(list(provenance.items())[:max_sources]):
             chunk = data["chunk"]
             quote = self._default_quote(chunk.text, quote_limit)
+
+            chunk_text_lower = (chunk.text or "").lower()
+            is_relevant = True
+            if query_terms:
+                is_relevant = any(term in chunk_text_lower for term in query_terms)
 
             citation = Citation(
                 id=idx,
@@ -471,7 +519,16 @@ RESPONSE STYLE:
                 quote=quote,
                 last_modified=data.get("last_modified", "") or None,
             )
-            citations.append(citation)
+            candidate_citations.append((citation, is_relevant))
+
+        if query_terms:
+            filtered = [c for c, relevant in candidate_citations if relevant]
+            if filtered:
+                citations = filtered
+            else:
+                citations = [c for c, _ in candidate_citations]
+        else:
+            citations = [c for c, _ in candidate_citations]
 
         # Apply citation merging to eliminate duplicates
         rendered, citation_mapping = render_citation_payloads(citations)

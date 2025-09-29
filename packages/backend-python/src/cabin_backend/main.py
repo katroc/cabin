@@ -772,11 +772,16 @@ def chat_stream(request: ChatRequest):
 
                     max_sources = min(len(context_chunks), settings.app_config.generation.max_citations)
                     quote_limit = settings.app_config.generation.quote_max_words
+                    query_terms = generator_service._extract_query_terms(request.message)
 
                     logger.debug("Creating citations from top %d chunks (limited by max_citations=%d)",
                                max_sources, settings.app_config.generation.max_citations)
 
                     for i, chunk in enumerate(context_chunks[:max_sources]):
+                        if query_terms:
+                            chunk_text_lower = (chunk.text or "").lower()
+                            if not any(term in chunk_text_lower for term in query_terms):
+                                continue
                         # Create a simple quote from the chunk (first sentence or truncated text)
                         chunk_text = chunk.text
                         if chunk_text:
@@ -804,6 +809,32 @@ def chat_stream(request: ChatRequest):
 
                     logger.debug("Created %d citations from streaming response (limited from %d chunks)",
                                len(citations), len(context_chunks))
+
+                    if query_terms and not citations:
+                        logger.debug("Streaming citation filter removed all candidates; falling back to top chunk")
+                        fallback_chunk = context_chunks[0]
+                        chunk_text = fallback_chunk.text
+                        if chunk_text:
+                            sentences = chunk_text.split(". ")
+                            if len(sentences) > 1 and len(sentences[0]) <= quote_limit * 6:
+                                quote = sentences[0] + "."
+                            else:
+                                words = chunk_text.split()[:quote_limit]
+                                quote = " ".join(words) + ("..." if len(words) == quote_limit else "")
+                        else:
+                            quote = ""
+                        citations.append(
+                            Citation(
+                                id=str(uuid.uuid4()),
+                                chunk_id=fallback_chunk.id,
+                                page_title=fallback_chunk.metadata.page_title,
+                                source_url=fallback_chunk.metadata.source_url,
+                                url=fallback_chunk.metadata.url,
+                                quote=quote,
+                                space_name=fallback_chunk.metadata.space_name,
+                                page_version=fallback_chunk.metadata.page_version
+                            )
+                        )
 
                 # Render citations with merging for duplicate sources
                 import json
