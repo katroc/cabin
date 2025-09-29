@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Dict, Iterator, List, Optional, Tuple, cast, Set
+from typing import Any, Dict, Iterator, List, Optional, Tuple, cast
 import openai
 from openai.types.chat import ChatCompletionMessageParam
 import re
@@ -16,37 +16,6 @@ from .thinking import extract_visible_answer, split_thinking, derive_answer_from
 
 
 logger = logging.getLogger(__name__)
-
-_QUERY_STOPWORDS = {
-    "what",
-    "when",
-    "where",
-    "which",
-    "whose",
-    "that",
-    "have",
-    "with",
-    "this",
-    "will",
-    "from",
-    "about",
-    "there",
-    "would",
-    "could",
-    "should",
-    "your",
-    "their",
-    "into",
-    "using",
-    "does",
-    "been",
-    "after",
-    "before",
-    "through",
-    "please",
-    "thank",
-    "thanks",
-}
 
 class Generator:
     def __init__(self, overrides: Optional[RuntimeOverrides] = None):
@@ -67,6 +36,11 @@ class Generator:
         self.llm_model = model
         self.quote_verifier = QuoteVerifier(
             threshold=settings.app_config.verification.fuzzy_partial_ratio_min
+        )
+        self.citation_min_score_ratio = (
+            overrides.citation_min_score_ratio
+            if overrides and overrides.citation_min_score_ratio is not None
+            else settings.app_config.generation.citation_min_score_ratio
         )
 
     def ask(
@@ -427,15 +401,6 @@ RESPONSE STYLE:
         context_blocks = build_context_blocks(entries) if entries else ""
         return provenance, context_blocks
 
-    def _extract_query_terms(self, query: Optional[str]) -> Set[str]:
-        if not query:
-            return set()
-        tokens = re.findall(r"[A-Za-z0-9]+", query.lower())
-        return {
-            token for token in tokens
-            if len(token) > 3 and token not in _QUERY_STOPWORDS
-        }
-
     def _extract_citations_from_response(
         self,
         response: str,
@@ -495,17 +460,26 @@ RESPONSE STYLE:
         # Limit to top chunks to avoid showing too many sources
         max_sources = min(len(provenance), settings.app_config.generation.max_citations)
 
-        query_terms = self._extract_query_terms(query)
-        candidate_citations: List[Tuple[Citation, bool]] = []
+        score_threshold = max(0.0, min(1.0, float(self.citation_min_score_ratio or 0.0)))
+        best_candidate: Optional[Tuple[float, str, Dict[str, Any]]] = None
 
         for i, (idx, data) in enumerate(list(provenance.items())[:max_sources]):
             chunk = data["chunk"]
             quote = self._default_quote(chunk.text, quote_limit)
 
-            chunk_text_lower = (chunk.text or "").lower()
-            is_relevant = True
-            if query_terms:
-                is_relevant = any(term in chunk_text_lower for term in query_terms)
+            normalized_score = getattr(chunk.metadata, "relevance_score_normalized", None)
+            raw_score = getattr(chunk.metadata, "relevance_score", None)
+            effective_score = (
+                float(normalized_score)
+                if normalized_score is not None
+                else float(raw_score) if raw_score is not None else 1.0
+            )
+
+            if best_candidate is None or effective_score > best_candidate[0]:
+                best_candidate = (effective_score, idx, data)
+
+            if score_threshold > 0 and normalized_score is not None and normalized_score < score_threshold:
+                continue
 
             citation = Citation(
                 id=idx,
@@ -519,16 +493,26 @@ RESPONSE STYLE:
                 quote=quote,
                 last_modified=data.get("last_modified", "") or None,
             )
-            candidate_citations.append((citation, is_relevant))
+            citations.append(citation)
 
-        if query_terms:
-            filtered = [c for c, relevant in candidate_citations if relevant]
-            if filtered:
-                citations = filtered
-            else:
-                citations = [c for c, _ in candidate_citations]
-        else:
-            citations = [c for c, _ in candidate_citations]
+        if not citations and best_candidate is not None:
+            _, idx, data = best_candidate
+            chunk = data["chunk"]
+            quote = self._default_quote(chunk.text, quote_limit)
+
+            fallback_citation = Citation(
+                id=str(idx),
+                page_title=data["page_title"] or data.get("url", "") or f"Source {idx}",
+                space_name=data.get("space_name", "") or None,
+                space_key=data.get("space_key", "") or None,
+                source_url=data.get("url", "") or None,
+                chunk_id=data["chunk_id"],
+                page_version=int(data["page_version"]) if data["page_version"] else None,
+                page_section=data.get("section", "") or None,
+                quote=quote,
+                last_modified=data.get("last_modified", "") or None,
+            )
+            citations.append(fallback_citation)
 
         # Apply citation merging to eliminate duplicates
         rendered, citation_mapping = render_citation_payloads(citations)

@@ -59,6 +59,7 @@ class UISettingsPayload(BaseModel):
     max_citations: int = Field(alias="maxCitations", default=3)
     require_quotes: bool = Field(alias="requireQuotes", default=True)
     quote_max_words: int = Field(alias="quoteMaxWords", default=12)
+    citation_min_score_ratio: float = Field(alias="citationMinScoreRatio", default=0.4)
 
     # Vector Database
     chroma_host: str = Field(alias="chromaHost")
@@ -137,6 +138,7 @@ class UISettingsPayload(BaseModel):
             max_tokens=self.max_tokens,
             streaming_max_tokens=self.streaming_max_tokens,
             rephrasing_max_tokens=self.rephrasing_max_tokens,
+            citation_min_score_ratio=self.citation_min_score_ratio,
         )
 
 
@@ -202,6 +204,7 @@ def load_default_ui_settings() -> UISettingsPayload:
         maxCitations=ui_cfg.max_citations,
         requireQuotes=ui_cfg.require_quotes,
         quoteMaxWords=ui_cfg.quote_max_words,
+        citationMinScoreRatio=ui_cfg.citation_min_score_ratio,
 
         # Vector Database
         chromaHost=ui_cfg.chroma_host,
@@ -772,16 +775,31 @@ def chat_stream(request: ChatRequest):
 
                     max_sources = min(len(context_chunks), settings.app_config.generation.max_citations)
                     quote_limit = settings.app_config.generation.quote_max_words
-                    query_terms = generator_service._extract_query_terms(request.message)
+                    score_threshold = max(
+                        0.0,
+                        min(1.0, float(getattr(generator_service, "citation_min_score_ratio", 0.0) or 0.0))
+                    )
+                    best_chunk = None
+                    best_score = -1.0
 
                     logger.debug("Creating citations from top %d chunks (limited by max_citations=%d)",
                                max_sources, settings.app_config.generation.max_citations)
 
                     for i, chunk in enumerate(context_chunks[:max_sources]):
-                        if query_terms:
-                            chunk_text_lower = (chunk.text or "").lower()
-                            if not any(term in chunk_text_lower for term in query_terms):
-                                continue
+                        normalized_score = getattr(chunk.metadata, "relevance_score_normalized", None)
+                        raw_score = getattr(chunk.metadata, "relevance_score", None)
+                        effective_score = (
+                            float(normalized_score)
+                            if normalized_score is not None
+                            else float(raw_score) if raw_score is not None else 1.0
+                        )
+
+                        if effective_score > best_score:
+                            best_score = effective_score
+                            best_chunk = chunk
+
+                        if score_threshold > 0 and normalized_score is not None and normalized_score < score_threshold:
+                            continue
                         # Create a simple quote from the chunk (first sentence or truncated text)
                         chunk_text = chunk.text
                         if chunk_text:
@@ -810,10 +828,9 @@ def chat_stream(request: ChatRequest):
                     logger.debug("Created %d citations from streaming response (limited from %d chunks)",
                                len(citations), len(context_chunks))
 
-                    if query_terms and not citations:
-                        logger.debug("Streaming citation filter removed all candidates; falling back to top chunk")
-                        fallback_chunk = context_chunks[0]
-                        chunk_text = fallback_chunk.text
+                    if not citations and best_chunk is not None:
+                        logger.debug("Streaming citation filter removed all candidates; falling back to highest scoring chunk")
+                        chunk_text = best_chunk.text
                         if chunk_text:
                             sentences = chunk_text.split(". ")
                             if len(sentences) > 1 and len(sentences[0]) <= quote_limit * 6:
@@ -826,13 +843,13 @@ def chat_stream(request: ChatRequest):
                         citations.append(
                             Citation(
                                 id=str(uuid.uuid4()),
-                                chunk_id=fallback_chunk.id,
-                                page_title=fallback_chunk.metadata.page_title,
-                                source_url=fallback_chunk.metadata.source_url,
-                                url=fallback_chunk.metadata.url,
+                                chunk_id=best_chunk.id,
+                                page_title=best_chunk.metadata.page_title,
+                                source_url=best_chunk.metadata.source_url,
+                                url=best_chunk.metadata.url,
                                 quote=quote,
-                                space_name=fallback_chunk.metadata.space_name,
-                                page_version=fallback_chunk.metadata.page_version
+                                space_name=best_chunk.metadata.space_name,
+                                page_version=best_chunk.metadata.page_version
                             )
                         )
 

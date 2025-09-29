@@ -67,6 +67,9 @@ class DocumentMetadata(BaseModel):
     created_at: Optional[str] = None
     modified_at: Optional[str] = None
     uploaded_at: Optional[str] = None
+    relevance_score: Optional[float] = None
+    relevance_rank: Optional[int] = None
+    relevance_score_normalized: Optional[float] = None
 
 class ParentChunk(BaseModel):
     id: str

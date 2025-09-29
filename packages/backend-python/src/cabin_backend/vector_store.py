@@ -505,7 +505,21 @@ class VectorStore:
         else:
             self._last_lexical_rankings = []
 
-        selected_chunks = [chunk_lookup[cid] for cid in selected_ids if cid in chunk_lookup]
+        scores_for_selected = {cid: final_scores.get(cid, 0.0) for cid in selected_ids}
+        max_score_value = max(scores_for_selected.values(), default=0.0)
+
+        selected_chunks: List[ParentChunk] = []
+        for rank, cid in enumerate(selected_ids, start=1):
+            chunk = chunk_lookup.get(cid)
+            if not chunk:
+                continue
+            score = scores_for_selected.get(cid, 0.0)
+            chunk.metadata.relevance_score = score
+            chunk.metadata.relevance_rank = rank
+            chunk.metadata.relevance_score_normalized = (
+                score / max_score_value if max_score_value > 0 else 1.0
+            )
+            selected_chunks.append(chunk)
 
         logger.debug(
             "VectorStore returning %d parent chunks for query '%s'",
@@ -764,4 +778,3 @@ class VectorStore:
         except Exception as e:
             logger.error("Error sampling corpus: %s", e)
             return []
-
