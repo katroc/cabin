@@ -30,6 +30,7 @@ export interface ExtendedSettingsData {
   maxCitations: number
   requireQuotes: boolean
   quoteMaxWords: number
+  citationMinScoreRatio: number
 
   // Retrieval - Basic
   finalPassages: number
@@ -130,6 +131,7 @@ const defaultSettings: ExtendedSettingsData = {
   maxCitations: 3,
   requireQuotes: true,
   quoteMaxWords: 12,
+  citationMinScoreRatio: 0.4,
 
   // Retrieval
   finalPassages: 8,
@@ -355,6 +357,7 @@ export function SettingsProvider({
         maxCitations: state.data.maxCitations,
         requireQuotes: state.data.requireQuotes,
         quoteMaxWords: state.data.quoteMaxWords,
+        citationMinScoreRatio: state.data.citationMinScoreRatio,
 
         // Retrieval - Basic
         finalPassages: state.data.finalPassages,
@@ -567,6 +570,13 @@ export function SettingsProvider({
         const words = Number(value)
         if (isNaN(words) || words < 5 || words > 100) {
           return 'Quote max words must be between 5 and 100'
+        }
+        break
+
+      case 'citationMinScoreRatio':
+        const citationRatio = Number(value)
+        if (isNaN(citationRatio) || citationRatio < 0 || citationRatio > 1) {
+          return 'Citation relevance threshold must be between 0 and 1'
         }
         break
 

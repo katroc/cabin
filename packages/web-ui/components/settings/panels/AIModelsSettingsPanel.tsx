@@ -286,6 +286,25 @@ export function AIModelsSettingsPanel() {
             error={state.validationErrors.quoteMaxWords}
           />
         </SettingField>
+
+        <SettingField
+          title="Citation Relevance"
+          description="Filter out low-relevance sources using reranker scores"
+        >
+          <SettingControl
+            type="slider"
+            id="citationMinScoreRatio"
+            label="Minimum Relevance"
+            value={state.data.citationMinScoreRatio}
+            onChange={(value) => updateSetting('citationMinScoreRatio', value)}
+            min={0}
+            max={1}
+            step={0.05}
+            formatValue={(value) => `${Math.round(value * 100)}%`}
+            description="Lowest normalized reranker score a citation must meet to be included"
+            error={state.validationErrors.citationMinScoreRatio}
+          />
+        </SettingField>
       </SettingGroup>
     </div>
   )
