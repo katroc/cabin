@@ -65,20 +65,10 @@ export default function ConversationSourcesPanel({ open, onClose, sources }: Con
           ) : (
             sources.map(source => (
               <article key={source.key} className="sources-panel__item" role="listitem">
-                <div className="sources-panel__item-header">
-                  <div>
-                    <div className="sources-panel__item-title">{source.title || 'Untitled source'}</div>
-                    <div className="sources-panel__item-meta">
-                      <span>{source.usageCount} mention{source.usageCount === 1 ? '' : 's'}</span>
-                      <span>·</span>
-                      <span>Last used {source.lastUsed.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
-                      {source.firstUsed.getTime() !== source.lastUsed.getTime() && (
-                        <>
-                          <span>·</span>
-                          <span>First seen {source.firstUsed.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</span>
-                        </>
-                      )}
-                    </div>
+                <header className="sources-panel__item-header">
+                  <div className="sources-panel__item-headline">
+                    <div className="sources-panel__item-label">Source</div>
+                    <h3 className="sources-panel__item-title">{source.title || 'Untitled source'}</h3>
                   </div>
                   {source.url && (
                     <a
@@ -91,10 +81,28 @@ export default function ConversationSourcesPanel({ open, onClose, sources }: Con
                       <span>Open</span>
                     </a>
                   )}
-                </div>
+                </header>
+
+                <dl className="sources-panel__item-stats">
+                  <div>
+                    <dt>Mentions</dt>
+                    <dd>{source.usageCount}</dd>
+                  </div>
+                  <div>
+                    <dt>Last used</dt>
+                    <dd>{source.lastUsed.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</dd>
+                  </div>
+                  {source.firstUsed.getTime() !== source.lastUsed.getTime() && (
+                    <div>
+                      <dt>First seen</dt>
+                      <dd>{source.firstUsed.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</dd>
+                    </div>
+                  )}
+                </dl>
 
                 {source.quotes.length > 0 && (
                   <div className="sources-panel__quotes">
+                    <div className="sources-panel__quotes-label">Sample references</div>
                     {source.quotes.map((quote, index) => (
                       <blockquote key={index} className="sources-panel__quote">
                         “{quote}”

@@ -33,7 +33,7 @@ export default function ExportDropdown({ onDownloadConversation, disabled = fals
       <button
         onClick={() => setIsOpen(!isOpen)}
         disabled={disabled}
-        className="flex items-center gap-2 rounded-lg border p-2 text-sm transition disabled:cursor-not-allowed disabled:opacity-40 ui-bg-secondary ui-border-light ui-text-primary ui-shadow-floating"
+        className="flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium transition disabled:cursor-not-allowed disabled:opacity-40 ui-bg-secondary ui-border-light ui-text-secondary hover:text-white hover:border-[var(--accent)]"
       >
         <Download size={16} />
         Export
