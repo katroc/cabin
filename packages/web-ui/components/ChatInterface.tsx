@@ -6,6 +6,7 @@ import SmartResponse from './SmartResponse'
 import ExportDropdown from './ExportDropdown'
 import PersonaSelector from './PersonaSelector'
 import { useUIPreferences, PersonaType, ChatMode } from './contexts/UIPreferencesProvider'
+import { splitThinking, deriveAnswerFromThinking } from '../utils/thinking'
 
 interface Citation {
   id: string
@@ -36,6 +37,7 @@ interface Message {
   id: string
   role: 'user' | 'assistant'
   content: string
+  thinking?: string
   citations?: Citation[]
   rendered_citations?: RenderedCitation[]
   timestamp: Date
@@ -135,70 +137,89 @@ export default function ChatInterface({
 
       const reader = response.body.getReader()
       const decoder = new TextDecoder()
-      let aggregated = ''
+      let rawResponse = ''
+      let visibleResponse = ''
+      let thinkingContent = ''
       let citations: any[] = []
+      let renderedCitations: any[] = []
       let lastUpdate = 0
-      let hasParsedCitations = false
 
       while (true) {
         const { value, done } = await reader.read()
         if (done) break
 
         const chunk = decoder.decode(value, { stream: true })
+        let cleanChunk = chunk
 
-        // Check if this is the metadata chunk
         if (chunk.includes('---METADATA---')) {
-          const metadataMatch = chunk.match(/---METADATA---(\{.*?\})---END---/)
-          if (metadataMatch) {
+          const metadataRegex = /---METADATA---(\{.*?\})---END---/g
+          let metadataMatch: RegExpExecArray | null
+          while ((metadataMatch = metadataRegex.exec(chunk)) !== null) {
             try {
               const metadata = JSON.parse(metadataMatch[1])
               citations = metadata.citations || []
-              // Immediately update the message with citations when we receive them
+              renderedCitations = metadata.rendered_citations || []
+              if (typeof metadata.thinking === 'string') {
+                thinkingContent = metadata.thinking
+              }
               updateAssistantMessage(assistantId, message => ({
                 ...message,
-                citations: citations,
-                rendered_citations: metadata.rendered_citations || []
+                citations,
+                rendered_citations: renderedCitations,
+                thinking: thinkingContent || message.thinking
               }))
-            } catch (e) {
-              console.warn('Failed to parse streaming metadata:', e)
+            } catch (err) {
+              console.warn('Failed to parse streaming metadata:', err)
             }
           }
-          // Add the chunk to aggregated but remove any metadata parts
-          const cleanChunk = chunk.replace(/---METADATA---\{.*?\}---END---/g, '')
-          aggregated += cleanChunk
-        } else {
-          aggregated += chunk
+          cleanChunk = chunk.replace(metadataRegex, '')
         }
 
-        // Throttle updates for smoother streaming - update at most every 50ms
+        if (cleanChunk) {
+          rawResponse += cleanChunk
+          const split = splitThinking(rawResponse)
+          const answer = split.answer.trim()
+          const thinking = split.thinking.trim()
+
+          let nextVisible = answer
+          if (!nextVisible && thinking) {
+            nextVisible = deriveAnswerFromThinking(thinking, false)
+          }
+          visibleResponse = nextVisible || ''
+          if (thinking) {
+            thinkingContent = thinking
+          }
+        }
+
         const now = Date.now()
-        if (now - lastUpdate > 50 || done) {
-          const currentText = aggregated
+        if (now - lastUpdate > 50) {
           updateAssistantMessage(assistantId, message => ({
             ...message,
-            content: currentText,
-            // Preserve existing citations if they exist
-            citations: message.citations || [],
-            rendered_citations: message.rendered_citations || []
+            content: visibleResponse,
+            thinking: thinkingContent || message.thinking,
+            citations: message.citations?.length ? message.citations : citations,
+            rendered_citations: message.rendered_citations?.length
+              ? message.rendered_citations
+              : renderedCitations
           }))
           lastUpdate = now
-
-          // Small delay to create smoother visual flow
           await new Promise(resolve => setTimeout(resolve, 8))
         }
       }
 
-      // Ensure final update with complete text
       updateAssistantMessage(assistantId, message => ({
         ...message,
-        content: aggregated,
-        citations: message.citations || [],
-        rendered_citations: message.rendered_citations || []
+        content: visibleResponse,
+        thinking: thinkingContent || message.thinking,
+        citations: message.citations?.length ? message.citations : citations,
+        rendered_citations: message.rendered_citations?.length
+          ? message.rendered_citations
+          : renderedCitations
       }))
 
       setStreamingMessageId(null)
       abortControllerRef.current = null
-      return aggregated
+      return visibleResponse
     },
     [chatMode, persona, updateAssistantMessage]
   )
@@ -252,6 +273,7 @@ export default function ChatInterface({
       id: assistantMessageId,
       role: 'assistant',
       content: '',
+      thinking: '',
       timestamp: new Date()
     }
 
@@ -285,33 +307,37 @@ export default function ChatInterface({
     }
 
     if (streamingFailed || !streamedText) {
-      // Streaming failed, fall back to regular endpoint
       try {
         const fullResponse = await requestFullResponse(question)
-
-        // Hide verification animation if this wasn't actually a RAG request
-        if (!fullResponse.used_rag) {
-              }
+        const rawAnswer = typeof fullResponse.response === 'string' ? fullResponse.response : ''
+        const thinking = typeof fullResponse.thinking === 'string' ? fullResponse.thinking : ''
+        let visible = rawAnswer.trim()
+        if (!visible && thinking) {
+          visible = deriveAnswerFromThinking(thinking)
+        }
+        if (!visible) {
+          visible = 'No response received'
+        }
 
         updateAssistantMessage(assistantMessageId, message => ({
           ...message,
-          content: fullResponse.response || 'No response received',
+          content: visible,
+          thinking,
           citations: fullResponse.citations || [],
           rendered_citations: fullResponse.rendered_citations || [],
           timestamp: new Date()
         }))
-
-        // Clear verification animation now that citations are populated
-          } catch (error) {
+      } catch (error) {
         console.error('Both streaming and regular endpoints failed:', error)
         updateAssistantMessage(assistantMessageId, message => ({
           ...message,
           content: 'Sorry, I encountered an error processing your request.',
+          thinking: '',
           citations: [],
           rendered_citations: [],
           timestamp: new Date()
         }))
-          }
+      }
     } else {
       // Streaming succeeded and citations were already added during streaming
       // Just add timestamp and clear verification animation
@@ -415,6 +441,7 @@ export default function ChatInterface({
                         query={messages[index - 1]?.content || ''}
                         citations={message.citations || []}
                         renderedCitations={message.rendered_citations || []}
+                        thinking={message.thinking || ''}
                         isVerifyingSources={false}
                         isStreaming={streamingMessageId === message.id}
                       />

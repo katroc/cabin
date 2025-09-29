@@ -67,6 +67,9 @@ class DocumentMetadata(BaseModel):
     created_at: Optional[str] = None
     modified_at: Optional[str] = None
     uploaded_at: Optional[str] = None
+    relevance_score: Optional[float] = None
+    relevance_rank: Optional[int] = None
+    relevance_score_normalized: Optional[float] = None
 
 class ParentChunk(BaseModel):
     id: str
@@ -115,6 +118,7 @@ class ConversationMessage(BaseModel):
     content: str
     timestamp: datetime = Field(default_factory=datetime.utcnow)
     citations: List[Citation] = Field(default_factory=list)
+    thinking: Optional[str] = None
 
 class ConversationHistory(BaseModel):
     """Complete conversation history for a conversation ID."""
@@ -123,12 +127,19 @@ class ConversationHistory(BaseModel):
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
-    def add_message(self, role: str, content: str, citations: List[Citation] = None) -> ConversationMessage:
+    def add_message(
+        self,
+        role: str,
+        content: str,
+        citations: List[Citation] = None,
+        thinking: Optional[str] = None,
+    ) -> ConversationMessage:
         """Add a new message to the conversation."""
         message = ConversationMessage(
             role=role,
             content=content,
-            citations=citations or []
+            citations=citations or [],
+            thinking=thinking
         )
         self.messages.append(message)
         self.updated_at = datetime.utcnow()
@@ -155,6 +166,7 @@ class ChatResponse(BaseModel):
     rendered_citations: List[dict] = Field(default_factory=list)
     system: str = "python-gold-standard-rag"
     used_rag: bool = False  # Indicates whether RAG retrieval was used for this response
+    thinking: Optional[str] = None
 
 
 class CitationPayload(BaseModel):

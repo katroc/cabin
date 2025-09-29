@@ -8,6 +8,7 @@ import requests
 from pydantic import BaseModel, ValidationError
 
 from .config import settings
+from .thinking import strip_thinking
 
 logger = logging.getLogger(__name__)
 
@@ -159,12 +160,46 @@ Examples:
 
             model_name = settings.llm_model
             logger.debug(f"Query router using model: '{model_name}'")
+            router_tools = [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "classify",
+                        "description": "Return the routing decision as structured JSON.",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "intent": {
+                                    "type": "string",
+                                    "enum": [
+                                        QueryIntent.RAG_QUERY.value,
+                                        QueryIntent.GENERAL_QUERY.value,
+                                        QueryIntent.HYBRID_QUERY.value,
+                                    ],
+                                },
+                                "confidence": {
+                                    "type": "number",
+                                    "minimum": 0,
+                                    "maximum": 1,
+                                },
+                                "reason": {
+                                    "type": "string",
+                                },
+                            },
+                            "required": ["intent", "confidence", "reason"],
+                        },
+                    },
+                }
+            ]
+
             payload = {
                 "model": model_name,
                 "messages": messages,
                 "temperature": 0.0,  # More deterministic
                 "max_tokens": 100,   # Shorter for JSON only
-                "stop": ["Query:", "\n\n"]  # Stop at new query or double newline
+                "stop": ["Query:", "\n\n"],  # Stop at new query or double newline
+                "tools": router_tools,
+                "tool_choice": {"type": "function", "function": {"name": "classify"}},
             }
 
             # Make request to router LLM
@@ -181,33 +216,52 @@ Examples:
 
             # Parse response
             data = response.json()
-            content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+            choice = data.get("choices", [{}])[0]
+            message_payload = choice.get("message", {})
+            tool_calls = message_payload.get("tool_calls", [])
+
+            if tool_calls:
+                try:
+                    arguments = tool_calls[0].get("function", {}).get("arguments", "")
+                    if not arguments:
+                        logger.warning("Router tool call missing arguments: %s", tool_calls[0])
+                    else:
+                        parsed = json.loads(arguments)
+                        return RouterResponse(**parsed)
+                except (json.JSONDecodeError, ValidationError) as err:
+                    logger.warning("Failed to parse router tool call: %s", err)
+
+            content = message_payload.get("content", "")
 
             if not content.strip():
                 logger.warning("Router LLM returned empty response")
                 return None
 
+            # Remove any <think>...</think> blocks the model may have produced
+            cleaned_content = strip_thinking(content)
+
             # Parse JSON response (extract JSON from potentially mixed content)
             try:
                 # First try direct parsing
-                response_data = json.loads(content.strip())
+                response_data = json.loads(cleaned_content.strip())
                 return RouterResponse(**response_data)
             except json.JSONDecodeError:
                 # If direct parsing fails, try to extract JSON from the content
                 import re
-                json_match = re.search(r'\{.*?\}', content, re.DOTALL)
+                search_space = cleaned_content or content
+                json_match = re.search(r'\{.*?\}', search_space, re.DOTALL)
                 if json_match:
                     try:
                         response_data = json.loads(json_match.group())
                         return RouterResponse(**response_data)
                     except (json.JSONDecodeError, ValidationError) as e:
-                        logger.warning("Failed to parse extracted JSON: %s. Content: %s", e, content[:200])
+                        logger.warning("Failed to parse extracted JSON: %s. Content: %s", e, search_space[:200])
                         return None
                 else:
-                    logger.warning("No JSON found in response. Content: %s", content[:200])
+                    logger.warning("No JSON found in response. Content: %s", search_space[:200])
                     return None
             except ValidationError as e:
-                logger.warning("Failed to validate router response: %s. Content: %s", e, content[:200])
+                logger.warning("Failed to validate router response: %s. Content: %s", e, cleaned_content[:200])
                 return None
 
         except requests.RequestException as e:

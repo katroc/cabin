@@ -22,6 +22,7 @@ interface Message {
   id: string
   role: 'user' | 'assistant'
   content: string
+  thinking?: string
   citations?: Citation[]
   timestamp: Date
 }
@@ -226,18 +227,26 @@ export default function Home() {
           if (conversation.id !== activeConversationId) return conversation
 
           const updatedMessages = updater(conversation.messages)
-          const meaningfulMessages = updatedMessages.filter(
-            msg => msg.role === 'user' || msg.role === 'assistant'
-          )
+          const meaningfulMessages = updatedMessages.filter(msg => {
+            if (msg.role === 'assistant') {
+              return Boolean((msg.content || '').trim() || (msg.thinking || '').trim())
+            }
+            if (msg.role === 'user') {
+              return Boolean((msg.content || '').trim())
+            }
+            return true
+          })
           const lastMeaningful = [...meaningfulMessages]
             .reverse()
-            .find(msg => msg.content.trim().length > 0)
+            .find(msg =>
+              msg.role === 'assistant' && ((msg.content || '').trim() || (msg.thinking || '').trim())
+            )
 
           return {
             ...conversation,
             messages: updatedMessages,
             messageCount: meaningfulMessages.length,
-            lastMessage: lastMeaningful?.content || '',
+            lastMessage: lastMeaningful?.content?.trim() || lastMeaningful?.thinking || '',
             timestamp: new Date()
           }
         })

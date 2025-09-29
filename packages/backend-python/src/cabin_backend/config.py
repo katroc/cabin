@@ -87,6 +87,7 @@ class GenerationSettings(BaseModel):
     max_tokens: int = 8000
     streaming_max_tokens: int = 8000
     rephrasing_max_tokens: int = 4000
+    citation_min_score_ratio: float = 0.4
 
     class Config:
         extra = "ignore"
@@ -137,6 +138,7 @@ class UISettings(BaseModel):
     max_citations: int = 3
     require_quotes: bool = True
     quote_max_words: int = 12
+    citation_min_score_ratio: float = 0.4
 
     # Vector Database
     chroma_host: str = "localhost"
@@ -298,6 +300,7 @@ def save_ui_settings_to_yaml(ui_settings_payload: 'UISettingsPayload', path_str:
             "max_citations": ui_settings_payload.max_citations,
             "require_quotes": ui_settings_payload.require_quotes,
             "quote_max_words": ui_settings_payload.quote_max_words,
+            "citation_min_score_ratio": ui_settings_payload.citation_min_score_ratio,
 
             # Vector Database
             "chroma_host": ui_settings_payload.chroma_host,

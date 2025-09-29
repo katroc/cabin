@@ -34,6 +34,7 @@ class RuntimeOverrides:
     max_citations: Optional[int] = None
     require_quotes: Optional[bool] = None
     quote_max_words: Optional[int] = None
+    citation_min_score_ratio: Optional[float] = None
 
     # Retrieval - Basic
     final_passages: Optional[int] = None

@@ -12,6 +12,7 @@ from .config import settings
 from .models import ParentChunk, ChatResponse, Citation, PersonaType
 from .runtime import RuntimeOverrides
 from .telemetry import metrics, sanitize_text
+from .thinking import extract_visible_answer, split_thinking, derive_answer_from_thinking
 
 
 logger = logging.getLogger(__name__)
@@ -36,6 +37,11 @@ class Generator:
         self.quote_verifier = QuoteVerifier(
             threshold=settings.app_config.verification.fuzzy_partial_ratio_min
         )
+        self.citation_min_score_ratio = (
+            overrides.citation_min_score_ratio
+            if overrides and overrides.citation_min_score_ratio is not None
+            else settings.app_config.generation.citation_min_score_ratio
+        )
 
     def ask(
         self,
@@ -58,7 +64,8 @@ class Generator:
                 conversation_id=conversation_id,
                 citations=[],
                 rendered_citations=[],
-                used_rag=False  # This was intended as RAG but failed
+                used_rag=False,  # This was intended as RAG but failed
+                thinking=""
             )
 
         provenance, context_blocks = self._build_provenance_context(context_chunks)
@@ -82,18 +89,21 @@ class Generator:
             max_tokens=self.max_tokens,
         )
 
-        answer = response.choices[0].message.content
+        raw_answer = response.choices[0].message.content or ""
 
         # Validate that we got a proper LLM response
-        if not answer or answer.strip() == "":
+        if not raw_answer.strip():
             logger.warning("Empty response from LLM for query: %s", query[:100])
             return ChatResponse(
                 response="I couldn't generate a proper response for your question. Please try rephrasing it.",
                 conversation_id=conversation_id,
                 citations=[],
                 rendered_citations=[],
-                used_rag=False  # This was intended as RAG but failed
+                used_rag=False,  # This was intended as RAG but failed
+                thinking=""
             )
+
+        answer, thinking = extract_visible_answer(raw_answer)
 
         # Check if response looks like raw documentation (simple heuristic)
         if self._looks_like_raw_docs(answer.strip()):
@@ -111,9 +121,10 @@ class Generator:
                 conversation_id=conversation_id,
                 citations=[],
                 rendered_citations=[],
-                used_rag=False  # Provenance disabled, not using RAG
+                used_rag=False,  # Provenance disabled, not using RAG
+                thinking=thinking
             )
-        return self._post_process(answer, provenance, query, conversation_id)
+        return self._post_process(answer, thinking, provenance, query, conversation_id)
 
     def ask_stream(
         self,
@@ -126,15 +137,80 @@ class Generator:
         persona: PersonaType = PersonaType.STANDARD,
     ) -> Iterator[str]:
         """Generates a real streaming response with token-by-token output."""
+        class StreamWrapper(Iterator[str]):
+            def __init__(self, iterator: Iterator[str], state: Dict[str, str]):
+                self._iterator = iterator
+                self.state = state
+
+            def __iter__(self) -> "StreamWrapper":
+                return self
+
+            def __next__(self) -> str:
+                return next(self._iterator)
+
         if not context_chunks:
-            # If provenance is explicitly disabled, generate a streaming conversational response
+            # If provenance is explicitly disabled, generate a conversational streaming response sans citations
             if enforce_provenance is False:
-                yield from self._generate_streaming_conversational_response(query, conversation_id, conversation_context, persona)
-                return
+                state = {"thinking": "", "raw": ""}
+
+                def stream_direct() -> Iterator[str]:
+                    raw_buffer = ""
+                    visible_buffer = ""
+                    try:
+                        messages = [{"role": "system", "content": self._get_conversational_system_prompt(persona.value)}]
+                        if conversation_context:
+                            messages.extend(conversation_context)
+                        messages.append({"role": "user", "content": query})
+
+                        response_stream = self.llm_client.chat.completions.create(
+                            model=self.llm_model,
+                            messages=cast(List[ChatCompletionMessageParam], messages),
+                            stream=True,
+                            temperature=self.temperature,
+                            max_tokens=self.streaming_max_tokens,
+                        )
+
+                        for chunk in response_stream:
+                            if chunk.choices[0].delta.content is None:
+                                continue
+
+                            content = chunk.choices[0].delta.content
+                            raw_buffer += content
+
+                            parts = split_thinking(raw_buffer)
+                            answer_text = parts["answer"].strip()
+                            thinking_text = parts["thinking"].strip()
+
+                            visible_text = answer_text
+                            if not visible_text and thinking_text:
+                                derived = derive_answer_from_thinking(thinking_text, allow_fallback=False)
+                                if derived:
+                                    visible_text = derived.strip()
+
+                            if visible_text and len(visible_text) >= len(visible_buffer):
+                                delta = visible_text[len(visible_buffer):]
+                                if delta:
+                                    visible_buffer = visible_text
+                                    yield delta
+
+                            if thinking_text:
+                                state["thinking"] = thinking_text
+                            state["raw"] = raw_buffer
+
+                    except Exception as exc:
+                        logger.error("Error during streaming conversational generation: %s", str(exc))
+                        yield f"Error generating response: {str(exc)}"
+
+                return StreamWrapper(stream_direct(), state)
 
             # No context chunks and provenance required - return fallback message
-            yield "I couldn't find any relevant information in the documentation to answer your question. You might want to try rephrasing your query or checking if the topic is covered in the available documents."
-            return
+            def fallback() -> Iterator[str]:
+                yield (
+                    "I couldn't find any relevant information in the documentation to answer your question. "
+                    "You might want to try rephrasing your query or checking if the topic is covered in the available documents."
+                )
+
+            return StreamWrapper(fallback(), {"thinking": ""})
 
         # Build context and prompt for RAG response
         provenance, context_blocks = self._build_provenance_context(context_chunks)
@@ -150,61 +226,65 @@ class Generator:
         # Add the current user query
         messages.append({"role": "user", "content": prompt})
 
-        # Stream the response
-        try:
-            response_stream = self.llm_client.chat.completions.create(
-                model=self.llm_model,
-                messages=cast(List[ChatCompletionMessageParam], messages),
-                stream=True,  # Enable streaming
-                temperature=self.temperature,
-                max_tokens=self.streaming_max_tokens,
-            )
+        state: Dict[str, str] = {"thinking": "", "raw": ""}
 
-            collected_content = ""
-            for chunk in response_stream:
-                if chunk.choices[0].delta.content is not None:
+        def stream() -> Iterator[str]:
+            raw_buffer = ""
+            visible_buffer = ""
+            emitted_content = False
+            try:
+                response_stream = self.llm_client.chat.completions.create(
+                    model=self.llm_model,
+                    messages=cast(List[ChatCompletionMessageParam], messages),
+                    stream=True,
+                    temperature=self.temperature,
+                    max_tokens=self.streaming_max_tokens,
+                )
+
+                for chunk in response_stream:
+                    if chunk.choices[0].delta.content is None:
+                        continue
+
                     content = chunk.choices[0].delta.content
-                    collected_content += content
-                    yield content
+                    raw_buffer += content
 
-        except Exception as e:
-            logger.error("Error during streaming generation: %s", str(e))
-            yield f"Error generating response: {str(e)}"
+                    parts = split_thinking(raw_buffer)
+                    answer_text = parts["answer"].strip()
+                    thinking_text = parts["thinking"].strip()
 
-    def _generate_streaming_conversational_response(
-        self,
-        query: str,
-        conversation_id: str,
-        conversation_context: Optional[List[Dict[str, str]]] = None,
-        persona: PersonaType = PersonaType.STANDARD
-    ) -> Iterator[str]:
-        """Generate a streaming conversational response without RAG context."""
-        # Prepare conversation messages
-        messages = [{"role": "system", "content": self._get_conversational_system_prompt(persona.value)}]
+                    visible_text = answer_text
+                    if not visible_text and thinking_text:
+                        derived = derive_answer_from_thinking(thinking_text, allow_fallback=False)
+                        if derived:
+                            visible_text = derived.strip()
 
-        # Add conversation context
-        if conversation_context:
-            messages.extend(conversation_context)
+                    if visible_text and len(visible_text) >= len(visible_buffer):
+                        delta = visible_text[len(visible_buffer):]
+                        if delta:
+                            visible_buffer = visible_text
+                            yield delta
+                            if delta.strip():
+                                emitted_content = True
 
-        # Add the current user query
-        messages.append({"role": "user", "content": query})
+                    if thinking_text:
+                        state["thinking"] = thinking_text
+                    state["raw"] = raw_buffer
 
-        try:
-            response_stream = self.llm_client.chat.completions.create(
-                model=self.llm_model,
-                messages=cast(List[ChatCompletionMessageParam], messages),
-                stream=True,  # Enable streaming
-                temperature=self.temperature,
-                max_tokens=self.streaming_max_tokens,
-            )
+                if not emitted_content and state.get("thinking"):
+                    fallback = derive_answer_from_thinking(state["thinking"], allow_fallback=True)
+                    if fallback:
+                        yield fallback
+                        if fallback.strip():
+                            emitted_content = True
+                            visible_buffer = fallback
+                        raw_buffer += fallback
+                        state["raw"] = raw_buffer
 
-            for chunk in response_stream:
-                if chunk.choices[0].delta.content is not None:
-                    yield chunk.choices[0].delta.content
+            except Exception as exc:
+                logger.error("Error during streaming generation: %s", str(exc))
+                yield f"Error generating response: {str(exc)}"
 
-        except Exception as e:
-            logger.error("Error during streaming conversational generation: %s", str(e))
-            yield f"Error generating response: {str(e)}"
+        return StreamWrapper(stream(), state)
 
     def _get_conversational_system_prompt(self, persona: str = "standard") -> str:
         """Returns the system prompt for conversational responses without citations."""
@@ -351,6 +431,7 @@ RESPONSE STYLE:
     def _post_process(
         self,
         response: str,
+        thinking: str,
         provenance: Dict[str, Dict[str, Any]],
         query: Optional[str] = None,
         conversation_id: Optional[str] = None,
@@ -361,7 +442,8 @@ RESPONSE STYLE:
                 conversation_id=conversation_id or "unknown",
                 citations=[],
                 rendered_citations=[],
-                used_rag=False  # This was RAG processing but failed
+                used_rag=False,  # This was RAG processing but failed
+                thinking=thinking
             )
 
         cleaned = self._remove_free_urls(response.strip())
@@ -378,9 +460,26 @@ RESPONSE STYLE:
         # Limit to top chunks to avoid showing too many sources
         max_sources = min(len(provenance), settings.app_config.generation.max_citations)
 
+        score_threshold = max(0.0, min(1.0, float(self.citation_min_score_ratio or 0.0)))
+        best_candidate: Optional[Tuple[float, str, Dict[str, Any]]] = None
+
         for i, (idx, data) in enumerate(list(provenance.items())[:max_sources]):
             chunk = data["chunk"]
             quote = self._default_quote(chunk.text, quote_limit)
+
+            normalized_score = getattr(chunk.metadata, "relevance_score_normalized", None)
+            raw_score = getattr(chunk.metadata, "relevance_score", None)
+            effective_score = (
+                float(normalized_score)
+                if normalized_score is not None
+                else float(raw_score) if raw_score is not None else 1.0
+            )
+
+            if best_candidate is None or effective_score > best_candidate[0]:
+                best_candidate = (effective_score, idx, data)
+
+            if score_threshold > 0 and normalized_score is not None and normalized_score < score_threshold:
+                continue
 
             citation = Citation(
                 id=idx,
@@ -396,6 +495,25 @@ RESPONSE STYLE:
             )
             citations.append(citation)
 
+        if not citations and best_candidate is not None:
+            _, idx, data = best_candidate
+            chunk = data["chunk"]
+            quote = self._default_quote(chunk.text, quote_limit)
+
+            fallback_citation = Citation(
+                id=str(idx),
+                page_title=data["page_title"] or data.get("url", "") or f"Source {idx}",
+                space_name=data.get("space_name", "") or None,
+                space_key=data.get("space_key", "") or None,
+                source_url=data.get("url", "") or None,
+                chunk_id=data["chunk_id"],
+                page_version=int(data["page_version"]) if data["page_version"] else None,
+                page_section=data.get("section", "") or None,
+                quote=quote,
+                last_modified=data.get("last_modified", "") or None,
+            )
+            citations.append(fallback_citation)
+
         # Apply citation merging to eliminate duplicates
         rendered, citation_mapping = render_citation_payloads(citations)
 
@@ -407,7 +525,8 @@ RESPONSE STYLE:
             conversation_id=conversation_id or "unknown",
             citations=citations,
             rendered_citations=rendered,
-            used_rag=True  # Successful RAG response with sources
+            used_rag=True,  # Successful RAG response with sources
+            thinking=thinking
         )
 
     def _extract_quote(self, text: str, index: str) -> Optional[str]:
@@ -528,17 +647,29 @@ Make it sound like you're explaining this to a colleague in a helpful, natural w
                 max_tokens=self.max_tokens,
             )
 
-            answer = response.choices[0].message.content
-            if not answer or answer.strip() == "":
+            raw_answer = response.choices[0].message.content or ""
+            if not raw_answer.strip():
                 # Even conversational mode failed, return a generic response
-                answer = "I'm here to help! Is there anything specific you'd like to know or discuss?"
+                fallback = "I'm here to help! Is there anything specific you'd like to know or discuss?"
+                return ChatResponse(
+                    response=fallback,
+                    conversation_id=conversation_id,
+                    citations=[],
+                    rendered_citations=[],
+                    used_rag=False,
+                    thinking=""
+                )
+
+            answer, thinking = extract_visible_answer(raw_answer)
+            sanitized = self._remove_free_urls(answer.strip())
 
             return ChatResponse(
-                response=answer.strip(),
+                response=sanitized,
                 conversation_id=conversation_id,
                 citations=[],
                 rendered_citations=[],
-                used_rag=False  # This is a conversational response
+                used_rag=False,  # This is a conversational response
+                thinking=thinking
             )
 
         except Exception as e:
@@ -549,7 +680,8 @@ Make it sound like you're explaining this to a colleague in a helpful, natural w
                 conversation_id=conversation_id,
                 citations=[],
                 rendered_citations=[],
-                used_rag=False  # This is a conversational fallback
+                used_rag=False,  # This is a conversational fallback
+                thinking=""
             )
 
     @staticmethod

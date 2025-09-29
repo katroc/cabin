@@ -59,6 +59,7 @@ class UISettingsPayload(BaseModel):
     max_citations: int = Field(alias="maxCitations", default=3)
     require_quotes: bool = Field(alias="requireQuotes", default=True)
     quote_max_words: int = Field(alias="quoteMaxWords", default=12)
+    citation_min_score_ratio: float = Field(alias="citationMinScoreRatio", default=0.4)
 
     # Vector Database
     chroma_host: str = Field(alias="chromaHost")
@@ -137,6 +138,7 @@ class UISettingsPayload(BaseModel):
             max_tokens=self.max_tokens,
             streaming_max_tokens=self.streaming_max_tokens,
             rephrasing_max_tokens=self.rephrasing_max_tokens,
+            citation_min_score_ratio=self.citation_min_score_ratio,
         )
 
 
@@ -202,6 +204,7 @@ def load_default_ui_settings() -> UISettingsPayload:
         maxCitations=ui_cfg.max_citations,
         requireQuotes=ui_cfg.require_quotes,
         quoteMaxWords=ui_cfg.quote_max_words,
+        citationMinScoreRatio=ui_cfg.citation_min_score_ratio,
 
         # Vector Database
         chromaHost=ui_cfg.chroma_host,
@@ -583,7 +586,8 @@ def chat(request: ChatRequest) -> ChatResponse:
         conversation_memory.add_assistant_message(
             conversation_id,
             response.response,
-            response.citations
+            response.citations,
+            response.thinking
         )
         memory_duration = (time.time() - memory_start) * 1000
         metrics.add_timing("memory_storage", memory_duration)
@@ -612,7 +616,8 @@ def chat(request: ChatRequest) -> ChatResponse:
                 conversation_memory.update_last_assistant_message(
                     conversation_id,
                     response.response,
-                    response.citations
+                    response.citations,
+                    response.thinking
                 )
 
             metrics.add_timing("fallback_generation", fallback_duration, metadata={
@@ -733,14 +738,16 @@ def chat_stream(request: ChatRequest):
             first_chunk_latency_ms: Optional[float] = None
             response_generation_timing: Optional[ComponentTiming] = None
             try:
-                for chunk in generator_service.ask_stream(
+                stream = generator_service.ask_stream(
                     request.message,
                     context_chunks,
                     conversation_id=conversation_id,
                     conversation_context=conversation_context,
                     enforce_provenance=should_use_rag,
                     persona=request.persona
-                ):
+                )
+
+                for chunk in stream:
                     if first_chunk_latency_ms is None:
                         first_chunk_latency_ms = (time.time() - generation_start) * 1000
                         metrics.add_timing(
@@ -755,6 +762,9 @@ def chat_stream(request: ChatRequest):
                     collected_response += chunk
                     yield chunk
 
+                stream_state = getattr(stream, "state", {})
+                thinking_text = stream_state.get("thinking", "") if isinstance(stream_state, dict) else ""
+
                 # Generate citations from top-ranked context chunks (trust the reranker)
                 citations = []
                 logger.info("STREAMING DEBUG: should_use_rag=%s, context_chunks=%d", should_use_rag, len(context_chunks) if context_chunks else 0)
@@ -765,11 +775,31 @@ def chat_stream(request: ChatRequest):
 
                     max_sources = min(len(context_chunks), settings.app_config.generation.max_citations)
                     quote_limit = settings.app_config.generation.quote_max_words
+                    score_threshold = max(
+                        0.0,
+                        min(1.0, float(getattr(generator_service, "citation_min_score_ratio", 0.0) or 0.0))
+                    )
+                    best_chunk = None
+                    best_score = -1.0
 
                     logger.debug("Creating citations from top %d chunks (limited by max_citations=%d)",
                                max_sources, settings.app_config.generation.max_citations)
 
                     for i, chunk in enumerate(context_chunks[:max_sources]):
+                        normalized_score = getattr(chunk.metadata, "relevance_score_normalized", None)
+                        raw_score = getattr(chunk.metadata, "relevance_score", None)
+                        effective_score = (
+                            float(normalized_score)
+                            if normalized_score is not None
+                            else float(raw_score) if raw_score is not None else 1.0
+                        )
+
+                        if effective_score > best_score:
+                            best_score = effective_score
+                            best_chunk = chunk
+
+                        if score_threshold > 0 and normalized_score is not None and normalized_score < score_threshold:
+                            continue
                         # Create a simple quote from the chunk (first sentence or truncated text)
                         chunk_text = chunk.text
                         if chunk_text:
@@ -798,6 +828,31 @@ def chat_stream(request: ChatRequest):
                     logger.debug("Created %d citations from streaming response (limited from %d chunks)",
                                len(citations), len(context_chunks))
 
+                    if not citations and best_chunk is not None:
+                        logger.debug("Streaming citation filter removed all candidates; falling back to highest scoring chunk")
+                        chunk_text = best_chunk.text
+                        if chunk_text:
+                            sentences = chunk_text.split(". ")
+                            if len(sentences) > 1 and len(sentences[0]) <= quote_limit * 6:
+                                quote = sentences[0] + "."
+                            else:
+                                words = chunk_text.split()[:quote_limit]
+                                quote = " ".join(words) + ("..." if len(words) == quote_limit else "")
+                        else:
+                            quote = ""
+                        citations.append(
+                            Citation(
+                                id=str(uuid.uuid4()),
+                                chunk_id=best_chunk.id,
+                                page_title=best_chunk.metadata.page_title,
+                                source_url=best_chunk.metadata.source_url,
+                                url=best_chunk.metadata.url,
+                                quote=quote,
+                                space_name=best_chunk.metadata.space_name,
+                                page_version=best_chunk.metadata.page_version
+                            )
+                        )
+
                 # Render citations with merging for duplicate sources
                 import json
                 citations_data = []
@@ -819,15 +874,16 @@ def chat_stream(request: ChatRequest):
                 metadata = {
                     "citations": citations_data,
                     "rendered_citations": rendered_citations_data,
-                    "conversation_id": conversation_id
+                    "conversation_id": conversation_id,
+                    "thinking": thinking_text,
                 }
                 logger.info("STREAMING: Final metadata - citations: %d, rendered_citations: %d",
                           len(citations_data), len(rendered_citations_data))
-                if citations_data:
+                if citations_data or thinking_text:
                     logger.info("STREAMING: Sending metadata to frontend")
                     yield f"\n---METADATA---{json.dumps(metadata)}---END---\n"
                 else:
-                    logger.warning("STREAMING: No citations_data, not sending metadata")
+                    logger.warning("STREAMING: No citations or thinking; metadata not sent")
 
                 # Record generation timing focusing on latency to first streamed chunk
                 total_stream_duration_ms = (time.time() - generation_start) * 1000
@@ -858,7 +914,8 @@ def chat_stream(request: ChatRequest):
                 conversation_memory.add_assistant_message(
                     conversation_id,
                     collected_response,
-                    citations
+                    citations,
+                    thinking_text
                 )
 
                 # Calculate total duration and store metrics
@@ -970,7 +1027,8 @@ def chat_direct(request: ChatRequest) -> ChatResponse:
         conversation_memory.add_assistant_message(
             conversation_id,
             response.response,
-            response.citations
+            response.citations,
+            response.thinking
         )
 
         # Complete performance tracking
@@ -989,7 +1047,8 @@ def chat_direct(request: ChatRequest) -> ChatResponse:
         return ChatResponse(
             response=response.response,
             citations=response.citations or [],
-            conversation_id=conversation_id
+            conversation_id=conversation_id,
+            thinking=response.thinking
         )
 
     except Exception as e:
@@ -1040,16 +1099,31 @@ def chat_direct_stream(request: ChatRequest):
             collected_response = ""
             generation_start = time.time()
             try:
-                for chunk in generator_service.ask_stream(
+                stream = generator_service.ask_stream(
                     request.message,
                     [],  # No context chunks for direct LLM mode
                     conversation_id=conversation_id,
                     conversation_context=conversation_context,
                     enforce_provenance=False,  # Never enforce citations in direct mode
                     persona=request.persona
-                ):
+                )
+
+                for chunk in stream:
                     collected_response += chunk
                     yield chunk
+
+                stream_state = getattr(stream, "state", {})
+                thinking_text = stream_state.get("thinking", "") if isinstance(stream_state, dict) else ""
+
+                if thinking_text:
+                    import json
+                    metadata = {
+                        "citations": [],
+                        "rendered_citations": [],
+                        "conversation_id": conversation_id,
+                        "thinking": thinking_text,
+                    }
+                    yield f"\n---METADATA---{json.dumps(metadata)}---END---\n"
 
                 # Record generation timing
                 generation_duration = (time.time() - generation_start) * 1000
@@ -1062,7 +1136,8 @@ def chat_direct_stream(request: ChatRequest):
                 conversation_memory.add_assistant_message(
                     conversation_id,
                     collected_response,
-                    []  # No citations in direct mode
+                    [],  # No citations in direct mode
+                    thinking_text
                 )
 
                 # Calculate total duration and store metrics
@@ -1121,7 +1196,8 @@ def get_conversation_history(conversation_id: str):
                     "role": msg.role,
                     "content": msg.content,
                     "timestamp": msg.timestamp,
-                    "citations": msg.citations
+                    "citations": msg.citations,
+                    "thinking": msg.thinking
                 }
                 for msg in history.messages
             ]

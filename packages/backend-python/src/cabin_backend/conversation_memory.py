@@ -56,11 +56,12 @@ class ConversationMemoryManager:
         self,
         conversation_id: str,
         message: str,
-        citations: List[Citation] = None
+        citations: List[Citation] = None,
+        thinking: Optional[str] = None,
     ) -> ConversationMessage:
         """Add an assistant message to the conversation."""
         conversation = self.get_or_create_conversation(conversation_id)
-        return conversation.add_message("assistant", message, citations or [])
+        return conversation.add_message("assistant", message, citations or [], thinking)
 
     def get_conversation_context(
         self,
@@ -142,7 +143,8 @@ class ConversationMemoryManager:
         self,
         conversation_id: str,
         message: str,
-        citations: List[Citation] = None
+        citations: List[Citation] = None,
+        thinking: Optional[str] = None,
     ) -> bool:
         """Update the last assistant message in the conversation."""
         with self._lock:
@@ -157,6 +159,7 @@ class ConversationMemoryManager:
                 if conversation.messages[i].role == "assistant":
                     conversation.messages[i].content = message
                     conversation.messages[i].citations = citations or []
+                    conversation.messages[i].thinking = thinking
                     conversation.updated_at = datetime.utcnow()
                     logger.debug("Updated last assistant message in conversation %s", conversation_id)
                     return True
