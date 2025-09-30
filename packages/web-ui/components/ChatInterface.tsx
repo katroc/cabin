@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Loader2, Send, StopCircle, BookOpen } from 'lucide-react'
+import { Loader2, Send, StopCircle, BookOpen, Copy, RefreshCw, Check } from 'lucide-react'
 import SmartResponse from './SmartResponse'
 import ExportDropdown from './ExportDropdown'
 import PersonaSelector from './PersonaSelector'
@@ -77,6 +77,8 @@ export default function ChatInterface({
   const [isProcessing, setIsProcessing] = useState(false)
   const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null)
   const [isSourcesPanelOpen, setIsSourcesPanelOpen] = useState(false)
+  const [hoveredMessageId, setHoveredMessageId] = useState<string | null>(null)
+  const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null)
   const { preferences, setPersona, setChatMode } = useUIPreferences()
   const { persona, chatMode } = preferences
   const messagesEndRef = useRef<HTMLDivElement | null>(null)
@@ -146,8 +148,11 @@ export default function ChatInterface({
     }
   }, [aggregatedSources.length, isSourcesPanelOpen])
 
+  // Load draft from localStorage when conversation changes
   useEffect(() => {
-    setInput('')
+    const draftKey = `draft-${conversation?.id || 'new'}`
+    const savedDraft = localStorage.getItem(draftKey)
+    setInput(savedDraft || '')
     setIsProcessing(false)
     setStreamingMessageId(null)
     lastAssistantIdRef.current = null
@@ -156,6 +161,17 @@ export default function ChatInterface({
     // Focus input when conversation changes
     inputRef.current?.focus()
   }, [conversation?.id])
+
+  // Save draft to localStorage when input changes
+  useEffect(() => {
+    if (!conversation?.id) return
+    const draftKey = `draft-${conversation.id}`
+    if (input) {
+      localStorage.setItem(draftKey, input)
+    } else {
+      localStorage.removeItem(draftKey)
+    }
+  }, [input, conversation?.id])
 
   useEffect(() => {
     if (!conversation) return
@@ -442,6 +458,100 @@ export default function ChatInterface({
     }
   }
 
+  const handleCopyMessage = useCallback((messageId: string, content: string) => {
+    navigator.clipboard.writeText(content)
+    setCopiedMessageId(messageId)
+    setTimeout(() => setCopiedMessageId(null), 2000)
+  }, [])
+
+  const handleRegenerateResponse = useCallback(async (messageId: string) => {
+    if (!conversation || isProcessing) return
+
+    // Find the message and its index
+    const messageIndex = messages.findIndex(msg => msg.id === messageId)
+    if (messageIndex === -1 || messageIndex === 0) return
+
+    // Get the user message that prompted this response
+    const userMessage = messages[messageIndex - 1]
+    if (!userMessage || userMessage.role !== 'user') return
+
+    // Remove the assistant message and everything after it
+    onMessagesChange(prev => prev.slice(0, messageIndex))
+
+    // Create a new assistant message
+    const newAssistantId = `${Date.now()}-assistant`
+    const newAssistantMessage: Message = {
+      id: newAssistantId,
+      role: 'assistant',
+      content: '',
+      thinking: '',
+      timestamp: new Date()
+    }
+
+    lastAssistantIdRef.current = newAssistantId
+    onMessagesChange(prev => [...prev, newAssistantMessage])
+
+    setIsProcessing(true)
+
+    let streamedText = ''
+    let streamingFailed = false
+
+    try {
+      streamedText = await streamResponse(userMessage.content, newAssistantId)
+    } catch (error) {
+      streamingFailed = true
+      setStreamingMessageId(null)
+      if ((error as Error).name === 'AbortError') {
+        return
+      }
+      console.warn('Streaming unavailable, falling back to standard response:', error)
+    }
+
+    if (streamingFailed || !streamedText) {
+      try {
+        const fullResponse = await requestFullResponse(userMessage.content)
+        const rawAnswer = typeof fullResponse.response === 'string' ? fullResponse.response : ''
+        const thinking = typeof fullResponse.thinking === 'string' ? fullResponse.thinking : ''
+        let visible = rawAnswer.trim()
+        if (!visible && thinking) {
+          visible = deriveAnswerFromThinking(thinking)
+        }
+        if (!visible) {
+          visible = 'No response received'
+        }
+
+        updateAssistantMessage(newAssistantId, message => ({
+          ...message,
+          content: visible,
+          thinking,
+          citations: fullResponse.citations || [],
+          rendered_citations: fullResponse.rendered_citations || [],
+          timestamp: new Date()
+        }))
+      } catch (error) {
+        console.error('Regeneration failed:', error)
+        updateAssistantMessage(newAssistantId, message => ({
+          ...message,
+          content: 'Sorry, I encountered an error regenerating the response.',
+          thinking: '',
+          citations: [],
+          rendered_citations: [],
+          timestamp: new Date()
+        }))
+      }
+    } else {
+      updateAssistantMessage(newAssistantId, message => ({
+        ...message,
+        timestamp: new Date()
+      }))
+    }
+
+    setIsProcessing(false)
+    setStreamingMessageId(null)
+    abortControllerRef.current = null
+    lastAssistantIdRef.current = null
+  }, [conversation, isProcessing, messages, onMessagesChange, streamResponse, requestFullResponse, updateAssistantMessage])
+
   useEffect(() => {
     return () => {
       abortControllerRef.current?.abort()
@@ -512,10 +622,47 @@ export default function ChatInterface({
 
           {messages.map((message, index) => {
             const isUser = message.role === 'user'
+            const isHovered = hoveredMessageId === message.id
+            const isCopied = copiedMessageId === message.id
+            const canRegenerate = !isUser && !isProcessing && index > 0
+
             return (
-              <div key={message.id} className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
-                <div className={isUser ? 'max-w-xl space-y-2' : 'w-full space-y-2'}>
-                  <div className={isUser ? "px-3 py-2 border rounded-lg ui-border-light" : "py-2"}>
+              <div
+                key={message.id}
+                className={`flex ${isUser ? 'justify-end' : 'justify-start'} group`}
+                onMouseEnter={() => setHoveredMessageId(message.id)}
+                onMouseLeave={() => setHoveredMessageId(null)}
+              >
+                <div className={isUser ? 'max-w-xl space-y-2 relative' : 'w-full space-y-2 relative'}>
+                  {/* Message Actions */}
+                  {(isHovered || isCopied) && (
+                    <div className={`absolute -top-2 ${isUser ? 'right-0' : 'left-0'} flex items-center gap-1 z-10`}>
+                      <button
+                        onClick={() => handleCopyMessage(message.id, message.content)}
+                        className="message-action-button"
+                        aria-label="Copy message"
+                        title="Copy message"
+                      >
+                        {isCopied ? (
+                          <Check size={14} />
+                        ) : (
+                          <Copy size={14} />
+                        )}
+                      </button>
+                      {canRegenerate && (
+                        <button
+                          onClick={() => handleRegenerateResponse(message.id)}
+                          className="message-action-button"
+                          aria-label="Regenerate response"
+                          title="Regenerate response"
+                        >
+                          <RefreshCw size={14} />
+                        </button>
+                      )}
+                    </div>
+                  )}
+
+                  <div className={isUser ? "px-3 py-2 border rounded-lg ui-border-light ui-bg-secondary" : "py-2"}>
                     {isUser ? (
                       <p className="whitespace-pre-wrap text-base leading-relaxed ui-text-primary">
                         {message.content}
@@ -575,18 +722,30 @@ export default function ChatInterface({
           >
             <textarea
               ref={inputRef}
-              rows={2}
+              rows={1}
               value={input}
-              onChange={(event) => setInput(event.target.value)}
+              onChange={(event) => {
+                setInput(event.target.value)
+                // Auto-resize textarea
+                const target = event.target
+                target.style.height = 'auto'
+                target.style.height = `${Math.min(target.scrollHeight, 200)}px`
+              }}
               onKeyDown={handleComposerKeyDown}
               placeholder={chatMode === 'rag' ? "Ask about your documentation..." : "Chat with AI..."}
-              className="w-full resize-none bg-transparent text-base leading-relaxed focus:outline-none ui-text-primary"
+              className="w-full resize-none bg-transparent text-base leading-relaxed focus:outline-none ui-text-primary max-h-[200px] overflow-y-auto"
               disabled={isProcessing && !canStop}
               autoFocus
+              style={{ minHeight: '40px' }}
             />
             <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
-              <div className="text-xs ui-text-muted">
-                Press Enter to send · Shift + Enter for a new line
+              <div className="flex items-center gap-3 text-xs ui-text-muted">
+                <span>Press Enter to send · Shift + Enter for a new line</span>
+                {input.length > 0 && (
+                  <span className={input.length > 4000 ? 'text-orange-500' : ''}>
+                    {input.length} chars
+                  </span>
+                )}
               </div>
               <div className="flex items-center gap-3">
                 {/* Persona Selector */}
