@@ -487,7 +487,7 @@ def clear_index():
         raise HTTPException(status_code=500, detail=f"Failed to clear index: {e}")
 
 @app.post("/api/chat")
-def chat(request: ChatRequest) -> ChatResponse:
+async def chat(request: ChatRequest) -> ChatResponse:
     """Endpoint for standard, non-streaming chat with intelligent routing and performance tracking."""
     if not vector_store_service or not generator_service or not conversation_memory or not query_router:
         raise HTTPException(status_code=503, detail="Chat service not available.")
@@ -552,7 +552,7 @@ def chat(request: ChatRequest) -> ChatResponse:
         context_chunks = []
         if should_use_rag:
             retrieval_start = time.time()
-            context_chunks = vector_store_service.query(request.message, filters=request.filters)
+            context_chunks = await vector_store_service.query_async(request.message, filters=request.filters)
             retrieval_duration = (time.time() - retrieval_start) * 1000
             metrics.add_timing("document_retrieval", retrieval_duration, metadata={
                 "num_chunks_retrieved": len(context_chunks),
