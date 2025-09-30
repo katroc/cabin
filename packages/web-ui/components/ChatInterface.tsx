@@ -178,14 +178,18 @@ export default function ChatInterface({
   useEffect(() => {
     if (!conversation) return
     // Auto-scroll only if we're near the bottom already
-    if (messagesContainerRef.current) {
-      const { scrollTop, scrollHeight, clientHeight } = messagesContainerRef.current
+    if (messagesContainerRef.current && messagesEndRef.current) {
+      const container = messagesContainerRef.current
+      const { scrollTop, scrollHeight, clientHeight } = container
       const isNearBottom = scrollHeight - scrollTop - clientHeight < 200
+
       if (isNearBottom) {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+        // Use instant scroll during streaming for smoother experience
+        const behavior = streamingMessageId ? 'instant' : 'smooth'
+        messagesEndRef.current.scrollIntoView({ behavior: behavior as ScrollBehavior })
       }
     }
-  }, [conversation?.messages, conversation?.id])
+  }, [conversation?.messages, conversation?.id, streamingMessageId])
 
   // Scroll detection to show/hide scroll button
   useEffect(() => {

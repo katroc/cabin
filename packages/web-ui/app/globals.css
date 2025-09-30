@@ -1784,29 +1784,37 @@ select::-webkit-scrollbar-thumb {
 
 /* Smooth Streaming Animation */
 .streaming-content {
-  overflow: hidden;
-  transition: all 0.15s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  will-change: contents;
+  contain: layout style;
 }
 
 .streaming-content .markdown-body {
-  animation: fadeInUpward 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94);
-  transform-origin: bottom;
+  animation: fadeInUpward 0.15s cubic-bezier(0.23, 1, 0.32, 1);
+  transform-origin: top;
+}
+
+.streaming-content .markdown-body > * {
+  animation: contentAppear 0.2s cubic-bezier(0.23, 1, 0.32, 1);
 }
 
 @keyframes fadeInUpward {
   from {
-    transform: translateY(4px) scale(0.98);
-    opacity: 0.9;
+    opacity: 0.7;
   }
   to {
-    transform: translateY(0) scale(1);
     opacity: 1;
   }
 }
 
-/* Enhanced scrolling behavior for streaming */
-.streaming-content {
-  scroll-behavior: smooth;
+@keyframes contentAppear {
+  from {
+    opacity: 0.8;
+    transform: translateY(-2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 /* Subtle highlight effect on new content */
