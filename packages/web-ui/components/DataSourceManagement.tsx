@@ -7,6 +7,8 @@ import DocumentTable from './DataSourceManagement/DocumentTable'
 import DocumentGrid from './DataSourceManagement/DocumentGrid'
 import DocumentList from './DataSourceManagement/DocumentList'
 import BulkActions, { defaultBulkActions } from './DataSourceManagement/BulkActions'
+import ConfirmationModal from './ConfirmationModal'
+import { useToast } from './ToastProvider'
 import {
   IndexedDocument,
   DataSourceStats,
@@ -23,10 +25,12 @@ interface DataSourceManagementProps {
 }
 
 export default function DataSourceManagement({ isOpen, onClose, onBack }: DataSourceManagementProps) {
+  const { addToast } = useToast()
   const [documents, setDocuments] = useState<IndexedDocument[]>([])
   const [stats, setStats] = useState<DataSourceStats | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [showClearConfirmation, setShowClearConfirmation] = useState(false)
 
   // Enhanced state management
   const [filters, setFilters] = useState<FilterOptions>({
@@ -343,6 +347,33 @@ export default function DataSourceManagement({ isOpen, onClose, onBack }: DataSo
     fetchStats()
   }
 
+  const handleClearIndex = () => {
+    setShowClearConfirmation(true)
+  }
+
+  const handleConfirmClearIndex = async () => {
+    setShowClearConfirmation(false)
+    try {
+      const response = await fetch('http://localhost:8788/api/index', {
+        method: 'DELETE'
+      })
+      if (response.ok) {
+        addToast('The index has been cleared successfully.', 'success')
+        // Refresh the data after clearing
+        handleRefresh()
+      } else {
+        throw new Error('Failed to clear index')
+      }
+    } catch (error) {
+      console.error('Failed to clear index:', error)
+      addToast('Failed to clear the index. Please try again.', 'error')
+    }
+  }
+
+  const handleCancelClearIndex = () => {
+    setShowClearConfirmation(false)
+  }
+
   // Get available filter options from current documents
   const availableOptions = useMemo(() => {
     const sourceTypes = new Set<string>()
@@ -383,6 +414,13 @@ export default function DataSourceManagement({ isOpen, onClose, onBack }: DataSo
              </div>
            </div>
            <div className="flex items-center gap-2">
+             <button
+               onClick={handleClearIndex}
+               className="btn-secondary btn-small"
+             >
+               <Trash2 className="w-4 h-4" />
+               Clear Index
+             </button>
              <button
                onClick={handleRefresh}
                disabled={loading}
@@ -652,6 +690,17 @@ export default function DataSourceManagement({ isOpen, onClose, onBack }: DataSo
           )}
         </div>
       </div>
+
+      <ConfirmationModal
+        isOpen={showClearConfirmation}
+        title="Clear Index"
+        message="Are you sure you want to clear the entire index? This will remove all indexed documents from all data sources. This action cannot be undone."
+        confirmText="Clear Index"
+        cancelText="Cancel"
+        onConfirm={handleConfirmClearIndex}
+        onCancel={handleCancelClearIndex}
+        type="danger"
+      />
     </div>
   )
 }

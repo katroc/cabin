@@ -52,7 +52,6 @@ export default function ConfluenceIndexing({ isOpen, onClose, onBack }: Confluen
   const [isIndexing, setIsIndexing] = useState(false)
   const [isTestingConnection, setIsTestingConnection] = useState(false)
   const [connectionStatus, setConnectionStatus] = useState<'untested' | 'success' | 'failed'>('untested')
-  const [showClearConfirmation, setShowClearConfirmation] = useState(false)
   const [showAlert, setShowAlert] = useState(false)
   const [alertConfig, setAlertConfig] = useState<{ title: string; message: string; type: 'success' | 'error' | 'info' } | null>(null)
 
@@ -255,36 +254,6 @@ export default function ConfluenceIndexing({ isOpen, onClose, onBack }: Confluen
       setShowAlert(true)
       setIsIndexing(false)
     }
-  }
-
-  const handleClearIndex = () => {
-    setShowClearConfirmation(true)
-  }
-
-  const handleConfirmClearIndex = async () => {
-    setShowClearConfirmation(false)
-    try {
-      const response = await fetch('http://localhost:8788/api/index', {
-        method: 'DELETE'
-      })
-      if (response.ok) {
-        addToast('The index has been cleared successfully.', 'success')
-      } else {
-        throw new Error('Failed to clear index')
-      }
-    } catch (error) {
-      console.error('Failed to clear index:', error)
-      setAlertConfig({
-        title: 'Clear Failed',
-        message: 'Failed to clear the index. Please try again.',
-        type: 'error'
-      })
-      setShowAlert(true)
-    }
-  }
-
-  const handleCancelClearIndex = () => {
-    setShowClearConfirmation(false)
   }
 
   const handleCloseAlert = () => {
@@ -535,14 +504,6 @@ export default function ConfluenceIndexing({ isOpen, onClose, onBack }: Confluen
               <Play size={16} />
               {isIndexing ? 'Indexing...' : 'Start Indexing'}
             </button>
-
-            <button
-              onClick={handleClearIndex}
-              className="btn-secondary"
-            >
-              <Trash2 size={16} />
-              Clear Index
-            </button>
           </div>
 
           {/* Jobs History */}
@@ -616,17 +577,6 @@ export default function ConfluenceIndexing({ isOpen, onClose, onBack }: Confluen
           )}
         </div>
       </div>
-
-      <ConfirmationModal
-        isOpen={showClearConfirmation}
-        title="Clear Index"
-        message="Are you sure you want to clear the entire index? This action cannot be undone."
-        confirmText="Clear Index"
-        cancelText="Cancel"
-        onConfirm={handleConfirmClearIndex}
-        onCancel={handleCancelClearIndex}
-        type="danger"
-      />
 
       {alertConfig && (
         <AlertModal

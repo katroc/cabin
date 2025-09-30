@@ -73,12 +73,20 @@ class ConfluenceDataSource(DataSource):
                 "removed_elements": 0,
                 "word_count": 0,
                 "text_preview": "",
+                "headings": [],
             }
 
         soup = BeautifulSoup(html, "html.parser")
 
         removed_macros = 0
         removed_elements = 0
+
+        # Extract headings before cleanup
+        headings = []
+        for heading_tag in soup.find_all(['h1', 'h2', 'h3', 'h4', 'h5', 'h6']):
+            heading_text = heading_tag.get_text(strip=True)
+            if heading_text:
+                headings.append(heading_text)
 
         for macro in list(soup.find_all(lambda tag: tag.name in {"ac:structured-macro", "ac:macro"})):
             macro_name = (macro.get("ac:name") or macro.get("data-macro-name") or "").lower()
@@ -125,6 +133,7 @@ class ConfluenceDataSource(DataSource):
             "removed_elements": removed_elements,
             "word_count": word_count,
             "text_preview": preview,
+            "headings": headings,
         }
 
     def _slugify_title(self, title: str) -> str:
@@ -478,20 +487,27 @@ class ConfluenceDataSource(DataSource):
 
                     page_url = self._build_page_url(space_key, page["id"], page["title"])
 
+                    # Extract label names for keywords
+                    label_names = [label.get("name", "") for label in labels if label.get("name")]
+
                     metadata = {
                         "page_id": page["id"],
                         "page_version": version_number,
                         "space_key": space_key,
                         "space_name": space_info.get("name", ""),
+                        "page_title": page["title"],  # Used by metadata enrichment
                         "title": page["title"],
                         "slug": self._slugify_title(page["title"]),
                         "url": page_url,
                         "source_url": page_url,
-                        "labels": [label.get("name", "") for label in labels],
+                        "labels": label_names,
+                        "keywords": label_names,  # Map labels to keywords for metadata enrichment
                         "content_type": page.get("type", "page"),
+                        "author": version_info.get("by", {}).get("displayName", ""),  # Map created_by to author
                         "created_by": version_info.get("by", {}).get("displayName", ""),
                         "last_modified": updated_at_raw,
                         "updated_at": updated_at_raw,
+                        "headings": normalization_stats.get("headings", []),  # For metadata enrichment
                         "word_count": normalization_stats.get("word_count", 0),
                         "removed_macros": normalization_stats.get("removed_macros", 0),
                         "removed_elements": normalization_stats.get("removed_elements", 0),

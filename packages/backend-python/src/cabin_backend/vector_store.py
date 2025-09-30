@@ -102,8 +102,10 @@ class VectorStore:
             logger.info(f"Processing batch {i // batch_size + 1}/{(len(chunks) + batch_size - 1) // batch_size} ({len(batch_chunks)} chunks)")
 
             ids = [chunk.id for chunk in batch_chunks]
-            documents = [chunk.text for chunk in batch_chunks]
+            documents = [chunk.text for chunk in batch_chunks]  # Store original text
             metadatas = []
+            embedding_texts = []  # Metadata-enriched text for embeddings
+
             for chunk in batch_chunks:
                 metadata = (
                     chunk.metadata.model_dump()
@@ -113,9 +115,13 @@ class VectorStore:
                 metadata["parent_chunk_text"] = chunk.parent_chunk_text
                 metadatas.append(self._sanitize_metadata(metadata))
 
-            # Note: ChromaDB automatically handles embedding generation if an embedding function
-            # is associated with the collection. However, managing it explicitly gives more control.
-            embeddings = self._get_embeddings(documents)
+                # Create metadata-enriched text for better semantic embeddings
+                embedding_text = self._create_embedding_text(chunk.text, metadata)
+                embedding_texts.append(embedding_text)
+
+            # Generate embeddings from metadata-enriched text
+            # Store original text in ChromaDB, but use enriched text for embeddings
+            embeddings = self._get_embeddings(embedding_texts)
 
             try:
                 self.chroma.add(ids=ids, embeddings=embeddings, documents=documents, metadatas=metadatas)
@@ -133,7 +139,9 @@ class VectorStore:
                                 else chunk.metadata.dict()
                             )
                             single_metadata["parent_chunk_text"] = chunk.parent_chunk_text
-                            single_embedding = self._get_embeddings([chunk.text])
+                            # Use metadata-enriched text for embeddings
+                            single_embedding_text = self._create_embedding_text(chunk.text, single_metadata)
+                            single_embedding = self._get_embeddings([single_embedding_text])
                             self.chroma.add(
                                 ids=[chunk.id],
                                 embeddings=single_embedding,
@@ -648,8 +656,7 @@ class VectorStore:
             count = collection.count()
 
             if count == 0:
-                logger.debug("No documents in ChromaDB, BM25 index empty")
-                self.bm25_index.build([], [])
+                logger.debug("No documents in ChromaDB, skipping BM25 index build")
                 self._bm25_needs_rebuild = False
                 return
 
@@ -695,6 +702,34 @@ class VectorStore:
             # Don't mark as rebuilt if it failed
             raise
 
+    def _create_embedding_text(self, chunk_text: str, metadata: Dict[str, Any]) -> str:
+        """Prepend metadata context to chunk text for richer semantic embeddings."""
+        context_parts = []
+
+        # Add document title for context
+        page_title = metadata.get("page_title")
+        if page_title:
+            context_parts.append(f"Document: {page_title}")
+
+        # Add hierarchical section context (last 2 headings for brevity)
+        headings = metadata.get("headings")
+        if headings and isinstance(headings, list) and len(headings) > 0:
+            section = " > ".join(headings[-2:])  # Last 2 levels of heading hierarchy
+            context_parts.append(f"Section: {section}")
+
+        # Add semantic tags if available
+        labels = metadata.get("labels")
+        if labels and isinstance(labels, list) and len(labels) > 0:
+            tags = ", ".join(labels[:3])  # First 3 tags only
+            context_parts.append(f"Tags: {tags}")
+
+        # Build final embedding text with metadata prefix
+        if context_parts:
+            prefix = " | ".join(context_parts) + "\n\n"
+            return prefix + chunk_text
+
+        return chunk_text
+
     def _get_embeddings(self, texts: List[str]) -> List[List[float]]:
         """Generates embeddings for a list of texts."""
         return self.embedding_client.embed(texts)
@@ -713,20 +748,38 @@ class VectorStore:
             return set()
 
     def _build_candidate_text(self, parent_text: str, metadata: Dict[str, Any]) -> str:
-        """Creates a lexical corpus string that includes structural metadata."""
+        """Creates enriched lexical corpus string with comprehensive metadata for better BM25 matching."""
         parts = [parent_text]
 
-        for field in ("page_title", "space_name"):
+        # HIGH PRIORITY: Core document metadata (repeated 2x for higher BM25 weight)
+        for field in ("page_title", "space_name", "filename"):
             value = metadata.get(field)
             if value:
-                parts.append(str(value))
+                value_str = str(value)
+                parts.extend([value_str, value_str])  # Repeat for emphasis
 
+        # MEDIUM PRIORITY: Structural metadata (headings show document structure)
         headings = metadata.get("headings")
         if isinstance(headings, str):
             if headings:
                 parts.extend(headings.split(' | '))
         elif isinstance(headings, list):
             parts.extend([heading for heading in headings if heading])
+
+        # MEDIUM PRIORITY: Semantic metadata (user-added tags and keywords)
+        for field in ("labels", "keywords", "subject"):
+            value = metadata.get(field)
+            if value:
+                if isinstance(value, list):
+                    parts.extend([str(item) for item in value if item])
+                else:
+                    parts.append(str(value))
+
+        # LOW PRIORITY: Author and content type (useful for specific queries)
+        for field in ("author", "content_type", "title"):
+            value = metadata.get(field)
+            if value:
+                parts.append(str(value))
 
         return " ".join(parts)
 
@@ -811,8 +864,8 @@ class VectorStore:
             self.chroma.reset()
             # Reset BM25 index after clearing collection
             self._bm25_needs_rebuild = True
-            self.bm25_index.build([], [])  # Clear immediately
-            logger.debug("Cleared BM25 index after collection reset")
+            # Don't build with empty corpus - just mark for rebuild
+            logger.debug("Cleared collection and marked BM25 for rebuild")
         except Exception as e:
             logger.error(f"Failed to clear collection: {e}")
             raise
