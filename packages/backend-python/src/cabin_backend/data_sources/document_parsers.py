@@ -59,6 +59,7 @@ class DocumentMetadata:
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "modified_at": self.modified_at.isoformat() if self.modified_at else None,
             "title": self.title,
+            "page_title": self.title or self.filename,  # Fallback for metadata enrichment
             "author": self.author,
             "subject": self.subject,
             "keywords": self.keywords,
@@ -181,6 +182,10 @@ class PDFParser(DocumentParser):
                     keywords = pdf_meta.get('/Keywords', '')
                     if keywords:
                         metadata.keywords = [k.strip() for k in keywords.split(',')]
+
+                # Fallback: use title or filename for page_title
+                if not metadata.title and metadata.filename:
+                    metadata.title = metadata.filename
 
                 # Extract text from all pages
                 metadata.page_count = len(reader.pages)
