@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Loader2, Send, StopCircle, BookOpen } from 'lucide-react'
+import { Loader2, Send, StopCircle, BookOpen, Copy, RefreshCw, Check, ArrowDown } from 'lucide-react'
 import SmartResponse from './SmartResponse'
 import ExportDropdown from './ExportDropdown'
 import PersonaSelector from './PersonaSelector'
@@ -77,9 +77,14 @@ export default function ChatInterface({
   const [isProcessing, setIsProcessing] = useState(false)
   const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null)
   const [isSourcesPanelOpen, setIsSourcesPanelOpen] = useState(false)
+  const [hoveredMessageId, setHoveredMessageId] = useState<string | null>(null)
+  const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null)
+  const [showScrollButton, setShowScrollButton] = useState(false)
+  const [isAutoScrolling, setIsAutoScrolling] = useState(true)
   const { preferences, setPersona, setChatMode } = useUIPreferences()
   const { persona, chatMode } = preferences
   const messagesEndRef = useRef<HTMLDivElement | null>(null)
+  const messagesContainerRef = useRef<HTMLDivElement | null>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
   const lastAssistantIdRef = useRef<string | null>(null)
   const inputRef = useRef<HTMLTextAreaElement | null>(null)
@@ -146,8 +151,11 @@ export default function ChatInterface({
     }
   }, [aggregatedSources.length, isSourcesPanelOpen])
 
+  // Load draft from localStorage when conversation changes
   useEffect(() => {
-    setInput('')
+    const draftKey = `draft-${conversation?.id || 'new'}`
+    const savedDraft = localStorage.getItem(draftKey)
+    setInput(savedDraft || '')
     setIsProcessing(false)
     setStreamingMessageId(null)
     lastAssistantIdRef.current = null
@@ -157,10 +165,88 @@ export default function ChatInterface({
     inputRef.current?.focus()
   }, [conversation?.id])
 
+  // Save draft to localStorage when input changes
   useEffect(() => {
-    if (!conversation) return
+    if (!conversation?.id) return
+    const draftKey = `draft-${conversation.id}`
+    if (input) {
+      localStorage.setItem(draftKey, input)
+    } else {
+      localStorage.removeItem(draftKey)
+    }
+  }, [input, conversation?.id])
+
+  // Smooth scroll anchoring during streaming
+  useEffect(() => {
+    if (!conversation || !streamingMessageId) return
+
+    const container = messagesContainerRef.current
+    if (!container) return
+
+    // Keep scroll pinned to bottom during streaming
+    const scrollToBottom = () => {
+      if (isAutoScrolling) {
+        container.scrollTop = container.scrollHeight
+      }
+    }
+
+    // Use RAF for smooth updates
+    let rafId: number
+    const scheduleScroll = () => {
+      rafId = requestAnimationFrame(() => {
+        scrollToBottom()
+        if (streamingMessageId) {
+          scheduleScroll()
+        }
+      })
+    }
+
+    scheduleScroll()
+
+    return () => {
+      if (rafId) {
+        cancelAnimationFrame(rafId)
+      }
+    }
+  }, [streamingMessageId, isAutoScrolling, conversation])
+
+  // Scroll on new messages (non-streaming)
+  useEffect(() => {
+    if (!conversation || streamingMessageId) return
+
+    if (messagesContainerRef.current && messagesEndRef.current) {
+      const container = messagesContainerRef.current
+      const { scrollTop, scrollHeight, clientHeight } = container
+      const isNearBottom = scrollHeight - scrollTop - clientHeight < 200
+
+      if (isNearBottom) {
+        messagesEndRef.current.scrollIntoView({ behavior: 'smooth' })
+      }
+    }
+  }, [conversation?.messages, conversation?.id, streamingMessageId])
+
+  // Scroll detection to show/hide scroll button and manage auto-scroll
+  useEffect(() => {
+    const container = messagesContainerRef.current
+    if (!container) return
+
+    const handleScroll = () => {
+      const { scrollTop, scrollHeight, clientHeight } = container
+      const isNearBottom = scrollHeight - scrollTop - clientHeight < 200
+
+      setShowScrollButton(!isNearBottom && messages.length > 0)
+      setIsAutoScrolling(isNearBottom)
+    }
+
+    container.addEventListener('scroll', handleScroll)
+    handleScroll() // Check initial state
+
+    return () => container.removeEventListener('scroll', handleScroll)
+  }, [messages.length])
+
+  const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [conversation?.messages, conversation?.id])
+  }, [])
 
 
   const updateAssistantMessage = useCallback(
@@ -439,8 +525,116 @@ export default function ChatInterface({
     } else if (event.key === 'Tab') {
       event.preventDefault()
       setChatMode(chatMode === 'rag' ? 'llm' : 'rag')
+    } else if (event.key === 'Escape') {
+      event.preventDefault()
+      setInput('')
+      // Clear draft from localStorage
+      if (conversation?.id) {
+        localStorage.removeItem(`draft-${conversation.id}`)
+      }
+    } else if (event.key === 'ArrowUp' && !input.trim() && messages.length > 0) {
+      // Arrow up with empty input - edit last user message
+      event.preventDefault()
+      const lastUserMessage = [...messages].reverse().find(m => m.role === 'user')
+      if (lastUserMessage) {
+        setInput(lastUserMessage.content)
+      }
     }
   }
+
+  const handleCopyMessage = useCallback((messageId: string, content: string) => {
+    navigator.clipboard.writeText(content)
+    setCopiedMessageId(messageId)
+    setTimeout(() => setCopiedMessageId(null), 2000)
+  }, [])
+
+  const handleRegenerateResponse = useCallback(async (messageId: string) => {
+    if (!conversation || isProcessing) return
+
+    // Find the message and its index
+    const messageIndex = messages.findIndex(msg => msg.id === messageId)
+    if (messageIndex === -1 || messageIndex === 0) return
+
+    // Get the user message that prompted this response
+    const userMessage = messages[messageIndex - 1]
+    if (!userMessage || userMessage.role !== 'user') return
+
+    // Remove the assistant message and everything after it
+    onMessagesChange(prev => prev.slice(0, messageIndex))
+
+    // Create a new assistant message
+    const newAssistantId = `${Date.now()}-assistant`
+    const newAssistantMessage: Message = {
+      id: newAssistantId,
+      role: 'assistant',
+      content: '',
+      thinking: '',
+      timestamp: new Date()
+    }
+
+    lastAssistantIdRef.current = newAssistantId
+    onMessagesChange(prev => [...prev, newAssistantMessage])
+
+    setIsProcessing(true)
+
+    let streamedText = ''
+    let streamingFailed = false
+
+    try {
+      streamedText = await streamResponse(userMessage.content, newAssistantId)
+    } catch (error) {
+      streamingFailed = true
+      setStreamingMessageId(null)
+      if ((error as Error).name === 'AbortError') {
+        return
+      }
+      console.warn('Streaming unavailable, falling back to standard response:', error)
+    }
+
+    if (streamingFailed || !streamedText) {
+      try {
+        const fullResponse = await requestFullResponse(userMessage.content)
+        const rawAnswer = typeof fullResponse.response === 'string' ? fullResponse.response : ''
+        const thinking = typeof fullResponse.thinking === 'string' ? fullResponse.thinking : ''
+        let visible = rawAnswer.trim()
+        if (!visible && thinking) {
+          visible = deriveAnswerFromThinking(thinking)
+        }
+        if (!visible) {
+          visible = 'No response received'
+        }
+
+        updateAssistantMessage(newAssistantId, message => ({
+          ...message,
+          content: visible,
+          thinking,
+          citations: fullResponse.citations || [],
+          rendered_citations: fullResponse.rendered_citations || [],
+          timestamp: new Date()
+        }))
+      } catch (error) {
+        console.error('Regeneration failed:', error)
+        updateAssistantMessage(newAssistantId, message => ({
+          ...message,
+          content: 'Sorry, I encountered an error regenerating the response.',
+          thinking: '',
+          citations: [],
+          rendered_citations: [],
+          timestamp: new Date()
+        }))
+      }
+    } else {
+      updateAssistantMessage(newAssistantId, message => ({
+        ...message,
+        timestamp: new Date()
+      }))
+    }
+
+    setIsProcessing(false)
+    setStreamingMessageId(null)
+    abortControllerRef.current = null
+    lastAssistantIdRef.current = null
+  }, [conversation, isProcessing, messages, onMessagesChange, streamResponse, requestFullResponse, updateAssistantMessage])
 
   useEffect(() => {
     return () => {
@@ -497,7 +691,7 @@ export default function ChatInterface({
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-4 pb-10 pt-6 sm:px-10 min-h-0">
+      <div ref={messagesContainerRef} className="flex-1 overflow-y-auto px-4 pb-10 pt-6 sm:px-10 min-h-0 relative">
         <div className="mx-auto flex w-full max-w-[min(65vw,62rem)] flex-col gap-5">
           {!hasMessages && (
             <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
@@ -512,10 +706,19 @@ export default function ChatInterface({
 
           {messages.map((message, index) => {
             const isUser = message.role === 'user'
+            const isHovered = hoveredMessageId === message.id
+            const isCopied = copiedMessageId === message.id
+            const canRegenerate = !isUser && !isProcessing && index > 0
+
             return (
-              <div key={message.id} className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
+              <div
+                key={message.id}
+                className={`flex ${isUser ? 'justify-end' : 'justify-start'} group`}
+                onMouseEnter={() => setHoveredMessageId(message.id)}
+                onMouseLeave={() => setHoveredMessageId(null)}
+              >
                 <div className={isUser ? 'max-w-xl space-y-2' : 'w-full space-y-2'}>
-                  <div className={isUser ? "px-3 py-2 border rounded-lg ui-border-light" : "py-2"}>
+                  <div className={isUser ? "px-4 py-3 border rounded-lg ui-border-light ui-bg-secondary" : "px-4 py-3 rounded-lg ui-bg-tertiary/30 border border-transparent"}>
                     {isUser ? (
                       <p className="whitespace-pre-wrap text-base leading-relaxed ui-text-primary">
                         {message.content}
@@ -533,11 +736,54 @@ export default function ChatInterface({
                     )}
                   </div>
                   <div
-                    className={`flex items-center gap-2 text-xs ${isUser ? 'justify-end' : 'justify-start'} ui-text-muted`}
+                    className={`flex items-center gap-2 text-xs ui-text-muted relative ${isUser ? 'justify-end' : 'justify-start'}`}
                   >
                     <span>{isUser ? 'You' : 'Cabin Assistant'}</span>
                     <span>•</span>
-                    <span>{message.timestamp.toLocaleTimeString()}</span>
+                    <span>
+                      {(() => {
+                        const now = new Date()
+                        const msgDate = new Date(message.timestamp)
+                        const isToday = now.toDateString() === msgDate.toDateString()
+                        const isYesterday = new Date(now.setDate(now.getDate() - 1)).toDateString() === msgDate.toDateString()
+
+                        if (isToday) {
+                          return msgDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                        } else if (isYesterday) {
+                          return `Yesterday ${msgDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+                        } else {
+                          return msgDate.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' + msgDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                        }
+                      })()}
+                    </span>
+
+                    {/* Message Actions */}
+                    {(isHovered || isCopied) && (
+                      <div className={`absolute ${isUser ? 'left-0' : 'right-0'} flex items-center gap-1`}>
+                        <button
+                          onClick={() => handleCopyMessage(message.id, message.content)}
+                          className="message-action-button"
+                          aria-label="Copy message"
+                          title="Copy message"
+                        >
+                          {isCopied ? (
+                            <Check size={14} />
+                          ) : (
+                            <Copy size={14} />
+                          )}
+                        </button>
+                        {canRegenerate && (
+                          <button
+                            onClick={() => handleRegenerateResponse(message.id)}
+                            className="message-action-button"
+                            aria-label="Regenerate response"
+                            title="Regenerate response"
+                          >
+                            <RefreshCw size={14} />
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -561,6 +807,17 @@ export default function ChatInterface({
 
           <div ref={messagesEndRef} />
         </div>
+
+        {/* Scroll to bottom button */}
+        {showScrollButton && (
+          <button
+            onClick={scrollToBottom}
+            className="scroll-to-bottom-button"
+            aria-label="Scroll to bottom"
+          >
+            <ArrowDown size={20} />
+          </button>
+        )}
       </div>
 
       <footer
@@ -575,18 +832,30 @@ export default function ChatInterface({
           >
             <textarea
               ref={inputRef}
-              rows={2}
+              rows={1}
               value={input}
-              onChange={(event) => setInput(event.target.value)}
+              onChange={(event) => {
+                setInput(event.target.value)
+                // Auto-resize textarea
+                const target = event.target
+                target.style.height = 'auto'
+                target.style.height = `${Math.min(target.scrollHeight, 200)}px`
+              }}
               onKeyDown={handleComposerKeyDown}
               placeholder={chatMode === 'rag' ? "Ask about your documentation..." : "Chat with AI..."}
-              className="w-full resize-none bg-transparent text-base leading-relaxed focus:outline-none ui-text-primary"
+              className="w-full resize-none bg-transparent text-base leading-relaxed focus:outline-none ui-text-primary max-h-[200px] overflow-y-auto"
               disabled={isProcessing && !canStop}
               autoFocus
+              style={{ minHeight: '40px' }}
             />
             <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
-              <div className="text-xs ui-text-muted">
-                Press Enter to send · Shift + Enter for a new line
+              <div className="flex items-center gap-3 text-xs ui-text-muted">
+                <span>Press Enter to send · Shift + Enter for a new line</span>
+                {input.length > 0 && (
+                  <span className={input.length > 4000 ? 'text-orange-500' : ''}>
+                    {input.length} chars
+                  </span>
+                )}
               </div>
               <div className="flex items-center gap-3">
                 {/* Persona Selector */}
