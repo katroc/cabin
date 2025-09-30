@@ -288,89 +288,45 @@ class Generator:
 
     def _get_conversational_system_prompt(self, persona: str = "standard") -> str:
         """Returns the system prompt for conversational responses without citations."""
-        base_prompt = """You are a helpful assistant having a natural conversation.
-You have access to conversation history to understand context and provide relevant responses.
-You don't need to cite sources for this response.
-If the user is asking follow-up questions like "ok thanks, and that's it?" or similar,
-provide a natural conversational response acknowledging their question."""
+        base_prompt = """You are a helpful assistant. Use conversation history to understand context and follow-ups."""
 
         if persona == "direct":
             return base_prompt + """
 
-CRITICAL: ALWAYS use DIRECT, CONCISE responses. Be extremely brief.
-- Maximum 2-3 sentences for simple questions
-- Use bullet points for steps or lists
-- NO explanatory text, examples, or elaboration
-- Start with the direct answer immediately
-- Avoid phrases like "To help you" or "Here's what you need to know"
-- Example: "Q: How to save?" A: "Click File > Save or press Ctrl+S."""
+STYLE: Direct and concise. Maximum 2-3 sentences. Answer first, explain only if needed.
+Example: "Q: How to save?" A: "Click File > Save or Ctrl+S."""
         elif persona == "eli5":
             return base_prompt + """
 
-CRITICAL: ALWAYS explain assuming the user has ZERO prior knowledge of the topic.
-- Define any technical terms or concepts before using them
-- Use helpful analogies and real-world comparisons when appropriate
-- Provide context and background information
-- Break down processes into clear, logical steps
-- Explain WHY things work the way they do, not just HOW
-- Use clear, accessible language without being condescending
-- Example: "Q: What's an API?" A: "An API (Application Programming Interface) is a way for different software programs to communicate with each other. Think of it like a waiter in a restaurant - you tell the waiter your order, they take it to the kitchen, and bring back your food. The waiter is like an API, carrying messages between you and the kitchen."""
+STYLE: Explain like I'm 5. Define terms, use analogies, explain WHY not just HOW.
+Example: "Q: What's an API?" A: "An API is how programs talk to each other, like a waiter carrying messages between you and the kitchen."""
         else:  # standard
-            return base_prompt + """
-
-Be conversational, helpful, and natural with balanced detail level."""
+            return base_prompt + """ Be conversational and balanced."""
 
     def _get_citation_system_prompt(self, persona: str = "standard") -> str:
         """Returns the system prompt that enforces natural response generation with citations."""
         max_citations = settings.app_config.generation.max_citations
         quote_limit = settings.app_config.generation.quote_max_words
 
-        base_prompt = f"""You are a knowledgeable assistant that provides helpful responses based on documentation with full conversation awareness.
+        base_prompt = f"""You are a knowledgeable assistant providing responses based on documentation.
 
-CONVERSATION HANDLING:
-- You have access to previous conversation history to understand context and follow-up questions
-- When users ask follow-up questions, reference previous discussion appropriately
-- If users question accuracy ("are you sure?"), acknowledge their concern and re-examine the information
-- For clarification requests, build upon what was already discussed
+Use conversation history to understand context and follow-up questions.
+If users question accuracy, re-examine the information carefully.
 
-CITATION REQUIREMENTS:
-- Support factual claims with citations using [1], [2] format
-- Use at most {max_citations} citations from the most relevant sources
-- Include direct quotes of at most {quote_limit} words for each citation
-- Only cite information that directly supports your statements
-
-IMPORTANT: Always process information through your reasoning and provide a natural response. Use conversation history to better understand the user's intent and provide contextually appropriate answers."""
+NOTE: This mode supports citations [1], [2] for internal tracking, but the final response has citations removed and sources displayed separately."""
 
         if persona == "direct":
             return base_prompt + """
 
-CRITICAL: MANDATORY DIRECT STYLE - NO EXCEPTIONS:
-- Maximum 2-3 sentences total
-- Start with the exact answer immediately
-- Use bullet points for multiple items
-- NO introductory phrases like "To answer your question" or "Here's how"
-- NO explanations unless specifically asked
-- Example: "Q: How to get refund?" A: "File support ticket with Atlassian. Use: https://atlassian.com/contact/purchasing-licensing [1]"""
+STYLE: Maximum 2-3 sentences. Answer immediately, no preamble."""
         elif persona == "eli5":
             return base_prompt + """
 
-CRITICAL: MANDATORY BEGINNER-FRIENDLY STYLE - ASSUME ZERO KNOWLEDGE:
-- Define concepts and terms before using them
-- Provide helpful context and background information
-- Use analogies when they clarify complex concepts
-- Explain the reasoning behind processes and requirements
-- Break down multi-step processes clearly
-- Use accessible language without being childish
-- Example: "Q: How to get refund?" A: "When you purchase software through a platform like Atlassian (which hosts draw.io), refunds aren't handled directly by the software company. Instead, you need to contact the platform that processed your payment. This is similar to how if you bought something on Amazon, you'd contact Amazon for returns, not the individual seller..."""
+STYLE: Explain like I'm 5. Define terms, use analogies, explain WHY."""
         else:  # standard
             return base_prompt + """
 
-RESPONSE STYLE:
-- Write in a natural, conversational tone as if explaining to a colleague
-- Provide balanced detail - not too brief, not too verbose
-- Use clear structure with helpful context
-- Be informative but approachable
-- Explain the "what" and "why" when relevant"""
+STYLE: Natural and conversational, as if explaining to a colleague. Balanced detail."""
 
     def _build_provenance_context(self, context_chunks: List[ParentChunk]) -> Tuple[Dict[str, Dict[str, Any]], str]:
         provenance: Dict[str, Dict[str, Any]] = {}

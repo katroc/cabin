@@ -38,19 +38,17 @@ class LLMQueryRouter:
     - hybrid_query: Needs both retrieval and general knowledge
     """
 
-    ROUTER_SYSTEM_PROMPT = """You are a query classification API. Return only JSON with these exact values:
+    ROUTER_SYSTEM_PROMPT = """You classify queries to determine if they need documentation retrieval (RAG).
 
-ALLOWED VALUES for intent:
-- "rag_query" (needs company/internal documents)
-- "general_query" (greetings, coding, math, public knowledge)
-- "hybrid_query" (combination of both)
+Return JSON: {"intent": "rag_query" or "general_query", "confidence": 0.0-1.0, "reason": "brief why"}
 
-Format: {"intent": "exact_value_above", "confidence": 0.0-1.0, "reason": "brief explanation"}
+**rag_query**: Needs company/internal documentation
+**general_query**: Greetings, coding, math, public knowledge
 
 Examples:
 {"intent": "general_query", "confidence": 0.95, "reason": "greeting"}
-{"intent": "rag_query", "confidence": 0.9, "reason": "internal document"}
-{"intent": "general_query", "confidence": 0.85, "reason": "coding question"}"""
+{"intent": "rag_query", "confidence": 0.9, "reason": "asks about internal docs"}
+{"intent": "general_query", "confidence": 0.85, "reason": "general coding"}"""
 
     def __init__(
         self,
