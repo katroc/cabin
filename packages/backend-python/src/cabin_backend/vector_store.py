@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import re
@@ -71,6 +72,9 @@ class VectorStore:
         # Cache for recent query results to avoid duplicate expensive operations
         self._query_cache: Dict[str, Dict[str, Any]] = {}
         self._query_cache_ttl = 30  # seconds
+        # BM25 index needs to be kept in sync with ChromaDB
+        self._bm25_needs_rebuild = True
+        self._bm25_corpus_cache: List[Dict[str, Any]] = []
 
 
     def delete_document(self, document_id: str) -> None:
@@ -79,6 +83,9 @@ class VectorStore:
             return
         try:
             self.chroma.collection.delete(where={"document_id": document_id})
+            # Mark BM25 index for rebuild after deletion
+            self._bm25_needs_rebuild = True
+            logger.debug("Marked BM25 index for rebuild after deleting document %s", document_id)
         except Exception as exc:
             logger.warning("Failed to delete document %s from Chroma: %s", document_id, exc)
 
@@ -138,6 +145,10 @@ class VectorStore:
                             logger.error(f"Failed to add individual chunk {chunk.id}: {single_e}")
                 else:
                     raise e
+
+        # Mark BM25 index for rebuild after adding documents
+        self._bm25_needs_rebuild = True
+        logger.debug("Marked BM25 index for rebuild after adding %d chunks", len(chunks))
 
     @staticmethod
     def _sanitize_metadata(metadata: Dict[str, Any]) -> Dict[str, Any]:
@@ -545,6 +556,64 @@ class VectorStore:
 
         return result_chunks
 
+    def _ensure_bm25_index(self) -> None:
+        """Rebuild BM25 index from ChromaDB if needed."""
+        if not self._bm25_needs_rebuild:
+            return
+
+        try:
+            logger.debug("Rebuilding BM25 index from ChromaDB")
+            collection = self.chroma.collection
+            count = collection.count()
+
+            if count == 0:
+                logger.debug("No documents in ChromaDB, BM25 index empty")
+                self.bm25_index.build([], [])
+                self._bm25_needs_rebuild = False
+                return
+
+            # Fetch all documents from ChromaDB
+            # Use peek with limit to get all documents efficiently
+            results = collection.get(limit=count, include=["documents", "metadatas"])
+
+            if not results or not results.get('documents'):
+                logger.warning("Failed to fetch documents for BM25 index rebuild")
+                return
+
+            ids = results['ids']
+            documents = results['documents']
+            metadatas = results.get('metadatas', [])
+
+            # Tokenize all documents for BM25
+            corpus_tokens = []
+            doc_ids = []
+
+            for i, (doc_id, text) in enumerate(zip(ids, documents)):
+                if not text:
+                    continue
+
+                # Get parent_chunk_text if available for better lexical matching
+                metadata = metadatas[i] if i < len(metadatas) else {}
+                parent_text = metadata.get('parent_chunk_text', text)
+
+                # Build candidate text with metadata enrichment
+                candidate_text = self._build_candidate_text(parent_text, metadata)
+                tokens = self._tokenize_text(candidate_text)
+
+                if tokens:
+                    corpus_tokens.append(tokens)
+                    doc_ids.append(doc_id)
+
+            # Build the BM25 index
+            self.bm25_index.build(corpus_tokens, doc_ids)
+            self._bm25_needs_rebuild = False
+            logger.info("BM25 index rebuilt with %d documents", len(doc_ids))
+
+        except Exception as exc:
+            logger.error("Failed to rebuild BM25 index: %s", exc)
+            # Don't mark as rebuilt if it failed
+            raise
+
     def _get_embeddings(self, texts: List[str]) -> List[List[float]]:
         """Generates embeddings for a list of texts."""
         return self.embedding_client.embed(texts)
@@ -609,19 +678,22 @@ class VectorStore:
         if not query_tokens:
             return scores
 
-        non_empty_indices = [
-            index for index, tokens in enumerate(candidate_tokens_list) if tokens
-        ]
-        if not non_empty_indices:
+        # Ensure BM25 index is built (lazy rebuild from ChromaDB if needed)
+        self._ensure_bm25_index()
+
+        # Query the global BM25 index for scores
+        # Note: This queries the entire corpus, not just candidates
+        # This is correct - BM25 needs the full corpus for proper IDF calculation
+        if self.bm25_index.corpus_size == 0:
             return scores
 
-        corpus = [candidate_tokens_list[index] for index in non_empty_indices]
-        doc_ids = [candidate_ids[index] for index in non_empty_indices]
-        self.bm25_index.build(corpus, doc_ids)
-        raw_scores = self.bm25_index.scores(query_tokens)
+        # Get BM25 rankings for all documents in the index
+        bm25_rankings = self.bm25_index.query(query_tokens)
+        bm25_score_map = {doc_id: score for doc_id, score in bm25_rankings}
 
-        for idx, raw_score in zip(non_empty_indices, raw_scores):
-            scores[idx] = raw_score
+        # Map scores back to our candidates
+        for idx, candidate_id in enumerate(candidate_ids):
+            scores[idx] = bm25_score_map.get(candidate_id, 0.0)
 
         return scores
 
@@ -656,6 +728,10 @@ class VectorStore:
         """Clears all documents from the collection."""
         try:
             self.chroma.reset()
+            # Reset BM25 index after clearing collection
+            self._bm25_needs_rebuild = True
+            self.bm25_index.build([], [])  # Clear immediately
+            logger.debug("Cleared BM25 index after collection reset")
         except Exception as e:
             logger.error(f"Failed to clear collection: {e}")
             raise

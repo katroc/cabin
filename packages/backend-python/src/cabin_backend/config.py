@@ -52,9 +52,9 @@ class IngestionSettings(BaseModel):
 
 
 class RetrievalSettings(BaseModel):
-    dense_k: int = 80
+    dense_k: int = 25  # Reduced from 80 for better performance
     lexical_backend: str = "bm25"
-    lexical_k: int = 80
+    lexical_k: int = 25  # Reduced from 80 for better performance
     rrf_k: int = 60
     mmr_lambda: float = 0.5
     cosine_floor: float = 0.05
@@ -72,7 +72,7 @@ class RerankerSettings(BaseModel):
     model: str = ""  # Auto-discovered from reranker service
     api_key: Optional[str] = None
     # Pool size for early reranking (before MMR selection)
-    pool_size_multiplier: int = 3
+    pool_size_multiplier: int = 2  # Reduced from 3 for better performance
     # Weight for combining fusion and reranker scores (0.0 = all fusion, 1.0 = all reranker)
     score_weight: float = 0.7
 
@@ -102,8 +102,8 @@ class VerificationSettings(BaseModel):
 
 class EmbeddingCacheSettings(BaseModel):
     enabled: bool = True
-    max_items: int = 512
-    ttl_seconds: int = 600
+    max_items: int = 5000  # Increased from 512 for better cache hit rate
+    ttl_seconds: int = 3600  # Increased from 600 (1 hour instead of 10 minutes)
 
     class Config:
         extra = "ignore"

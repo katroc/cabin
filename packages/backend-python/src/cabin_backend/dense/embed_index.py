@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import math
 import time
@@ -33,6 +34,7 @@ class EmbeddingClient:
         cache_ttl_seconds: int = 600,
     ) -> None:
         self._client = openai.OpenAI(api_key=api_key, base_url=base_url)
+        self._async_client = openai.AsyncOpenAI(api_key=api_key, base_url=base_url)
         self._model = model
         self._dimensions = dimensions
         self._batch_size = max(1, batch_size)
@@ -76,6 +78,41 @@ class EmbeddingClient:
             metrics.increment("embedding.cache.misses", misses)
         return ordered
 
+    async def embed_async(self, texts: Sequence[str]) -> List[List[float]]:
+        """Async version of embed for concurrent operations."""
+        if not texts:
+            return []
+
+        results: Dict[int, List[float]] = {}
+        to_fetch: List[Tuple[int, str]] = []
+
+        if self._cache_enabled:
+            now = time.time()
+            for index, text in enumerate(texts):
+                cached = self._cache_get(text, now)
+                if cached is not None:
+                    results[index] = cached
+                else:
+                    to_fetch.append((index, text))
+        else:
+            to_fetch = list(enumerate(texts))
+
+        if to_fetch:
+            fetch_texts = [text for _, text in to_fetch]
+            fetched_embeddings = await self._fetch_embeddings_async(fetch_texts)
+            for (index, text), vector in zip(to_fetch, fetched_embeddings):
+                results[index] = vector
+                if self._cache_enabled:
+                    self._cache_set(text, vector)
+
+        ordered = [results[idx] for idx in range(len(texts))]
+        if self._cache_enabled:
+            hits = len(texts) - len(to_fetch)
+            misses = len(to_fetch)
+            metrics.increment("embedding.cache.hits", hits)
+            metrics.increment("embedding.cache.misses", misses)
+        return ordered
+
     def health_check(self) -> bool:
         try:
             self.embed(["ping"])
@@ -97,6 +134,25 @@ class EmbeddingClient:
                 embedding_args["dimensions"] = self._dimensions
 
             response = self._client.embeddings.create(**embedding_args)
+            for item in response.data:
+                vector = list(item.embedding)
+                if self._l2_normalize:
+                    vector = _l2_normalise(vector)
+                embeddings.append(vector)
+        return embeddings
+
+    async def _fetch_embeddings_async(self, texts: Sequence[str]) -> List[List[float]]:
+        """Async version of _fetch_embeddings for concurrent API calls."""
+        embeddings: List[List[float]] = []
+        for batch in _batched(texts, self._batch_size):
+            embedding_args = {
+                "input": list(batch),
+                "model": self._model,
+            }
+            if self._dimensions > 0 and not self._model.startswith(("bge-", "text-embedding-bge")):
+                embedding_args["dimensions"] = self._dimensions
+
+            response = await self._async_client.embeddings.create(**embedding_args)
             for item in response.data:
                 vector = list(item.embedding)
                 if self._l2_normalize:
