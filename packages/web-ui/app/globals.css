@@ -261,11 +261,10 @@ body {
 .sources-panel-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.5);
-  backdrop-filter: blur(10px);
   z-index: 40;
   display: flex;
   justify-content: flex-end;
+  pointer-events: none;
 }
 
 .sources-panel {
@@ -277,6 +276,7 @@ body {
   display: flex;
   flex-direction: column;
   animation: slide-in 0.24s ease-out;
+  pointer-events: auto;
 }
 
 .sources-panel__header {
@@ -297,10 +297,11 @@ body {
 
 .sources-panel__subtitle {
   font-size: 11px;
+  font-weight: 500;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.1em;
   color: var(--text-muted);
-  margin-top: 0.25rem;
+  margin-top: 0.3rem;
 }
 
 .sources-panel__close {
@@ -332,20 +333,29 @@ body {
 .sources-panel__empty {
   border: 1px dashed var(--border-light);
   border-radius: var(--radius-lg);
-  padding: var(--space-6);
+  padding: var(--space-8);
   text-align: center;
   color: var(--text-secondary);
   background: var(--bg-tertiary);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
 }
 
 .sources-panel__item {
   border: 1px solid var(--border-faint);
   border-radius: var(--radius-lg);
-  padding: var(--space-5) var(--space-5) var(--space-4);
+  padding: var(--space-5);
   background: var(--bg-tertiary);
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
+  transition: all 0.2s ease;
+}
+
+.sources-panel__item:hover {
+  border-color: var(--border-light);
+  background: var(--bg-quaternary);
 }
 
 .sources-panel__item-header {
@@ -362,22 +372,24 @@ body {
 }
 
 .sources-panel__item-label {
-  font-size: 11px;
+  font-size: 10px;
+  font-weight: 600;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--text-muted);
+  color: var(--text-faint);
 }
 
 .sources-panel__item-title {
   font-size: var(--text-base);
   font-weight: 600;
   color: var(--text-primary);
-  line-height: 1.35;
+  line-height: 1.4;
+  word-break: break-word;
 }
 
 .sources-panel__item-stats {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
   gap: var(--space-3);
   margin: 0;
 }
@@ -385,7 +397,7 @@ body {
 .sources-panel__item-stats div {
   border: 1px solid var(--border-faint);
   border-radius: var(--radius-md);
-  padding: var(--space-3);
+  padding: var(--space-3) var(--space-4);
   background: var(--bg-secondary);
   display: flex;
   flex-direction: column;
@@ -393,34 +405,39 @@ body {
 }
 
 .sources-panel__item-stats dt {
-  font-size: 11px;
-  letter-spacing: 0.1em;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--text-muted);
+  color: var(--text-faint);
 }
 
 .sources-panel__item-stats dd {
   margin: 0;
   font-size: var(--text-sm);
+  font-weight: 500;
   color: var(--text-primary);
 }
 
 .sources-panel__item-link {
   display: inline-flex;
   align-items: center;
-  gap: 0.35rem;
+  gap: 0.4rem;
   font-size: 11px;
-  padding: 0.3rem 0.65rem;
+  font-weight: 500;
+  padding: 0.4rem 0.75rem;
   border-radius: 999px;
-  border: 1px solid rgba(116, 104, 232, 0.45);
+  border: 1px solid rgba(116, 104, 232, 0.4);
   color: var(--accent);
   text-decoration: none;
-  transition: all 0.18s ease;
+  transition: all 0.2s ease;
+  white-space: nowrap;
 }
 
 .sources-panel__item-link:hover {
-  background: rgba(116, 104, 232, 0.15);
-  border-color: rgba(116, 104, 232, 0.6);
+  background: rgba(116, 104, 232, 0.12);
+  border-color: rgba(116, 104, 232, 0.7);
+  transform: translateY(-1px);
 }
 
 .sources-panel__quotes {
@@ -429,19 +446,21 @@ body {
 }
 
 .sources-panel__quotes-label {
-  font-size: 11px;
-  letter-spacing: 0.1em;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--text-muted);
+  color: var(--text-faint);
+  margin-bottom: var(--space-1);
 }
 
 .sources-panel__quote {
   font-size: var(--text-sm);
-  line-height: 1.55;
+  line-height: 1.6;
   color: var(--text-secondary);
   background: var(--bg-secondary);
-  border-left: 2px solid rgba(116, 104, 232, 0.7);
-  padding: 0.65rem 0.9rem;
+  border-left: 3px solid rgba(116, 104, 232, 0.6);
+  padding: var(--space-3) var(--space-4);
   border-radius: 0 var(--radius-md) var(--radius-md) 0;
   font-style: italic;
 }

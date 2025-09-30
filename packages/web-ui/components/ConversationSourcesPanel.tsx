@@ -30,12 +30,11 @@ export default function ConversationSourcesPanel({ open, onClose, sources }: Con
   }
 
   return (
-    <div className="sources-panel-backdrop" role="presentation" onClick={onClose}>
+    <div className="sources-panel-backdrop" role="presentation">
       <aside
         className="sources-panel"
         role="complementary"
         aria-label="Conversation sources"
-        onClick={event => event.stopPropagation()}
       >
         <header className="sources-panel__header">
           <div>
@@ -59,8 +58,8 @@ export default function ConversationSourcesPanel({ open, onClose, sources }: Con
         <div className="sources-panel__content" role="list">
           {sources.length === 0 ? (
             <div className="sources-panel__empty">
-              <p>No sources have been cited in this conversation yet.</p>
-              <p className="text-sm ui-text-muted">Ask a question that references your documentation to see sources appear here.</p>
+              <p>No sources cited yet</p>
+              <p className="text-sm ui-text-muted">Sources will appear here when the assistant references your documentation.</p>
             </div>
           ) : (
             sources.map(source => (
