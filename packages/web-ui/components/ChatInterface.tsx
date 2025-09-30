@@ -633,35 +633,7 @@ export default function ChatInterface({
                 onMouseEnter={() => setHoveredMessageId(message.id)}
                 onMouseLeave={() => setHoveredMessageId(null)}
               >
-                <div className={isUser ? 'max-w-xl space-y-2 relative' : 'w-full space-y-2 relative'}>
-                  {/* Message Actions */}
-                  {(isHovered || isCopied) && (
-                    <div className={`absolute -top-2 ${isUser ? 'right-0' : 'left-0'} flex items-center gap-1 z-10`}>
-                      <button
-                        onClick={() => handleCopyMessage(message.id, message.content)}
-                        className="message-action-button"
-                        aria-label="Copy message"
-                        title="Copy message"
-                      >
-                        {isCopied ? (
-                          <Check size={14} />
-                        ) : (
-                          <Copy size={14} />
-                        )}
-                      </button>
-                      {canRegenerate && (
-                        <button
-                          onClick={() => handleRegenerateResponse(message.id)}
-                          className="message-action-button"
-                          aria-label="Regenerate response"
-                          title="Regenerate response"
-                        >
-                          <RefreshCw size={14} />
-                        </button>
-                      )}
-                    </div>
-                  )}
-
+                <div className={isUser ? 'max-w-xl space-y-2' : 'w-full space-y-2'}>
                   <div className={isUser ? "px-3 py-2 border rounded-lg ui-border-light ui-bg-secondary" : "py-2"}>
                     {isUser ? (
                       <p className="whitespace-pre-wrap text-base leading-relaxed ui-text-primary">
@@ -680,11 +652,41 @@ export default function ChatInterface({
                     )}
                   </div>
                   <div
-                    className={`flex items-center gap-2 text-xs ${isUser ? 'justify-end' : 'justify-start'} ui-text-muted`}
+                    className={`flex items-center justify-between gap-2 text-xs ui-text-muted`}
                   >
-                    <span>{isUser ? 'You' : 'Cabin Assistant'}</span>
-                    <span>•</span>
-                    <span>{message.timestamp.toLocaleTimeString()}</span>
+                    <div className={`flex items-center gap-2 ${isUser ? 'ml-auto' : ''}`}>
+                      <span>{isUser ? 'You' : 'Cabin Assistant'}</span>
+                      <span>•</span>
+                      <span>{message.timestamp.toLocaleTimeString()}</span>
+                    </div>
+
+                    {/* Message Actions */}
+                    {(isHovered || isCopied) && (
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => handleCopyMessage(message.id, message.content)}
+                          className="message-action-button"
+                          aria-label="Copy message"
+                          title="Copy message"
+                        >
+                          {isCopied ? (
+                            <Check size={14} />
+                          ) : (
+                            <Copy size={14} />
+                          )}
+                        </button>
+                        {canRegenerate && (
+                          <button
+                            onClick={() => handleRegenerateResponse(message.id)}
+                            className="message-action-button"
+                            aria-label="Regenerate response"
+                            title="Regenerate response"
+                          >
+                            <RefreshCw size={14} />
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
