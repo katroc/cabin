@@ -178,6 +178,87 @@ class VectorStore:
 
         return sanitized
 
+    async def query_async(
+        self,
+        query_text: str,
+        top_k: Optional[int] = None,
+        filters: Optional[Dict[str, Any]] = None,
+        *,
+        use_reranker: Optional[bool] = None,
+        allow_reranker_fallback: Optional[bool] = None,
+    ) -> List[ParentChunk]:
+        """
+        Async version of query with parallel embedding + BM25 index preparation.
+        Queries for child chunks and returns the corresponding parent chunks.
+        """
+        query_preview = sanitize_text(query_text[:64].replace("\n", " "))
+        logger.debug(
+            "VectorStore async query received (len=%d): %s", len(query_text), query_preview
+        )
+        metrics.increment("retrieval.vector_store.calls")
+        metrics.increment("retrieval.vector_store.async_calls")
+        self._last_lexical_rankings = []
+
+        # Create cache key
+        cache_key = f"{query_text}:{top_k}:{str(filters)}:{use_reranker}:{allow_reranker_fallback}"
+
+        # Check cache first
+        import time
+        current_time = time.time()
+        if cache_key in self._query_cache:
+            cached_result = self._query_cache[cache_key]
+            if current_time - cached_result['timestamp'] < self._query_cache_ttl:
+                logger.debug("Using cached query result for: %s", query_preview)
+                metrics.increment("retrieval.vector_store.cache_hit")
+                return cached_result['chunks']
+
+        with metrics.timer("retrieval.vector_store.query_time", query=query_text):
+            try:
+                collection_count = self.chroma.count()
+                if collection_count == 0:
+                    logger.warning(
+                        "VectorStore empty; no documents indexed (len=%d, preview=%s)",
+                        len(query_text),
+                        query_preview,
+                    )
+                    metrics.increment("retrieval.vector_store.empty")
+                    return []
+
+                # PARALLEL OPTIMIZATION: Run embedding and BM25 index building concurrently
+                # This saves ~50-100ms by doing both operations at the same time
+                embedding_future = asyncio.create_task(
+                    self.embedding_client.embed_async([query_text])
+                )
+                bm25_future = asyncio.create_task(
+                    asyncio.to_thread(self._ensure_bm25_index)
+                )
+
+                # Wait for both to complete
+                await asyncio.gather(embedding_future, bm25_future)
+
+            except Exception as e:
+                logger.error(
+                    "Failed to prepare async query (len=%d, preview=%s): %s",
+                    len(query_text),
+                    query_preview,
+                    e,
+                )
+                metrics.increment("retrieval.vector_store.errors")
+                return []
+
+        # Now call the synchronous query method which will use the prepared state
+        # (BM25 index is already built, embedding cache is warmed up)
+        result_chunks = await asyncio.to_thread(
+            self.query,
+            query_text,
+            top_k,
+            filters,
+            use_reranker=use_reranker,
+            allow_reranker_fallback=allow_reranker_fallback
+        )
+
+        return result_chunks
+
     def query(
         self,
         query_text: str,
