@@ -652,17 +652,15 @@ export default function ChatInterface({
                     )}
                   </div>
                   <div
-                    className={`flex items-center justify-between gap-2 text-xs ui-text-muted`}
+                    className={`flex items-center gap-2 text-xs ui-text-muted relative ${isUser ? 'justify-end' : 'justify-start'}`}
                   >
-                    <div className={`flex items-center gap-2 ${isUser ? 'ml-auto' : ''}`}>
-                      <span>{isUser ? 'You' : 'Cabin Assistant'}</span>
-                      <span>•</span>
-                      <span>{message.timestamp.toLocaleTimeString()}</span>
-                    </div>
+                    <span>{isUser ? 'You' : 'Cabin Assistant'}</span>
+                    <span>•</span>
+                    <span>{message.timestamp.toLocaleTimeString()}</span>
 
                     {/* Message Actions */}
                     {(isHovered || isCopied) && (
-                      <div className="flex items-center gap-1">
+                      <div className={`absolute ${isUser ? 'left-0' : 'right-0'} flex items-center gap-1`}>
                         <button
                           onClick={() => handleCopyMessage(message.id, message.content)}
                           className="message-action-button"
