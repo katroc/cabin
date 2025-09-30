@@ -656,8 +656,7 @@ class VectorStore:
             count = collection.count()
 
             if count == 0:
-                logger.debug("No documents in ChromaDB, BM25 index empty")
-                self.bm25_index.build([], [])
+                logger.debug("No documents in ChromaDB, skipping BM25 index build")
                 self._bm25_needs_rebuild = False
                 return
 
@@ -865,8 +864,8 @@ class VectorStore:
             self.chroma.reset()
             # Reset BM25 index after clearing collection
             self._bm25_needs_rebuild = True
-            self.bm25_index.build([], [])  # Clear immediately
-            logger.debug("Cleared BM25 index after collection reset")
+            # Don't build with empty corpus - just mark for rebuild
+            logger.debug("Cleared collection and marked BM25 for rebuild")
         except Exception as e:
             logger.error(f"Failed to clear collection: {e}")
             raise

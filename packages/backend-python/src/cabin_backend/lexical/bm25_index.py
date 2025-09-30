@@ -39,12 +39,12 @@ class BM25Index:
 
     def scores(self, query_tokens: Sequence[str]) -> List[float]:
         if not self._bm25 or not self._corpus_tokens:
-            return [0.0] * len(self._corpus_tokens)
+            return []
         if not query_tokens:
             return [0.0] * len(self._corpus_tokens)
         raw_scores = self._bm25.get_scores(list(query_tokens))
         if not len(raw_scores):
-            return [0.0] * len(self._corpus_tokens)
+            return []
         max_score = float(raw_scores.max())
         if max_score <= 0:
             return [0.0] * len(self._corpus_tokens)
