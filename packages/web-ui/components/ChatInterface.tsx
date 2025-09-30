@@ -80,6 +80,7 @@ export default function ChatInterface({
   const [hoveredMessageId, setHoveredMessageId] = useState<string | null>(null)
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null)
   const [showScrollButton, setShowScrollButton] = useState(false)
+  const [isAutoScrolling, setIsAutoScrolling] = useState(true)
   const { preferences, setPersona, setChatMode } = useUIPreferences()
   const { persona, chatMode } = preferences
   const messagesEndRef = useRef<HTMLDivElement | null>(null)
@@ -175,23 +176,56 @@ export default function ChatInterface({
     }
   }, [input, conversation?.id])
 
+  // Smooth scroll anchoring during streaming
   useEffect(() => {
-    if (!conversation) return
-    // Auto-scroll only if we're near the bottom already
+    if (!conversation || !streamingMessageId) return
+
+    const container = messagesContainerRef.current
+    if (!container) return
+
+    // Keep scroll pinned to bottom during streaming
+    const scrollToBottom = () => {
+      if (isAutoScrolling) {
+        container.scrollTop = container.scrollHeight
+      }
+    }
+
+    // Use RAF for smooth updates
+    let rafId: number
+    const scheduleScroll = () => {
+      rafId = requestAnimationFrame(() => {
+        scrollToBottom()
+        if (streamingMessageId) {
+          scheduleScroll()
+        }
+      })
+    }
+
+    scheduleScroll()
+
+    return () => {
+      if (rafId) {
+        cancelAnimationFrame(rafId)
+      }
+    }
+  }, [streamingMessageId, isAutoScrolling, conversation])
+
+  // Scroll on new messages (non-streaming)
+  useEffect(() => {
+    if (!conversation || streamingMessageId) return
+
     if (messagesContainerRef.current && messagesEndRef.current) {
       const container = messagesContainerRef.current
       const { scrollTop, scrollHeight, clientHeight } = container
       const isNearBottom = scrollHeight - scrollTop - clientHeight < 200
 
       if (isNearBottom) {
-        // Use instant scroll during streaming for smoother experience
-        const behavior = streamingMessageId ? 'instant' : 'smooth'
-        messagesEndRef.current.scrollIntoView({ behavior: behavior as ScrollBehavior })
+        messagesEndRef.current.scrollIntoView({ behavior: 'smooth' })
       }
     }
   }, [conversation?.messages, conversation?.id, streamingMessageId])
 
-  // Scroll detection to show/hide scroll button
+  // Scroll detection to show/hide scroll button and manage auto-scroll
   useEffect(() => {
     const container = messagesContainerRef.current
     if (!container) return
@@ -199,7 +233,9 @@ export default function ChatInterface({
     const handleScroll = () => {
       const { scrollTop, scrollHeight, clientHeight } = container
       const isNearBottom = scrollHeight - scrollTop - clientHeight < 200
+
       setShowScrollButton(!isNearBottom && messages.length > 0)
+      setIsAutoScrolling(isNearBottom)
     }
 
     container.addEventListener('scroll', handleScroll)

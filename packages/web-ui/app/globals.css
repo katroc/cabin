@@ -1786,6 +1786,7 @@ select::-webkit-scrollbar-thumb {
 .streaming-content {
   will-change: contents;
   contain: layout style;
+  overflow-anchor: none; /* Disable browser auto scroll-anchoring, we handle it manually */
 }
 
 .streaming-content .markdown-body {
