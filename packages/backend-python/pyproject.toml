@@ -10,6 +10,7 @@ dependencies = [
     "openai",
     "langchain",
     "beautifulsoup4",
+    "aiohttp",
     "pydantic",
     "pydantic-settings",
     "markdown-it-py",

@@ -18,6 +18,7 @@ class DataSourceType(str, Enum):
     FILE_SYSTEM = "filesystem"
     WEB_CRAWLER = "web_crawler"
     FILE_UPLOAD = "file_upload"
+    URL_INGESTION = "url_ingestion"
 
 class DataSourceCapability(str, Enum):
     """Capabilities that data sources can expose."""

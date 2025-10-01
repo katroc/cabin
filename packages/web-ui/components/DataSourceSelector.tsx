@@ -1,9 +1,10 @@
 'use client'
 
 import { useState } from 'react'
-import { Database, Upload, Globe, Github, FileText, X, ArrowLeft, Settings2, Plus } from 'lucide-react'
+import { Database, Upload, Globe, Github, FileText, X, ArrowLeft, Settings2, Plus, Link } from 'lucide-react'
 import ConfluenceIndexing from './ConfluenceIndexing'
 import FileUploadIndexing from './FileUploadIndexing'
+import URLIngestionIndexing from './URLIngestionIndexing'
 import DataSourceManagement from './DataSourceManagement'
 
 interface DataSource {
@@ -34,6 +35,15 @@ export default function DataSourceSelector({ isOpen, onClose }: DataSourceSelect
       component: FileUploadIndexing,
       available: true,
       category: 'files'
+    },
+    {
+      id: 'url_ingestion',
+      name: 'URL Ingestion',
+      description: 'Fetch and index web pages from URLs',
+      icon: Link,
+      component: URLIngestionIndexing,
+      available: true,
+      category: 'web'
     },
     {
       id: 'confluence',
