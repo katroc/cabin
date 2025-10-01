@@ -232,6 +232,11 @@ class FileUploadResponse(BaseModel):
     files_failed: int = 0
     upload_id: Optional[str] = None
 
+class URLIngestionRequest(BaseModel):
+    """Request for URL ingestion operations."""
+    urls: List[str]  # List of URLs to ingest
+    config: Dict[str, Any] = Field(default_factory=dict)  # Ingestion configuration
+
 # Performance Tracking Models
 class ComponentTiming(BaseModel):
     """Timing data for a specific RAG pipeline component."""

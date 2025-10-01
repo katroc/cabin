@@ -19,7 +19,7 @@ from .models import (
     IngestRequest, ChatRequest, ChatResponse, PersonaType,
     DataSourceIndexRequest, DataSourceDiscoveryRequest, DataSourceTestRequest,
     DataSourceIndexResponse, DataSourceProgressResponse, DataSourceInfoResponse,
-    FileUploadRequest, FileUploadResponse,
+    FileUploadRequest, FileUploadResponse, URLIngestionRequest,
     RAGPerformanceMetrics, PerformanceSummary, PerformanceStatsRequest,
     Citation, ComponentTiming
 )
@@ -32,6 +32,7 @@ from .data_sources.manager import DataSourceManager
 from .citations import render_citation_payloads
 from .data_sources.confluence import ConfluenceDataSource  # Import to register
 from .data_sources.file_upload import FileUploadDataSource  # Import to register
+from .data_sources.url_ingestion import URLIngestionDataSource  # Import to register
 from .config import settings
 from .vllm_metrics import get_vllm_metrics, check_vllm_health
 from .runtime import RuntimeOverrides
@@ -1918,6 +1919,83 @@ async def index_uploaded_files(request: FileUploadRequest) -> DataSourceIndexRes
     except Exception as e:
         print(f"Error starting file indexing: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to start file indexing: {e}")
+
+@app.post("/api/data-sources/url_ingestion/index", status_code=202)
+async def index_urls(request: URLIngestionRequest) -> DataSourceIndexResponse:
+    """Index web pages from URLs."""
+    if not data_source_manager:
+        raise HTTPException(status_code=503, detail="Data source manager not available.")
+
+    try:
+        # Create URL ingestion data source and add URLs
+        from .data_sources.url_ingestion import URLIngestionDataSource
+        from .data_sources.base import DataSourceConnection
+
+        connection = DataSourceConnection(
+            source_type="url_ingestion",
+            additional_config={}
+        )
+
+        url_source = URLIngestionDataSource(connection)
+
+        # Add each URL
+        for url in request.urls:
+            if not url_source.add_url(url):
+                raise HTTPException(status_code=400, detail=f"Failed to add URL: {url}")
+
+        # Start indexing job
+        indexing_config = {
+            "max_items": request.config.get("max_items", 100),
+            "include_attachments": False,
+            "incremental": False,
+            "filters": request.config.get("filters", {})
+        }
+
+        job_id = await data_source_manager.start_indexing_with_source(
+            url_source,
+            [],  # Process all URLs
+            indexing_config
+        )
+
+        return DataSourceIndexResponse(
+            job_id=job_id,
+            status="started",
+            message=f"URL indexing job started for {len(request.urls)} URLs"
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error starting URL indexing: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to start URL indexing: {e}")
+
+@app.get("/api/data-sources/url_ingestion/jobs/{job_id}")
+def get_url_ingestion_job_progress(job_id: str) -> DataSourceProgressResponse:
+    """Get the progress of a URL ingestion job."""
+    if not data_source_manager:
+        raise HTTPException(status_code=503, detail="Data source manager not available.")
+
+    try:
+        progress = data_source_manager.get_job_progress(job_id)
+        if not progress:
+            raise HTTPException(status_code=404, detail="Job not found")
+
+        return DataSourceProgressResponse(
+            job_id=job_id,
+            status=progress.status,
+            processed_items=progress.processed_items,
+            total_items=progress.total_items,
+            current_item=progress.current_item,
+            started_at=progress.started_at,
+            completed_at=progress.completed_at,
+            error_message=progress.error_message
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error getting job progress: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get job progress: {e}")
 
 # --- Service Management Endpoints ---
 

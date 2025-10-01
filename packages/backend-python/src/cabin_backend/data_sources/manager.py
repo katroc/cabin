@@ -141,6 +141,40 @@ class DataSourceManager:
             logger.error(f"Failed to start indexing job: {e}")
             raise
 
+    async def start_indexing_with_source(
+        self,
+        source: DataSource,
+        source_ids: List[str],
+        indexing_config: Dict[str, Any]
+    ) -> str:
+        """Start an indexing job with an already-created data source instance."""
+        try:
+            # Create indexing config
+            config = IndexingConfig(**indexing_config)
+
+            # Start the job
+            job_id = await source.start_indexing(source_ids, config)
+
+            # Initialize progress tracking
+            progress = IndexingProgress(
+                job_id=job_id,
+                status="pending",
+                started_at=datetime.now()
+            )
+            self._jobs[job_id] = progress
+
+            # Start the indexing task
+            task = asyncio.create_task(
+                self._run_indexing_job(source, source_ids, config, job_id)
+            )
+            self._running_tasks[job_id] = task
+
+            return job_id
+
+        except Exception as e:
+            logger.error(f"Failed to start indexing job with source: {e}")
+            raise
+
     async def _run_indexing_job(
         self,
         source: DataSource,
