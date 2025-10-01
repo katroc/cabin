@@ -154,8 +154,6 @@ class UISettings(BaseModel):
     lexical_k: int = 80
     rrf_k: int = 60
     mmr_lambda: float = 0.5
-    routing_threshold: float = 0.4
-    routing_sample_size: int = 20
 
     # Retrieval - Features
     use_reranker: bool = True
@@ -163,7 +161,6 @@ class UISettings(BaseModel):
 
     # Reranker
     reranker_url: str = "http://localhost:8002/rerank"
-    reranker_port: int = 8002
     reranker_timeout: int = 8
     reranker_pool_size_multiplier: int = 3
     reranker_score_weight: float = 0.7
@@ -316,8 +313,6 @@ def save_ui_settings_to_yaml(ui_settings_payload: 'UISettingsPayload', path_str:
             "lexical_k": ui_settings_payload.lexical_k,
             "rrf_k": ui_settings_payload.rrf_k,
             "mmr_lambda": ui_settings_payload.mmr_lambda,
-            "routing_threshold": ui_settings_payload.routing_threshold,
-            "routing_sample_size": ui_settings_payload.routing_sample_size,
 
             # Retrieval - Features
             "use_reranker": ui_settings_payload.use_reranker,
@@ -325,7 +320,6 @@ def save_ui_settings_to_yaml(ui_settings_payload: 'UISettingsPayload', path_str:
 
             # Reranker
             "reranker_url": ui_settings_payload.reranker_url,
-            "reranker_port": ui_settings_payload.reranker_port,
             "reranker_timeout": ui_settings_payload.reranker_timeout,
             "reranker_pool_size_multiplier": ui_settings_payload.reranker_pool_size_multiplier,
             "reranker_score_weight": ui_settings_payload.reranker_score_weight,

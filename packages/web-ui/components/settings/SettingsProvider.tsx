@@ -42,13 +42,10 @@ export interface ExtendedSettingsData {
   lexicalK: number
   rrfK: number
   mmrLambda: number
-  routingThreshold: number
-  routingSampleSize: number
 
   // Retrieval - Features
   useReranker: boolean
   allowRerankerFallback: boolean
-  useRm3: boolean
 
   // Retrieval - Database
   chromaHost: string
@@ -66,7 +63,6 @@ export interface ExtendedSettingsData {
 
   // Performance - Reranker
   rerankerUrl: string
-  rerankerPort: number
   rerankerTimeout: number
   rerankerPoolSizeMultiplier: number
   rerankerScoreWeight: number
@@ -84,6 +80,10 @@ export interface ExtendedSettingsData {
 
   // Advanced - Verification
   fuzzyPartialRatioMin: number
+
+  // Model Selection
+  llmModel: string
+  embeddingModel: string
 }
 
 interface SettingsState {
@@ -141,11 +141,8 @@ const defaultSettings: ExtendedSettingsData = {
   lexicalK: 80,
   rrfK: 60,
   mmrLambda: 0.5,
-  routingThreshold: 0.4,
-  routingSampleSize: 20,
-   useReranker: true,
-   allowRerankerFallback: true,
-   useRm3: false,
+  useReranker: true,
+  allowRerankerFallback: true,
   chromaHost: 'localhost',
   chromaPort: 8100,
 
@@ -157,7 +154,6 @@ const defaultSettings: ExtendedSettingsData = {
   chunkStrideTokens: 75,
   maxHtmlChars: 500000,
   rerankerUrl: 'http://localhost:8002/rerank',
-  rerankerPort: 8002,
   rerankerTimeout: 8,
   rerankerPoolSizeMultiplier: 3,
   rerankerScoreWeight: 0.7,
@@ -170,7 +166,7 @@ const defaultSettings: ExtendedSettingsData = {
   dedupEnabled: true,
   dedupMethod: 'minhash',
   dedupThreshold: 0.92,
-  fuzzyPartialRatioMin: 70
+  fuzzyPartialRatioMin: 90
 }
 
 function settingsReducer(state: SettingsState, action: SettingsAction): SettingsState {
@@ -369,13 +365,10 @@ export function SettingsProvider({
         lexicalK: state.data.lexicalK,
         rrfK: state.data.rrfK,
         mmrLambda: state.data.mmrLambda,
-        routingThreshold: state.data.routingThreshold,
-        routingSampleSize: state.data.routingSampleSize,
 
         // Retrieval - Features
         useReranker: state.data.useReranker,
         allowRerankerFallback: state.data.allowRerankerFallback,
-        useRm3: state.data.useRm3,
 
         // Retrieval - Database
         chromaHost: state.data.chromaHost,
@@ -393,7 +386,6 @@ export function SettingsProvider({
 
         // Performance - Reranker
         rerankerUrl: state.data.rerankerUrl,
-        rerankerPort: state.data.rerankerPort,
         rerankerTimeout: state.data.rerankerTimeout,
         rerankerPoolSizeMultiplier: state.data.rerankerPoolSizeMultiplier,
         rerankerScoreWeight: state.data.rerankerScoreWeight,

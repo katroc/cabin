@@ -153,26 +153,8 @@ export function PerformanceSettingsPanel() {
             value={state.data.rerankerUrl}
             onChange={(value) => updateSetting('rerankerUrl', value)}
             placeholder="http://localhost:8002/rerank"
-            description="Full URL to the reranker API endpoint"
+            description="Full URL to the reranker API endpoint (including port)"
             error={state.validationErrors.rerankerUrl}
-          />
-        </SettingField>
-
-        <SettingField
-          title="Reranker Port"
-          description="Port number for the reranker service"
-        >
-          <SettingControl
-            type="number"
-            id="rerankerPort"
-            label="Reranker Port"
-            value={state.data.rerankerPort}
-            onChange={(value) => updateSetting('rerankerPort', value)}
-            min={1}
-            max={65535}
-            placeholder="8002"
-            description="Port where the reranker service is listening"
-            error={state.validationErrors.rerankerPort}
           />
         </SettingField>
 
