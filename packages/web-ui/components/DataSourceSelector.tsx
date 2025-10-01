@@ -38,8 +38,8 @@ export default function DataSourceSelector({ isOpen, onClose }: DataSourceSelect
     },
     {
       id: 'url_ingestion',
-      name: 'URL Ingestion',
-      description: 'Fetch and index web pages from URLs',
+      name: 'Web Pages',
+      description: 'Index content from web pages by URL',
       icon: Link,
       component: URLIngestionIndexing,
       available: true,

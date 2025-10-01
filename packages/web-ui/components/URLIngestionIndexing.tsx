@@ -181,7 +181,7 @@ export default function URLIngestionIndexing({ isOpen, onClose, onBack }: URLIng
             )}
             <div className="flex items-center gap-3">
               <Globe className="w-5 h-5 ui-text-secondary" />
-              URL Ingestion
+              Add Web Pages
             </div>
           </div>
           <button onClick={onClose} className="btn-close">
