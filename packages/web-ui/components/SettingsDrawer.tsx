@@ -2,39 +2,13 @@
 
 import { X } from 'lucide-react'
 import { SettingsPage } from './settings/SettingsPage'
-import { ExtendedSettingsData } from './settings/SettingsProvider'
-
-interface SettingsData {
-  llmBaseUrl: string
-  llmModel: string
-  embeddingBaseUrl: string
-  embeddingModel: string
-  temperature: number
-  chromaHost: string
-  chromaPort: number
-  finalPassages: number
-  cosineFloor: number
-  minKeywordOverlap: number
-  useReranker: boolean
-  allowRerankerFallback: boolean
-  useRm3: boolean
-  rerankerUrl: string
-  rerankerPort: number
-  logLevel: string
-  maxMemoryMessages: number
-  maxTokens: number
-  streamingMaxTokens: number
-  rephrasingMaxTokens: number
-}
 
 interface SettingsDrawerProps {
   isOpen: boolean
   onClose: () => void
-  settings: SettingsData
-  onSave: (settings: SettingsData) => void | Promise<void>
 }
 
-export default function SettingsDrawer({ isOpen, onClose, settings, onSave }: SettingsDrawerProps) {
+export default function SettingsDrawer({ isOpen, onClose }: SettingsDrawerProps) {
   if (!isOpen) return null
 
   return (
@@ -50,7 +24,7 @@ export default function SettingsDrawer({ isOpen, onClose, settings, onSave }: Se
           </button>
         </div>
 
-        {/* Settings Content */}
+        {/* Settings Content - Uses SettingsProvider context internally */}
         <div className="flex-1 min-h-0">
           <SettingsPage />
         </div>
