@@ -19,9 +19,6 @@ dependencies = [
     "setuptools",
 ]
 
-[project.scripts]
-start = "uvicorn cabin_backend.main:app --host 0.0.0.0 --port 8788 --reload --app-dir src/"
-
 [tool.pdm]
 
 [build-system]
