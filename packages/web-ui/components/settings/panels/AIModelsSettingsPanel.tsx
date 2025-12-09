@@ -17,27 +17,49 @@ export function AIModelsSettingsPanel() {
           title="LLM Model"
           description="Language model used for text generation"
         >
-          <div className="input-base opacity-75">
-            {state.data.llmModel || 'Auto-discovering...'}
-          </div>
+          <SettingControl
+            type="text"
+            id="llmModel"
+            label="LLM Model"
+            value={state.data.llmModel}
+            onChange={(value) => updateSetting('llmModel', value)}
+            placeholder="Auto-discovering..."
+            description="Model name from your vLLM container"
+            error={state.validationErrors.llmModel}
+            disabled={true}
+          />
         </SettingField>
 
         <SettingField
           title="Embedding Model"
           description="Model used for text embeddings and semantic search"
         >
-          <div className="input-base opacity-75">
-            {state.data.embeddingModel || 'Auto-discovering...'}
-          </div>
+          <SettingControl
+            type="text"
+            id="embeddingModel"
+            label="Embedding Model"
+            value={state.data.embeddingModel}
+            onChange={(value) => updateSetting('embeddingModel', value)}
+            placeholder="Auto-discovering..."
+            description="Model name from your vLLM container"
+            error={state.validationErrors.embeddingModel}
+            disabled={true}
+          />
         </SettingField>
 
         <SettingField
           title="Reranker Model"
           description="Model used for result reranking and relevance scoring"
         >
-          <div className="input-base opacity-75">
-            bge-reranker-v2-m3
-          </div>
+          <SettingControl
+            type="text"
+            id="rerankerModel"
+            label="Reranker Model"
+            value="bge-reranker-v2-m3"
+            onChange={() => {}}
+            description="Model name from your vLLM container"
+            disabled={true}
+          />
         </SettingField>
       </SettingGroup>
 

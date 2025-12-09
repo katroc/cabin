@@ -83,7 +83,6 @@ class UISettingsPayload(BaseModel):
 
     # Reranker
     reranker_url: str = Field(alias="rerankerUrl")
-    reranker_port: int = Field(alias="rerankerPort")
     reranker_timeout: int = Field(alias="rerankerTimeout", default=8)
     reranker_pool_size_multiplier: int = Field(alias="rerankerPoolSizeMultiplier", default=3)
     reranker_score_weight: float = Field(alias="rerankerScoreWeight", default=0.7)
@@ -180,7 +179,6 @@ def load_default_ui_settings() -> UISettingsPayload:
     ui_cfg = settings.app_config.ui_settings
 
     reranker_url = ui_cfg.reranker_url
-    reranker_port = ui_cfg.reranker_port
     # UI settings log level takes precedence over environment and telemetry settings
     log_level = ui_cfg.log_level
 
@@ -228,7 +226,6 @@ def load_default_ui_settings() -> UISettingsPayload:
 
         # Reranker
         rerankerUrl=reranker_url,
-        rerankerPort=reranker_port,
         rerankerTimeout=ui_cfg.reranker_timeout,
         rerankerPoolSizeMultiplier=ui_cfg.reranker_pool_size_multiplier,
         rerankerScoreWeight=ui_cfg.reranker_score_weight,

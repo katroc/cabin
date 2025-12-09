@@ -14,6 +14,7 @@ ui_settings:
   max_citations: 3
   require_quotes: true
   quote_max_words: 12
+  citation_min_score_ratio: 0.4
   chroma_host: localhost
   chroma_port: 8100
   final_passages: 8
@@ -23,12 +24,9 @@ ui_settings:
   lexical_k: 80
   rrf_k: 60
   mmr_lambda: 0.5
-  routing_threshold: 0.35
-  routing_sample_size: 20
   use_reranker: true
   allow_reranker_fallback: true
   reranker_url: http://localhost:8002/rerank
-  reranker_port: 8002
   reranker_timeout: 8
   reranker_pool_size_multiplier: 3
   reranker_score_weight: 0.7
