@@ -2,6 +2,10 @@
 
 import { useCallback, useRef, useState } from 'react'
 import { splitThinking, deriveAnswerFromThinking } from '../../utils/thinking'
+import type { ChatMode, PersonaType } from '../../components/contexts/UIPreferencesProvider'
+
+// Re-export types for convenience
+export type { ChatMode, PersonaType }
 
 // Types
 export interface Citation {
@@ -38,9 +42,6 @@ export interface Message {
     rendered_citations?: RenderedCitation[]
     timestamp: Date
 }
-
-export type ChatMode = 'rag' | 'llm'
-export type PersonaType = 'assistant' | 'expert' | 'tutor' | 'analyst'
 
 // API endpoints
 const ENDPOINTS = {

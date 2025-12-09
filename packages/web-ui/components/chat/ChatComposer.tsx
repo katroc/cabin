@@ -3,7 +3,7 @@
 import { useRef, useEffect, forwardRef } from 'react'
 import { Send, StopCircle } from 'lucide-react'
 import PersonaSelector from '../PersonaSelector'
-import type { ChatMode, PersonaType } from '../../app/hooks/useChatStream'
+import type { ChatMode, PersonaType } from '../contexts/UIPreferencesProvider'
 
 interface ChatComposerProps {
     input: string
@@ -115,22 +115,22 @@ const ChatComposer = forwardRef<HTMLTextAreaElement, ChatComposerProps>(
                                 >
                                     <div
                                         className={`absolute top-0.5 bottom-0.5 rounded-full transition-all duration-200 ease-in-out ${chatMode === 'rag'
-                                                ? 'left-0.5 right-1/2 bg-[var(--accent)]'
-                                                : 'left-1/2 right-0.5 bg-orange-500'
+                                            ? 'left-0.5 right-1/2 bg-[var(--accent)]'
+                                            : 'left-1/2 right-0.5 bg-orange-500'
                                             }`}
                                     />
                                     <div
                                         className={`relative z-10 px-2.5 py-1 text-xs font-medium rounded-full transition-colors duration-200 ${chatMode === 'rag'
-                                                ? 'text-white'
-                                                : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                                            ? 'text-white'
+                                            : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
                                             }`}
                                     >
                                         RAG
                                     </div>
                                     <div
                                         className={`relative z-10 px-2.5 py-1 text-xs font-medium rounded-full transition-colors duration-200 ${chatMode === 'llm'
-                                                ? 'text-white'
-                                                : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                                            ? 'text-white'
+                                            : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
                                             }`}
                                     >
                                         LLM
@@ -141,8 +141,8 @@ const ChatComposer = forwardRef<HTMLTextAreaElement, ChatComposerProps>(
                                     type="submit"
                                     disabled={!input.trim()}
                                     className={`flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium transition-all duration-200 disabled:opacity-50 text-white ui-shadow-elevated ${chatMode === 'rag'
-                                            ? 'bg-[var(--accent)] hover:bg-[var(--accent-hover)] border-[var(--accent)]'
-                                            : 'bg-orange-500 hover:bg-orange-600 border-orange-500'
+                                        ? 'bg-[var(--accent)] hover:bg-[var(--accent-hover)] border-[var(--accent)]'
+                                        : 'bg-orange-500 hover:bg-orange-600 border-orange-500'
                                         }`}
                                 >
                                     <Send size={16} />
