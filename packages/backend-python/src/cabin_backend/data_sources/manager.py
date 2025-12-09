@@ -141,6 +141,32 @@ class DataSourceManager:
             logger.error(f"Failed to start indexing job: {e}")
             raise
 
+    async def start_file_indexing(
+        self,
+        upload_path: str,
+        indexing_config: Dict[str, Any]
+    ) -> str:
+        """Start indexing uploaded files."""
+        return await self.start_indexing(
+            source_type="file_upload",
+            connection_config={"additional_config": {"upload_path": upload_path}},
+            source_ids=[],  # Process all files in the directory
+            indexing_config=indexing_config
+        )
+
+    async def start_url_ingestion(
+        self,
+        urls: List[str],
+        indexing_config: Dict[str, Any]
+    ) -> str:
+        """Start indexing URLs."""
+        return await self.start_indexing(
+            source_type="url_ingestion",
+            connection_config={},
+            source_ids=urls,
+            indexing_config=indexing_config
+        )
+
     async def start_indexing_with_source(
         self,
         source: DataSource,

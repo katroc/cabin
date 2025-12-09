@@ -62,7 +62,7 @@ def validate_file_content(file_path: Path, expected_extension: str) -> bool:
         return False
 
 
-@router.post("/upload")
+@router.post("/files/upload")
 async def upload_files(request: Request, files: List[UploadFile] = File(...)):
     """Upload files for indexing."""
     if not deps.data_source_manager:
@@ -169,7 +169,7 @@ async def upload_files(request: Request, files: List[UploadFile] = File(...)):
         raise HTTPException(status_code=500, detail=f"Failed to upload files: {e}")
 
 
-@router.post("/upload/index")
+@router.post("/files/index")
 async def index_uploaded_files(request: FileUploadRequest):
     """Index previously uploaded files."""
     if not deps.data_source_manager:
