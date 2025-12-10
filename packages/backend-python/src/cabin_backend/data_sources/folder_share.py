@@ -469,114 +469,190 @@ class FolderShareDataSource(DataSource):
         depth: int,
         max_depth: int
     ) -> List[str]:
-        """Collect files from SMB share recursively."""
+        """Collect files from SMB share recursively using pysmb."""
+        import socket
+        
         files = []
         
         if depth > max_depth:
             return files
         
         try:
-            from smbclient import listdir, stat as smb_stat
-            import smbclient
-            import stat as stat_module
+            from smb.SMBConnection import SMBConnection
             
-            # Register session if needed
-            if self.config.smb_username and not hasattr(self, '_smb_session_registered'):
-                parts = smb_path.replace('smb://', '').split('/')
-                server = parts[0]
-                smbclient.register_session(
-                    server,
-                    username=self.config.smb_username,
-                    password=self.config.smb_password,
+            # Parse SMB URL
+            if smb_path.startswith('smb://'):
+                path_part = smb_path[6:]
+            elif smb_path.startswith('//'):
+                path_part = smb_path[2:]
+            else:
+                path_part = smb_path
+            
+            parts = path_part.split('/')
+            server = parts[0]
+            share_name = parts[1] if len(parts) > 1 else ''
+            sub_path = '/'.join(parts[2:]) if len(parts) > 2 else ''
+            
+            if not share_name:
+                logger.error(f"Invalid SMB path, no share specified: {smb_path}")
+                return files
+            
+            # Create SMB connection (use empty strings for guest access)
+            username = self.config.smb_username or ''
+            password = self.config.smb_password or ''
+            client_name = socket.gethostname()[:15]  # NetBIOS name limit
+            
+            # Check if we already have a connection
+            if not hasattr(self, '_smb_conn') or self._smb_conn is None:
+                self._smb_conn = SMBConnection(
+                    username, password,
+                    client_name, server,
+                    use_ntlm_v2=True,
+                    is_direct_tcp=True
                 )
-                self._smb_session_registered = True
+                if not self._smb_conn.connect(server, 445, timeout=30):
+                    logger.error(f"Failed to connect to SMB server: {server}")
+                    return files
+                self._smb_server = server
+                self._smb_share = share_name
+                logger.info(f"Connected to SMB server {server} for indexing")
             
-            unc_path = self._smb_url_to_unc(smb_path)
-            
-            for entry in listdir(unc_path):
-                if self._should_exclude(entry):
-                    continue
-                
-                entry_unc = f"{unc_path}\\{entry}"
-                entry_smb = f"{smb_path}/{entry}"
+            def collect_directory(dir_path: str, current_depth: int):
+                if current_depth > max_depth:
+                    return
                 
                 try:
-                    entry_stat = smb_stat(entry_unc)
+                    path_to_list = f"/{dir_path}" if dir_path else "/"
+                    entries = self._smb_conn.listPath(share_name, path_to_list)
                     
-                    if stat_module.S_ISDIR(entry_stat.st_mode):
-                        # Directory - recurse if enabled
-                        if self.config.recursive:
-                            files.extend(await self._collect_smb_files(
-                                entry_smb, depth + 1, max_depth
-                            ))
-                    elif stat_module.S_ISREG(entry_stat.st_mode):
-                        # Regular file - check extension
-                        ext = Path(entry).suffix.lower()
-                        if ext in self.config.file_extensions:
-                            # Check file size
-                            if entry_stat.st_size <= self.config.max_file_size_bytes:
-                                files.append(entry_unc)  # Store UNC path for reading
+                    for entry in entries:
+                        if entry.filename in ['.', '..']:
+                            continue
+                        
+                        if self._should_exclude(entry.filename):
+                            continue
+                        
+                        entry_path = f"{dir_path}/{entry.filename}" if dir_path else entry.filename
+                        
+                        if entry.isDirectory:
+                            if self.config.recursive:
+                                collect_directory(entry_path, current_depth + 1)
+                        else:
+                            # Regular file - check extension
+                            ext = Path(entry.filename).suffix.lower()
+                            if ext in self.config.file_extensions:
+                                # Check file size
+                                if entry.file_size <= self.config.max_file_size_bytes:
+                                    # Store as smb://server/share/path format
+                                    full_path = f"smb://{server}/{share_name}/{entry_path}"
+                                    files.append(full_path)
                 except Exception as e:
-                    logger.debug(f"Could not process {entry_unc}: {e}")
-        
+                    logger.error(f"Error listing SMB directory {dir_path}: {e}")
+            
+            collect_directory(sub_path, depth)
+            
         except ImportError:
-            logger.warning("smbprotocol not installed, cannot collect SMB files")
+            logger.warning("pysmb not installed, cannot collect SMB files. Install with: pip install pysmb")
         except Exception as e:
             logger.error(f"Error collecting SMB files from {smb_path}: {e}")
         
         return files
     
-    async def _extract_smb_file(self, unc_path: str) -> Optional[ExtractedDocument]:
-        """Extract content from a file on an SMB share."""
+    async def _extract_smb_file(self, smb_url: str) -> Optional[ExtractedDocument]:
+        """Extract content from a file on an SMB share using pysmb."""
         import tempfile
+        import socket
         
         try:
-            from smbclient import open_file, stat as smb_stat
+            from smb.SMBConnection import SMBConnection
+            from smb.smb_structs import OperationFailure
             
-            # Get file info
-            file_stat = smb_stat(unc_path)
-            file_name = Path(unc_path).name
-            file_ext = Path(unc_path).suffix.lower()
+            # Parse SMB URL
+            if smb_url.startswith('smb://'):
+                path_part = smb_url[6:]
+            elif smb_url.startswith('//'):
+                path_part = smb_url[2:]
+            else:
+                path_part = smb_url
+            
+            parts = path_part.split('/')
+            server = parts[0]
+            share_name = parts[1] if len(parts) > 1 else ''
+            file_path = '/'.join(parts[2:]) if len(parts) > 2 else ''
+            file_name = Path(file_path).name
+            file_ext = Path(file_path).suffix.lower()
+            
+            if not share_name or not file_path:
+                logger.error(f"Invalid SMB file path: {smb_url}")
+                return None
+            
+            # Reuse existing connection if possible
+            if hasattr(self, '_smb_conn') and self._smb_conn:
+                conn = self._smb_conn
+            else:
+                username = self.config.smb_username or ''
+                password = self.config.smb_password or ''
+                client_name = socket.gethostname()[:15]
+                
+                conn = SMBConnection(
+                    username, password,
+                    client_name, server,
+                    use_ntlm_v2=True,
+                    is_direct_tcp=True
+                )
+                if not conn.connect(server, 445, timeout=30):
+                    logger.error(f"Failed to connect to SMB server: {server}")
+                    return None
+            
+            # Get file attributes
+            try:
+                attrs = conn.getAttributes(share_name, f"/{file_path}")
+                file_size = attrs.file_size
+                file_mtime = attrs.last_write_time
+            except Exception as e:
+                logger.error(f"Failed to get SMB file attributes for {smb_url}: {e}")
+                return None
             
             # Download to temp file for parsing
             with tempfile.NamedTemporaryFile(suffix=file_ext, delete=False) as tmp:
                 tmp_path = Path(tmp.name)
-                with open_file(unc_path, mode='rb') as smb_file:
-                    tmp.write(smb_file.read())
+                try:
+                    with open(tmp_path, 'wb') as f:
+                        conn.retrieveFile(share_name, f"/{file_path}", f)
+                except Exception as e:
+                    logger.error(f"Failed to download SMB file {smb_url}: {e}")
+                    return None
             
             try:
                 # Parse using existing parser
                 parser = document_parser_registry.get_parser(tmp_path)
                 if not parser:
-                    logger.debug(f"No parser available for {unc_path}")
+                    logger.debug(f"No parser available for {smb_url}")
                     return None
                 
                 content, metadata = parser.parse(tmp_path)
                 
                 if not content or len(content.strip()) < 10:
-                    logger.debug(f"Skipping empty/minimal content: {unc_path}")
+                    logger.debug(f"Skipping empty/minimal content: {smb_url}")
                     return None
                 
                 # Generate document ID from path
-                doc_id = hashlib.sha256(unc_path.encode()).hexdigest()[:16]
-                
-                # Convert UNC back to smb:// for display
-                smb_url = self._unc_to_smb_url(unc_path)
+                doc_id = hashlib.sha256(smb_url.encode()).hexdigest()[:16]
                 
                 return ExtractedDocument(
                     id=doc_id,
-                    title=metadata.title or Path(unc_path).stem,
+                    title=metadata.title or Path(file_path).stem,
                     content=content,
                     source=DocumentSource(
                         source_type=DataSourceType.FOLDER_SHARE,
-                        source_id=str(Path(unc_path).parent),
+                        source_id=f"smb://{server}/{share_name}",
                         source_url=smb_url,
                         title=file_name,
-                        last_modified=datetime.fromtimestamp(file_stat.st_mtime),
+                        last_modified=datetime.fromtimestamp(file_mtime),
                         metadata={
-                            "file_path": unc_path,
+                            "file_path": smb_url,
                             "smb_url": smb_url,
-                            "file_size": file_stat.st_size,
+                            "file_size": file_size,
                             "file_extension": file_ext,
                         }
                     ),
@@ -585,7 +661,7 @@ class FolderShareDataSource(DataSource):
                         "document_id": doc_id,
                         "source_type": "folder_share",
                         "file_path": smb_url,
-                        "folder_name": Path(unc_path).parent.name,
+                        "folder_name": str(Path(file_path).parent),
                         "is_smb": True,
                     }
                 )
@@ -597,10 +673,10 @@ class FolderShareDataSource(DataSource):
                     pass
         
         except ImportError:
-            logger.error("smbprotocol not installed")
+            logger.error("pysmb not installed")
             return None
         except Exception as e:
-            logger.error(f"Failed to extract SMB file {unc_path}: {e}")
+            logger.error(f"Failed to extract SMB file {smb_url}: {e}")
             return None
     
     def _unc_to_smb_url(self, unc_path: str) -> str:
