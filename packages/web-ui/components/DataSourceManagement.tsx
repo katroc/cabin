@@ -1,11 +1,12 @@
 'use client'
 
 import { useState, useEffect, useMemo } from 'react'
-import { ArrowLeft, Database, FileText, Globe, Upload, Trash2, RefreshCw, CheckCircle, AlertCircle, Clock, Info, X, Grid, List, Table, ChevronUp } from 'lucide-react'
+import { ArrowLeft, Database, FileText, Globe, Upload, Trash2, RefreshCw, CheckCircle, AlertCircle, Clock, Info, X, Grid, List, Table, ChevronUp, Layers, Link } from 'lucide-react'
 import FilterBar from './DataSourceManagement/FilterBar'
 import DocumentTable from './DataSourceManagement/DocumentTable'
 import DocumentGrid from './DataSourceManagement/DocumentGrid'
 import DocumentList from './DataSourceManagement/DocumentList'
+import DocumentPreview from './DataSourceManagement/DocumentPreview'
 import BulkActions, { defaultBulkActions } from './DataSourceManagement/BulkActions'
 import ConfirmationModal from './ConfirmationModal'
 import { useToast } from './ToastProvider'
@@ -72,6 +73,25 @@ export default function DataSourceManagement({ isOpen, onClose, onBack }: DataSo
     selectAll: false,
     excludedIds: new Set()
   })
+
+  const [previewDocument, setPreviewDocument] = useState<IndexedDocument | null>(null)
+  const [showPreview, setShowPreview] = useState(false)
+
+  const handlePreviewDocument = (doc: IndexedDocument) => {
+    // Toggle: if same document already previewed, close it
+    if (showPreview && previewDocument?.id === doc.id) {
+      setShowPreview(false)
+      setPreviewDocument(null)
+    } else {
+      setPreviewDocument(doc)
+      setShowPreview(true)
+    }
+  }
+
+  const handleClosePreview = () => {
+    setShowPreview(false)
+    setPreviewDocument(null)
+  }
 
 
 
@@ -452,20 +472,29 @@ export default function DataSourceManagement({ isOpen, onClose, onBack }: DataSo
           {stats && (
             <div className="mb-6">
               <h3 className="text-lg font-semibold ui-text-primary mb-4">Overview</h3>
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+
+              {/* Main Stats Row */}
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-4">
                 <div className="p-4 ui-bg-tertiary border ui-border-faint rounded-lg">
                   <div className="flex items-center gap-2 mb-2">
                     <FileText className="w-4 h-4 ui-text-secondary" />
-                    <span className="text-sm font-medium ui-text-secondary">Total Documents</span>
+                    <span className="text-sm font-medium ui-text-secondary">Documents</span>
                   </div>
                   <div className="text-2xl font-bold ui-text-primary">{stats.total_documents}</div>
+                </div>
+                <div className="p-4 ui-bg-tertiary border ui-border-faint rounded-lg">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Layers className="w-4 h-4 ui-text-secondary" />
+                    <span className="text-sm font-medium ui-text-secondary">Chunks</span>
+                  </div>
+                  <div className="text-2xl font-bold ui-text-primary">{(stats as any).total_chunks || 0}</div>
                 </div>
                 <div className="p-4 ui-bg-tertiary border ui-border-faint rounded-lg">
                   <div className="flex items-center gap-2 mb-2">
                     <Database className="w-4 h-4 ui-text-secondary" />
                     <span className="text-sm font-medium ui-text-secondary">Total Size</span>
                   </div>
-                  <div className="text-2xl font-bold ui-text-primary">{formatFileSize(stats.total_size)}</div>
+                  <div className="text-xl font-bold ui-text-primary">{formatFileSize(stats.total_size)}</div>
                 </div>
                 <div className="p-4 ui-bg-tertiary border ui-border-faint rounded-lg">
                   <div className="flex items-center gap-2 mb-2">
@@ -478,7 +507,7 @@ export default function DataSourceManagement({ isOpen, onClose, onBack }: DataSo
                 </div>
                 <div className="p-4 ui-bg-tertiary border ui-border-faint rounded-lg">
                   <div className="flex items-center gap-2 mb-2">
-                    <CheckCircle className="w-4 h-4 ui-text-secondary" />
+                    <CheckCircle className="w-4 h-4 text-[var(--success)]" />
                     <span className="text-sm font-medium ui-text-secondary">Indexed</span>
                   </div>
                   <div className="text-2xl font-bold text-[var(--success)]">
@@ -486,6 +515,53 @@ export default function DataSourceManagement({ isOpen, onClose, onBack }: DataSo
                   </div>
                 </div>
               </div>
+
+              {/* Source Breakdown */}
+              {stats.sources && Object.keys(stats.sources).length > 0 && (
+                <div className="p-4 ui-bg-tertiary border ui-border-faint rounded-lg">
+                  <div className="flex items-center gap-2 mb-3">
+                    <span className="text-sm font-medium ui-text-secondary">Sources</span>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {Object.entries(stats.sources).map(([sourceType, sourceData]) => {
+                      const getSourceIcon = () => {
+                        switch (sourceType) {
+                          case 'file_upload': return <Upload className="w-3 h-3" />
+                          case 'confluence': return <Globe className="w-3 h-3" />
+                          case 'url_ingestion': return <Link className="w-3 h-3" />
+                          default: return <FileText className="w-3 h-3" />
+                        }
+                      }
+                      const getSourceLabel = () => {
+                        switch (sourceType) {
+                          case 'file_upload': return 'File Upload'
+                          case 'confluence': return 'Confluence'
+                          case 'url_ingestion': return 'URL'
+                          default: return sourceType.replace('_', ' ')
+                        }
+                      }
+                      const getBadgeColor = () => {
+                        switch (sourceType) {
+                          case 'file_upload': return 'bg-blue-500/20 text-blue-400 border-blue-500/30'
+                          case 'confluence': return 'bg-orange-500/20 text-orange-400 border-orange-500/30'
+                          case 'url_ingestion': return 'bg-purple-500/20 text-purple-400 border-purple-500/30'
+                          default: return 'bg-gray-500/20 text-gray-400 border-gray-500/30'
+                        }
+                      }
+                      return (
+                        <div
+                          key={sourceType}
+                          className={`flex items-center gap-2 px-3 py-1.5 rounded-full border text-sm ${getBadgeColor()}`}
+                        >
+                          {getSourceIcon()}
+                          <span>{getSourceLabel()}</span>
+                          <span className="font-semibold">{(sourceData as any).count}</span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -497,6 +573,7 @@ export default function DataSourceManagement({ isOpen, onClose, onBack }: DataSo
             availableStatuses={availableOptions.statuses}
             availableContentTypes={availableOptions.contentTypes}
             availableTags={availableOptions.tags}
+            resultCount={filters.search ? filteredAndSortedDocuments.length : undefined}
           />
 
 
@@ -594,6 +671,7 @@ export default function DataSourceManagement({ isOpen, onClose, onBack }: DataSo
                   selectedIds={selection.selectedIds}
                   onSelectDocument={handleSelectDocument}
                   onSelectAll={handleSelectAll}
+                  onPreviewDocument={handlePreviewDocument}
                 />
               )}
 
@@ -603,6 +681,7 @@ export default function DataSourceManagement({ isOpen, onClose, onBack }: DataSo
                   selectedIds={selection.selectedIds}
                   onSelectDocument={handleSelectDocument}
                   onSelectAll={handleSelectAll}
+                  onPreviewDocument={handlePreviewDocument}
                 />
               )}
 
@@ -612,6 +691,7 @@ export default function DataSourceManagement({ isOpen, onClose, onBack }: DataSo
                   selectedIds={selection.selectedIds}
                   onSelectDocument={handleSelectDocument}
                   onSelectAll={handleSelectAll}
+                  onPreviewDocument={handlePreviewDocument}
                 />
               )}
 
@@ -658,8 +738,8 @@ export default function DataSourceManagement({ isOpen, onClose, onBack }: DataSo
                             key={pageNum}
                             onClick={() => setPagination({ ...pagination, currentPage: pageNum })}
                             className={`px-3 py-1 text-sm border rounded-md ${pagination.currentPage === pageNum
-                                ? 'ui-bg-tertiary border-[var(--accent)] ui-text-primary'
-                                : 'ui-border-light hover:ui-bg-tertiary'
+                              ? 'ui-bg-tertiary border-[var(--accent)] ui-text-primary'
+                              : 'ui-border-light hover:ui-bg-tertiary'
                               }`}
                           >
                             {pageNum}
@@ -697,6 +777,12 @@ export default function DataSourceManagement({ isOpen, onClose, onBack }: DataSo
         onConfirm={handleConfirmClearIndex}
         onCancel={handleCancelClearIndex}
         type="danger"
+      />
+
+      <DocumentPreview
+        document={previewDocument}
+        isOpen={showPreview}
+        onClose={handleClosePreview}
       />
     </div>
   )

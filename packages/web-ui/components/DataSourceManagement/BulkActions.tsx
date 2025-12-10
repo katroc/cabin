@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Trash2, Download, Archive, Tag, MoreHorizontal, CheckCircle, LucideIcon } from 'lucide-react'
+import { Trash2, Download, Archive, Tag, MoreHorizontal, CheckCircle, LucideIcon, RefreshCw } from 'lucide-react'
 import { BulkAction } from './types'
 import ConfirmationModal from '../ConfirmationModal'
 import { useToast } from '../ToastProvider'
@@ -101,8 +101,8 @@ export default function BulkActions({ selectedIds, actions, onActionComplete, ha
                     onClick={() => setShowDropdown(!showDropdown)}
                     disabled={executingAction !== null || selectedIds.length === 0}
                     className={`inline-flex items-center gap-2 px-3 py-2 btn-secondary rounded-md text-sm btn-small ${executingAction !== null || selectedIds.length === 0
-                        ? 'opacity-50 cursor-not-allowed'
-                        : 'hover:ui-bg-tertiary'
+                      ? 'opacity-50 cursor-not-allowed'
+                      : 'hover:ui-bg-tertiary'
                       }`}
                   >
                     <MoreHorizontal className="w-3 h-3" />
@@ -164,8 +164,8 @@ export default function BulkActions({ selectedIds, actions, onActionComplete, ha
   return (
     <>
       <div className={`transition-all duration-300 ease-in-out ${hasSelection
-          ? 'p-4 ui-bg-tertiary border ui-border-faint rounded-lg'
-          : 'p-2 ui-bg-secondary border ui-border-faint rounded-md opacity-60'
+        ? 'p-4 ui-bg-tertiary border ui-border-faint rounded-lg'
+        : 'p-2 ui-bg-secondary border ui-border-faint rounded-md opacity-60'
         }`}>
         {hasSelection ? (
           <>
@@ -213,8 +213,8 @@ export default function BulkActions({ selectedIds, actions, onActionComplete, ha
                       onClick={() => setShowDropdown(!showDropdown)}
                       disabled={executingAction !== null || selectedIds.length === 0}
                       className={`inline-flex items-center gap-2 px-3 py-2 btn-secondary rounded-md text-sm btn-standard ${executingAction !== null || selectedIds.length === 0
-                          ? 'opacity-50 cursor-not-allowed'
-                          : 'hover:ui-bg-tertiary'
+                        ? 'opacity-50 cursor-not-allowed'
+                        : 'hover:ui-bg-tertiary'
                         }`}
                     >
                       <MoreHorizontal className="w-4 h-4" />
@@ -322,5 +322,58 @@ export const defaultBulkActions: BulkAction[] = [
     },
     requiresConfirmation: true,
     confirmationMessage: 'Are you sure you want to delete the selected documents? This action cannot be undone.'
+  },
+  {
+    id: 'reindex',
+    label: 'Re-index',
+    icon: RefreshCw,
+    action: async (selectedIds: string[], addToast?: AddToastFn) => {
+      if (addToast) {
+        addToast(`Re-indexing ${selectedIds.length} document${selectedIds.length > 1 ? 's' : ''} is not yet implemented. Documents need to be re-uploaded or re-synced from their source.`, 'info', 5000)
+      }
+    },
+    requiresConfirmation: false
+  },
+  {
+    id: 'export',
+    label: 'Export CSV',
+    icon: Download,
+    action: async (selectedIds: string[], addToast?: AddToastFn) => {
+      try {
+        const response = await fetch('http://localhost:8788/api/data-sources/documents')
+        if (!response.ok) throw new Error('Failed to fetch documents')
+
+        const data = await response.json()
+        const allDocs = data.documents || []
+        const selectedDocs = allDocs.filter((doc: any) => selectedIds.includes(doc.id))
+
+        if (selectedDocs.length === 0) throw new Error('No documents found to export')
+
+        const headers = ['ID', 'Title', 'Source Type', 'Source URL', 'Last Modified', 'Chunk Count', 'Status']
+        const rows = selectedDocs.map((doc: any) => [
+          doc.id,
+          `"${(doc.title || '').replace(/"/g, '""')}"`,
+          doc.source_type || '',
+          doc.source_url || '',
+          doc.last_modified || '',
+          doc.chunk_count || '',
+          doc.status || 'indexed'
+        ])
+
+        const csvContent = [headers.join(','), ...rows.map((row: string[]) => row.join(','))].join('\n')
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+        const link = document.createElement('a')
+        link.href = URL.createObjectURL(blob)
+        link.download = `documents_export_${new Date().toISOString().split('T')[0]}.csv`
+        link.click()
+        URL.revokeObjectURL(link.href)
+
+        if (addToast) addToast(`Exported ${selectedDocs.length} document${selectedDocs.length > 1 ? 's' : ''} to CSV`, 'success')
+      } catch (error) {
+        console.error('Failed to export documents:', error)
+        throw error
+      }
+    },
+    requiresConfirmation: false
   }
 ]

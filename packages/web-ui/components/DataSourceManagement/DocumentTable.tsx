@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { ArrowUpDown, ArrowUp, ArrowDown, FileText, Globe, Upload, Database, ExternalLink, Eye, MoreHorizontal } from 'lucide-react'
+import { ArrowUpDown, ArrowUp, ArrowDown, FileText, Globe, Upload, Database, ExternalLink, Eye, MoreHorizontal, AlertTriangle } from 'lucide-react'
 import { IndexedDocument, SortOptions } from './types'
 
 interface DocumentTableProps {
@@ -105,6 +105,23 @@ export default function DocumentTable({
   const formatDate = (dateString?: string) => {
     if (!dateString) return 'Unknown'
     return new Date(dateString).toLocaleDateString()
+  }
+
+  const isStaleDocument = (dateString?: string) => {
+    if (!dateString) return false
+    const docDate = new Date(dateString)
+    const thirtyDaysAgo = new Date()
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
+    return docDate < thirtyDaysAgo
+  }
+
+  const getDaysSinceUpdate = (dateString?: string) => {
+    if (!dateString) return null
+    const docDate = new Date(dateString)
+    const now = new Date()
+    const diffTime = Math.abs(now.getTime() - docDate.getTime())
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+    return diffDays
   }
 
   const getStatusColor = (status: string) => {
@@ -254,12 +271,27 @@ export default function DocumentTable({
                   <span className={`text-sm capitalize ${getStatusColor(doc.status)}`}>
                     {doc.status}
                   </span>
+                  {doc.status === 'error' && doc.error_message && (
+                    <span className="text-xs ui-text-muted truncate max-w-[80px]" title={doc.error_message}>
+                      ({doc.error_message.slice(0, 20)}...)
+                    </span>
+                  )}
                 </div>
               </td>
               <td className="p-3">
-                <span className="text-sm ui-text-secondary">
-                  {formatDate(doc.last_modified)}
-                </span>
+                <div className="flex items-center gap-1">
+                  <span className="text-sm ui-text-secondary">
+                    {formatDate(doc.last_modified)}
+                  </span>
+                  {isStaleDocument(doc.last_modified) && (
+                    <span
+                      title={`Not updated in ${getDaysSinceUpdate(doc.last_modified)} days`}
+                      className="text-[var(--warning)]"
+                    >
+                      <AlertTriangle className="w-3 h-3" />
+                    </span>
+                  )}
+                </div>
               </td>
               <td className="p-3">
                 <div className="flex items-center gap-1">

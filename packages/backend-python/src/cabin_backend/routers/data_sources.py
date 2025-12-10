@@ -438,3 +438,56 @@ def delete_documents(request: DeleteDocumentsRequest):
         logger.error("Error deleting documents: %s", str(e))
         raise HTTPException(status_code=500, detail=f"Failed to delete documents: {e}")
 
+
+@router.get("/documents/{document_id}/chunks")
+def get_document_chunks(document_id: str):
+    """Get all chunks for a specific document."""
+    if not deps.vector_store_service:
+        raise HTTPException(status_code=503, detail="Vector store not available.")
+    
+    try:
+        collection = deps.vector_store_service.chroma.collection
+        
+        # Try to find chunks by document_id metadata
+        results = collection.get(
+            where={"document_id": document_id},
+            include=["documents", "metadatas"]
+        )
+        
+        # If no results, try by source_url or page_title
+        if not results or not results.get("ids"):
+            results = collection.get(
+                where={"source_url": document_id},
+                include=["documents", "metadatas"]
+            )
+        
+        if not results or not results.get("ids"):
+            results = collection.get(
+                where={"page_title": document_id},
+                include=["documents", "metadatas"]
+            )
+        
+        chunks = []
+        if results and results.get("ids"):
+            for i, chunk_id in enumerate(results["ids"]):
+                content = results["documents"][i] if results.get("documents") else ""
+                metadata = results["metadatas"][i] if results.get("metadatas") else {}
+                
+                chunks.append({
+                    "id": chunk_id,
+                    "content": content or "",
+                    "page_number": metadata.get("page_number"),
+                    "chunk_index": metadata.get("chunk_index", i)
+                })
+        
+        # Sort by chunk_index to maintain order
+        chunks.sort(key=lambda c: c.get("chunk_index", 0))
+        
+        return {
+            "document_id": document_id,
+            "chunks": chunks,
+            "total": len(chunks)
+        }
+    except Exception as e:
+        logger.error("Error getting document chunks: %s", str(e))
+        raise HTTPException(status_code=500, detail=f"Failed to get document chunks: {e}")
