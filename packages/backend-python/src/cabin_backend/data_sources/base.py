@@ -20,6 +20,7 @@ class DataSourceType(str, Enum):
     FILE_UPLOAD = "file_upload"
     URL_INGESTION = "url_ingestion"
     GOOGLE_DRIVE = "google_drive"
+    FOLDER_SHARE = "folder_share"  # Local folders and SMB/CIFS shares
 
 class DataSourceCapability(str, Enum):
     """Capabilities that data sources can expose."""
@@ -29,6 +30,7 @@ class DataSourceCapability(str, Enum):
     REAL_TIME_SYNC = "real_time_sync"  # Supports webhooks/real-time updates
     SEARCH_FILTERING = "search_filtering"  # Supports server-side filtering
     METADATA_EXTRACTION = "metadata_extraction"  # Extracts rich metadata
+    CHANGE_MONITORING = "change_monitoring"  # Supports polling-based change detection
 
 class IndexingConfig(BaseModel):
     """Base configuration for indexing operations."""

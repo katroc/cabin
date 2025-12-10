@@ -26,6 +26,7 @@ from .data_sources.confluence import ConfluenceDataSource  # noqa: F401
 from .data_sources.file_upload import FileUploadDataSource  # noqa: F401
 from .data_sources.url_ingestion import URLIngestionDataSource  # noqa: F401
 from .data_sources.google_drive import GoogleDriveDataSource  # noqa: F401
+from .data_sources.folder_share import FolderShareDataSource  # noqa: F401
 
 # Import routers
 from .routers import (
@@ -53,9 +54,12 @@ app = FastAPI(
 )
 
 # --- CORS Configuration ---
+origins = [origin.strip() for origin in settings.allowed_origins.split(",")]
+logger.info(f"Configuring CORS with allowed origins: {origins}")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

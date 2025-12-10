@@ -4,6 +4,7 @@ Data sources router - handles data source discovery and indexing endpoints.
 
 import logging
 import secrets
+from datetime import datetime, timedelta
 from typing import Dict, Any, List, Optional
 from urllib.parse import urlencode
 
@@ -24,8 +25,8 @@ router = APIRouter(prefix="/api/data-sources", tags=["data-sources"])
 
 # In-memory storage for Google Drive OAuth tokens (in production, use a proper store)
 _google_drive_tokens: Dict[str, Dict[str, Any]] = {}
-# Map OAuth state to the redirect URI used for that flow
-_oauth_states: Dict[str, str] = {}
+# Map OAuth state to the redirect URI and return URL used for that flow
+_oauth_states: Dict[str, Dict[str, str]] = {}
 
 # In-memory storage for Google Drive Sync Config
 _google_drive_sync_config: Dict[str, Any] = {
@@ -54,6 +55,39 @@ class GoogleDriveSyncRequest(BaseModel):
     folder_ids: List[str]
 
 
+# ============================================================================
+# Folder Share Models and Storage
+# ============================================================================
+
+class FolderShareAddRequest(BaseModel):
+    """Request to add a new folder share for monitoring."""
+    path: str  # Local path or SMB URL
+    name: Optional[str] = None
+    recursive: bool = True
+    max_depth: int = 10
+    file_extensions: Optional[List[str]] = None
+    exclude_patterns: Optional[List[str]] = None
+    max_file_size_mb: int = 50
+    smb_username: Optional[str] = None
+    smb_password: Optional[str] = None
+    smb_domain: Optional[str] = None
+
+
+class FolderShareIndexRequest(BaseModel):
+    """Request to index a folder share."""
+    max_items: int = 1000
+    incremental: bool = False
+
+
+class FolderShareSyncRequest(BaseModel):
+    """Request to enable scheduled sync for a folder share."""
+    interval_minutes: int = 60
+
+
+# In-memory storage for folder shares (in production, use a database)
+_folder_shares: Dict[str, Dict[str, Any]] = {}
+# Folder share sync configuration
+_folder_share_sync_config: Dict[str, Dict[str, Any]] = {}
 
 
 
@@ -543,7 +577,7 @@ async def google_drive_status():
 
 
 @router.get("/google-drive/auth-url")
-async def google_drive_auth_url(redirect_uri: Optional[str] = None):
+async def google_drive_auth_url(redirect_uri: Optional[str] = None, return_url: Optional[str] = None):
     """Get the Google OAuth authorization URL."""
     if not settings.google_drive_client_id or not settings.google_drive_client_secret:
         raise HTTPException(
@@ -566,7 +600,12 @@ async def google_drive_auth_url(redirect_uri: Optional[str] = None):
     # Generate state token for CSRF protection
     state = secrets.token_urlsafe(32)
     _google_drive_tokens["_state"] = state  # Legacy support
-    _oauth_states[state] = selected_uri
+    
+    # Store context for callback
+    _oauth_states[state] = {
+        "redirect_uri": selected_uri,
+        "return_url": return_url or "http://localhost:3000"
+    }
     
     params = {
         "client_id": settings.google_drive_client_id,
@@ -592,13 +631,14 @@ async def google_drive_callback(code: str = Query(...), state: str = Query(...))
     if state != expected_state and state not in _oauth_states:
         raise HTTPException(status_code=400, detail="Invalid state parameter")
     
-    # Get the redirect URI used for this state
-    redirect_uri = _oauth_states.get(state)
-    if not redirect_uri:
-        # Fallback to first configured URI
-        allowed_uris = [uri.strip() for uri in settings.google_drive_redirect_uri.split(",") if uri.strip()]
-        redirect_uri = allowed_uris[0]
-        
+    # Get context for this state
+    context = _oauth_states.get(state)
+    if not context:
+        raise HTTPException(status_code=400, detail="Invalid state or session expired")
+    
+    redirect_uri = context.get("redirect_uri")
+    return_url = context.get("return_url", "http://localhost:3000")
+    
     # Clean up state
     if state in _oauth_states:
         del _oauth_states[state]
@@ -643,7 +683,7 @@ async def google_drive_callback(code: str = Query(...), state: str = Query(...))
     logger.info(f"Google Drive connected for user: {user_email}")
     
     # Redirect back to the app's data sources section
-    return RedirectResponse(url="http://localhost:3000?show_data_sources=google_drive")
+    return RedirectResponse(url=f"{return_url}?show_data_sources=google_drive")
 
 
 @router.post("/google-drive/disconnect")
@@ -735,6 +775,223 @@ async def google_drive_disable_sync():
     _google_drive_sync_config["enabled"] = False
     logger.info("Disabled scheduled sync for Google Drive")
     return {"status": "disabled", "config": _google_drive_sync_config}
+
+
+# ============================================================================
+# Folder Share Endpoints
+# ============================================================================
+
+@router.post("/folder-share/add")
+async def add_folder_share(request: FolderShareAddRequest):
+    """Register a new folder/SMB path for monitoring."""
+    import hashlib
+    from pathlib import Path
+    
+    # Generate share ID from path
+    share_id = hashlib.sha256(request.path.encode()).hexdigest()[:12]
+    
+    # Check if already exists
+    if share_id in _folder_shares:
+        return {"share_id": share_id, "status": "already_exists", "share": _folder_shares[share_id]}
+    
+    # Validate path exists (for local paths)
+    if not request.path.startswith('smb://') and not request.path.startswith('//'):
+        path = Path(request.path)
+        if not path.exists():
+            raise HTTPException(status_code=400, detail=f"Path does not exist: {request.path}")
+        if not path.is_dir():
+            raise HTTPException(status_code=400, detail=f"Path is not a directory: {request.path}")
+    
+    # Store share configuration
+    share_config = {
+        "id": share_id,
+        "path": request.path,
+        "name": request.name or Path(request.path).name or request.path,
+        "recursive": request.recursive,
+        "max_depth": request.max_depth,
+        "file_extensions": request.file_extensions,
+        "exclude_patterns": request.exclude_patterns,
+        "max_file_size_mb": request.max_file_size_mb,
+        "is_smb": request.path.startswith('smb://') or request.path.startswith('//'),
+        "created_at": datetime.now().isoformat(),
+        "last_indexed": None,
+        "document_count": 0,
+    }
+    
+    # Store SMB credentials separately (in production, encrypt these)
+    if request.smb_username:
+        share_config["smb_username"] = request.smb_username
+        share_config["smb_password"] = request.smb_password
+        share_config["smb_domain"] = request.smb_domain
+    
+    _folder_shares[share_id] = share_config
+    logger.info(f"Added folder share: {request.path} (ID: {share_id})")
+    
+    return {"share_id": share_id, "status": "added", "share": share_config}
+
+
+@router.get("/folder-share/list")
+async def list_folder_shares():
+    """List all registered folder shares."""
+    shares = []
+    for share_id, config in _folder_shares.items():
+        # Return config without credentials
+        safe_config = {k: v for k, v in config.items() if not k.startswith('smb_password')}
+        shares.append(safe_config)
+    return {"shares": shares, "total": len(shares)}
+
+
+@router.get("/folder-share/{share_id}")
+async def get_folder_share(share_id: str):
+    """Get details of a specific folder share."""
+    if share_id not in _folder_shares:
+        raise HTTPException(status_code=404, detail="Folder share not found")
+    
+    config = _folder_shares[share_id]
+    # Return config without password
+    safe_config = {k: v for k, v in config.items() if not k.startswith('smb_password')}
+    return safe_config
+
+
+@router.delete("/folder-share/{share_id}")
+async def remove_folder_share(share_id: str):
+    """Remove a folder share from monitoring."""
+    if share_id not in _folder_shares:
+        raise HTTPException(status_code=404, detail="Folder share not found")
+    
+    share = _folder_shares.pop(share_id)
+    # Also remove sync config if exists
+    if share_id in _folder_share_sync_config:
+        del _folder_share_sync_config[share_id]
+    
+    logger.info(f"Removed folder share: {share.get('path')} (ID: {share_id})")
+    return {"status": "removed", "share_id": share_id}
+
+
+@router.post("/folder-share/{share_id}/test")
+async def test_folder_share(share_id: str):
+    """Test if a folder share is accessible."""
+    if share_id not in _folder_shares:
+        raise HTTPException(status_code=404, detail="Folder share not found")
+    
+    config = _folder_shares[share_id]
+    
+    if not deps.data_source_manager:
+        raise HTTPException(status_code=503, detail="Data source manager not available")
+    
+    try:
+        # Create a data source instance and test connection
+        result = await deps.data_source_manager.test_connection(
+            "folder_share",
+            {"additional_config": config}
+        )
+        return {"success": result, "message": "Connection successful" if result else "Connection failed"}
+    except Exception as e:
+        logger.error(f"Failed to test folder share {share_id}: {e}")
+        return {"success": False, "message": str(e)}
+
+
+@router.post("/folder-share/{share_id}/discover")
+async def discover_folder_share_sources(share_id: str):
+    """Discover subdirectories in a folder share."""
+    if share_id not in _folder_shares:
+        raise HTTPException(status_code=404, detail="Folder share not found")
+    
+    config = _folder_shares[share_id]
+    
+    if not deps.data_source_manager:
+        raise HTTPException(status_code=503, detail="Data source manager not available")
+    
+    try:
+        sources = await deps.data_source_manager.discover_sources(
+            "folder_share",
+            {"additional_config": config}
+        )
+        return {"sources": sources}
+    except Exception as e:
+        logger.error(f"Failed to discover sources for folder share {share_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/folder-share/{share_id}/index")
+async def start_folder_share_indexing(share_id: str, request: FolderShareIndexRequest):
+    """Start indexing a folder share."""
+    if share_id not in _folder_shares:
+        raise HTTPException(status_code=404, detail="Folder share not found")
+    
+    config = _folder_shares[share_id]
+    
+    if not deps.data_source_manager:
+        raise HTTPException(status_code=503, detail="Data source manager not available")
+    
+    try:
+        job_id = await deps.data_source_manager.start_indexing(
+            "folder_share",
+            {"additional_config": config},
+            [config["path"]],  # Index from the root path
+            {
+                "max_items": request.max_items,
+                "incremental": request.incremental,
+                "modified_since": config.get("last_indexed"),
+            }
+        )
+        
+        # Update last indexed time
+        _folder_shares[share_id]["last_indexed"] = datetime.now().isoformat()
+        
+        return {"job_id": job_id, "status": "started", "share_id": share_id}
+    except Exception as e:
+        logger.error(f"Failed to start indexing for folder share {share_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/folder-share/{share_id}/status")
+async def get_folder_share_status(share_id: str):
+    """Get status and last sync info for a folder share."""
+    if share_id not in _folder_shares:
+        raise HTTPException(status_code=404, detail="Folder share not found")
+    
+    config = _folder_shares[share_id]
+    sync_config = _folder_share_sync_config.get(share_id, {})
+    
+    return {
+        "share_id": share_id,
+        "name": config.get("name"),
+        "path": config.get("path"),
+        "last_indexed": config.get("last_indexed"),
+        "document_count": config.get("document_count", 0),
+        "sync_enabled": sync_config.get("enabled", False),
+        "sync_interval_minutes": sync_config.get("interval_minutes", 60),
+    }
+
+
+@router.post("/folder-share/{share_id}/enable-sync")
+async def enable_folder_share_sync(share_id: str, request: FolderShareSyncRequest):
+    """Enable scheduled sync for a folder share."""
+    if share_id not in _folder_shares:
+        raise HTTPException(status_code=404, detail="Folder share not found")
+    
+    _folder_share_sync_config[share_id] = {
+        "enabled": True,
+        "interval_minutes": request.interval_minutes,
+        "last_sync": None,
+    }
+    
+    logger.info(f"Enabled scheduled sync for folder share {share_id}: every {request.interval_minutes} minutes")
+    return {"status": "enabled", "share_id": share_id, "interval_minutes": request.interval_minutes}
+
+
+@router.post("/folder-share/{share_id}/disable-sync")
+async def disable_folder_share_sync(share_id: str):
+    """Disable scheduled sync for a folder share."""
+    if share_id not in _folder_shares:
+        raise HTTPException(status_code=404, detail="Folder share not found")
+    
+    if share_id in _folder_share_sync_config:
+        _folder_share_sync_config[share_id]["enabled"] = False
+    
+    logger.info(f"Disabled scheduled sync for folder share {share_id}")
+    return {"status": "disabled", "share_id": share_id}
 
 
 async def run_scheduled_sync():
