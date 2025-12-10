@@ -217,11 +217,18 @@ export default function FolderShareIndexing({ isOpen, onClose, onBack }: FolderS
                     if (progressData.status === 'completed' || progressData.status === 'failed') {
                         clearInterval(pollInterval)
                         setIsIndexing(false)
-                        loadShares() // Refresh to get updated document count
 
-                        if (progressData.status === 'completed') {
+                        // Update local share document count on success
+                        if (progressData.status === 'completed' && progressData.processed_items > 0) {
+                            setShares(prev => prev.map(s =>
+                                s.id === shareId
+                                    ? { ...s, document_count: (s.document_count || 0) + progressData.processed_items }
+                                    : s
+                            ))
                             addToast(`Indexed ${progressData.processed_items} documents`, 'success')
                         }
+
+                        loadShares() // Also refresh from server
                     }
                 } catch (error) {
                     console.error('Error polling progress:', error)
