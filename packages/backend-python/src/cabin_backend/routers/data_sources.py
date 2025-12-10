@@ -994,8 +994,45 @@ async def disable_folder_share_sync(share_id: str):
     return {"status": "disabled", "share_id": share_id}
 
 
+@router.post("/folder-share/{share_id}/scan")
+async def scan_folder_share_for_changes(share_id: str):
+    """Scan a folder share for changes without indexing."""
+    from ..data_sources.folder_monitor import folder_change_monitor
+    
+    if share_id not in _folder_shares:
+        raise HTTPException(status_code=404, detail="Folder share not found")
+    
+    share = _folder_shares[share_id]
+    
+    try:
+        change_set = folder_change_monitor.scan_for_changes(
+            share_id=share_id,
+            root_path=share["path"],
+            recursive=share.get("recursive", True),
+            max_depth=share.get("max_depth", 10),
+            file_extensions=set(share.get("file_extensions") or []),
+            exclude_patterns=share.get("exclude_patterns"),
+        )
+        
+        return {
+            "share_id": share_id,
+            "changes": change_set.to_dict(),
+            "message": f"Found {change_set.total_changes} changes" if change_set.has_changes else "No changes detected"
+        }
+    except Exception as e:
+        logger.error(f"Failed to scan folder share {share_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+
 async def run_scheduled_sync():
-    """Run scheduled sync for Google Drive if enabled and due."""
+    """Run scheduled sync for Google Drive and folder shares if enabled and due."""
+    await _run_google_drive_sync()
+    await _run_folder_share_sync()
+
+
+async def _run_google_drive_sync():
+    """Run scheduled sync for Google Drive."""
     try:
         if not _google_drive_sync_config["enabled"]:
             return
@@ -1051,8 +1088,90 @@ async def run_scheduled_sync():
         
         # Update last sync time
         _google_drive_sync_config["last_sync"] = now.isoformat()
-        logger.info(f"Scheduled sync started (Job ID: {job_id})")
+        logger.info(f"Scheduled Google Drive sync started (Job ID: {job_id})")
         
     except Exception as e:
-        logger.error(f"Error in scheduled sync: {e}")
+        logger.error(f"Error in Google Drive scheduled sync: {e}")
+
+
+async def _run_folder_share_sync():
+    """Run scheduled sync for all enabled folder shares."""
+    from ..data_sources.folder_monitor import folder_change_monitor
+    
+    try:
+        if not deps.data_source_manager:
+            return
+        
+        now = datetime.now()
+        
+        for share_id, sync_config in _folder_share_sync_config.items():
+            if not sync_config.get("enabled", False):
+                continue
+            
+            # Check if share still exists
+            if share_id not in _folder_shares:
+                continue
+            
+            share = _folder_shares[share_id]
+            last_sync = sync_config.get("last_sync")
+            interval_minutes = sync_config.get("interval_minutes", 60)
+            
+            # Check if it's time to sync
+            if last_sync:
+                if isinstance(last_sync, str):
+                    last_sync = datetime.fromisoformat(last_sync)
+                
+                next_sync = last_sync + timedelta(minutes=interval_minutes)
+                if now < next_sync:
+                    continue
+            
+            # Scan for changes
+            logger.info(f"Scanning folder share {share_id} for changes...")
+            
+            change_set = folder_change_monitor.scan_for_changes(
+                share_id=share_id,
+                root_path=share["path"],
+                recursive=share.get("recursive", True),
+                max_depth=share.get("max_depth", 10),
+                file_extensions=set(share.get("file_extensions") or []),
+                exclude_patterns=share.get("exclude_patterns"),
+            )
+            
+            if not change_set.has_changes:
+                logger.debug(f"No changes detected for folder share {share_id}")
+                _folder_share_sync_config[share_id]["last_sync"] = now.isoformat()
+                continue
+            
+            # Get files to index (added + modified)
+            files_to_index = change_set.added + change_set.modified
+            
+            if files_to_index:
+                logger.info(
+                    f"Folder share {share_id}: indexing {len(files_to_index)} changed files "
+                    f"(+{len(change_set.added)} new, ~{len(change_set.modified)} modified)"
+                )
+                
+                # Start indexing job for changed files
+                job_id = await deps.data_source_manager.start_indexing(
+                    "folder_share",
+                    {"additional_config": share},
+                    files_to_index,  # Index only the changed files
+                    {
+                        "max_items": len(files_to_index),
+                        "incremental": True,
+                    }
+                )
+                
+                logger.info(f"Folder share sync started (Job ID: {job_id})")
+            
+            # TODO: Handle deleted files (remove from vector store)
+            if change_set.deleted:
+                logger.info(f"Folder share {share_id}: {len(change_set.deleted)} files deleted (cleanup not yet implemented)")
+            
+            # Update last sync time
+            _folder_share_sync_config[share_id]["last_sync"] = now.isoformat()
+            _folder_shares[share_id]["last_indexed"] = now.isoformat()
+    
+    except Exception as e:
+        logger.error(f"Error in folder share scheduled sync: {e}")
 
