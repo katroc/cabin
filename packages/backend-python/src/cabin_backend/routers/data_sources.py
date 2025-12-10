@@ -24,6 +24,16 @@ router = APIRouter(prefix="/api/data-sources", tags=["data-sources"])
 
 # In-memory storage for Google Drive OAuth tokens (in production, use a proper store)
 _google_drive_tokens: Dict[str, Dict[str, Any]] = {}
+# Map OAuth state to the redirect URI used for that flow
+_oauth_states: Dict[str, str] = {}
+
+# In-memory storage for Google Drive Sync Config
+_google_drive_sync_config: Dict[str, Any] = {
+    "enabled": False,
+    "interval_minutes": 60,
+    "last_sync": None,
+    "folder_ids": []
+}
 
 
 # URL Ingestion request model
@@ -36,6 +46,15 @@ class GoogleDriveIndexRequest(BaseModel):
     """Request to index Google Drive folders."""
     source_ids: List[str]  # Folder IDs to index
     config: Optional[Dict[str, Any]] = None  # Indexing options
+
+
+class GoogleDriveSyncRequest(BaseModel):
+    """Request to enable scheduled sync."""
+    interval_minutes: int = 60
+    folder_ids: List[str]
+
+
+
 
 
 @router.post("/url_ingestion/index")
@@ -524,7 +543,7 @@ async def google_drive_status():
 
 
 @router.get("/google-drive/auth-url")
-async def google_drive_auth_url():
+async def google_drive_auth_url(redirect_uri: Optional[str] = None):
     """Get the Google OAuth authorization URL."""
     if not settings.google_drive_client_id or not settings.google_drive_client_secret:
         raise HTTPException(
@@ -532,13 +551,26 @@ async def google_drive_auth_url():
             detail="Google Drive not configured. Set GOOGLE_DRIVE_CLIENT_ID and GOOGLE_DRIVE_CLIENT_SECRET environment variables."
         )
     
+    # Parse allowed redirect URIs
+    allowed_uris = [uri.strip() for uri in settings.google_drive_redirect_uri.split(",") if uri.strip()]
+    
+    # Determine which redirect URI to use
+    selected_uri = allowed_uris[0]
+    if redirect_uri:
+        if redirect_uri in allowed_uris:
+            selected_uri = redirect_uri
+        else:
+            logger.warning(f"Requested redirect URI {redirect_uri} not in allowed list: {allowed_uris}")
+            # Fallback to first one or raise error? For now fallback but log warning
+    
     # Generate state token for CSRF protection
     state = secrets.token_urlsafe(32)
-    _google_drive_tokens["_state"] = state
+    _google_drive_tokens["_state"] = state  # Legacy support
+    _oauth_states[state] = selected_uri
     
     params = {
         "client_id": settings.google_drive_client_id,
-        "redirect_uri": settings.google_drive_redirect_uri,
+        "redirect_uri": selected_uri,
         "response_type": "code",
         "scope": "https://www.googleapis.com/auth/drive.readonly email profile",
         "access_type": "offline",
@@ -557,19 +589,31 @@ async def google_drive_callback(code: str = Query(...), state: str = Query(...))
     
     # Verify state
     expected_state = _google_drive_tokens.get("_state")
-    if state != expected_state:
+    if state != expected_state and state not in _oauth_states:
         raise HTTPException(status_code=400, detail="Invalid state parameter")
+    
+    # Get the redirect URI used for this state
+    redirect_uri = _oauth_states.get(state)
+    if not redirect_uri:
+        # Fallback to first configured URI
+        allowed_uris = [uri.strip() for uri in settings.google_drive_redirect_uri.split(",") if uri.strip()]
+        redirect_uri = allowed_uris[0]
+        
+    # Clean up state
+    if state in _oauth_states:
+        del _oauth_states[state]
     
     # Exchange code for tokens
     token_url = "https://oauth2.googleapis.com/token"
     async with aiohttp.ClientSession() as session:
-        async with session.post(token_url, data={
+        data = {
             "client_id": settings.google_drive_client_id,
             "client_secret": settings.google_drive_client_secret,
             "code": code,
             "grant_type": "authorization_code",
-            "redirect_uri": settings.google_drive_redirect_uri
-        }) as resp:
+            "redirect_uri": redirect_uri
+        }
+        async with session.post(token_url, data=data) as resp:
             if resp.status != 200:
                 error_text = await resp.text()
                 logger.error(f"Token exchange failed: {error_text}")
@@ -666,4 +710,92 @@ async def google_drive_index(request: GoogleDriveIndexRequest):
     except Exception as e:
         logger.error(f"Failed to start Google Drive indexing: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/google-drive/sync-status")
+async def google_drive_sync_status():
+    """Get the current status of scheduled sync."""
+    return _google_drive_sync_config
+
+
+@router.post("/google-drive/enable-scheduled-sync")
+async def google_drive_enable_sync(request: GoogleDriveSyncRequest):
+    """Enable scheduled sync for Google Drive."""
+    _google_drive_sync_config["enabled"] = True
+    _google_drive_sync_config["interval_minutes"] = request.interval_minutes
+    _google_drive_sync_config["folder_ids"] = request.folder_ids
+    
+    logger.info(f"Enabled scheduled sync for Google Drive: every {request.interval_minutes} minutes")
+    return {"status": "enabled", "config": _google_drive_sync_config}
+
+
+@router.post("/google-drive/disable-scheduled-sync")
+async def google_drive_disable_sync():
+    """Disable scheduled sync for Google Drive."""
+    _google_drive_sync_config["enabled"] = False
+    logger.info("Disabled scheduled sync for Google Drive")
+    return {"status": "disabled", "config": _google_drive_sync_config}
+
+
+async def run_scheduled_sync():
+    """Run scheduled sync for Google Drive if enabled and due."""
+    try:
+        if not _google_drive_sync_config["enabled"]:
+            return
+
+        last_sync = _google_drive_sync_config.get("last_sync")
+        interval_minutes = _google_drive_sync_config.get("interval_minutes", 60)
+        
+        # Check if it's time to sync
+        now = datetime.now()
+        if last_sync:
+            # If last_sync is string (from JSON), parse it
+            if isinstance(last_sync, str):
+                last_sync = datetime.fromisoformat(last_sync)
+                
+            next_sync = last_sync + timedelta(minutes=interval_minutes)
+            if now < next_sync:
+                return
+
+        # Time to sync!
+        logger.info("Starting scheduled Google Drive sync...")
+        
+        tokens = _google_drive_tokens.get("default")
+        if not tokens:
+            logger.warning("Scheduled sync failed: Google Drive not connected")
+            return
+            
+        if not deps.data_source_manager:
+            logger.warning("Scheduled sync failed: Data source manager not available")
+            return
+            
+        folder_ids = _google_drive_sync_config.get("folder_ids", [])
+        if not folder_ids:
+            logger.warning("Scheduled sync skipped: No folders selected")
+            return
+
+        # Start incremental indexing
+        job_id = await deps.data_source_manager.start_indexing(
+            "google_drive",
+            {
+                "additional_config": {
+                    "client_id": settings.google_drive_client_id,
+                    "client_secret": settings.google_drive_client_secret,
+                    "refresh_token": tokens.get("refresh_token"),
+                    "access_token": tokens.get("access_token")
+                }
+            },
+            folder_ids,
+            {
+                "incremental": True,
+                "modified_since": last_sync
+            }
+        )
+        
+        # Update last sync time
+        _google_drive_sync_config["last_sync"] = now.isoformat()
+        logger.info(f"Scheduled sync started (Job ID: {job_id})")
+        
+    except Exception as e:
+        logger.error(f"Error in scheduled sync: {e}")
 

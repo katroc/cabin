@@ -280,6 +280,21 @@ class GoogleDriveDataSource(DataSource):
                             yield doc
                         continue
                     
+                    # Check modified time if incremental sync
+                    if config.modified_since:
+                        file_modified = None
+                        if file_info.get("modifiedTime"):
+                            try:
+                                file_modified = datetime.fromisoformat(
+                                    file_info["modifiedTime"].replace("Z", "+00:00")
+                                )
+                            except Exception:
+                                pass
+                        
+                        if file_modified and file_modified <= config.modified_since:
+                            logger.debug(f"Skipping {file_info.get('name')} (not modified since {config.modified_since})")
+                            continue
+                    
                     # Try to extract document
                     try:
                         doc = await self._extract_single_document(service, file_info)

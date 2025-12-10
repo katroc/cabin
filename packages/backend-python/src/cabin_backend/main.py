@@ -84,6 +84,16 @@ try:
         current_ui_settings,
         current_overrides,
     )
+
+    # Initialize background scheduler for sync jobs
+    from apscheduler.schedulers.asyncio import AsyncIOScheduler
+    from .routers.data_sources import run_scheduled_sync
+    
+    scheduler = AsyncIOScheduler()
+    scheduler.add_job(run_scheduled_sync, "interval", minutes=1)
+    scheduler.start()
+    logger.info("Background scheduler started")
+
 except Exception as e:
     print(f"FATAL: Could not initialize services: {e}")
     chunker_service = None
@@ -92,6 +102,7 @@ except Exception as e:
     data_source_manager = None
     conversation_memory = None
     query_router = None
+    scheduler = None
 
 
 # --- Include Routers ---

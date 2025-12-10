@@ -441,7 +441,7 @@ class Settings(BaseSettings):
     )
     google_drive_redirect_uri: str = Field(
         "http://localhost:8788/api/data-sources/google-drive/callback",
-        description="OAuth2 redirect URI for Google Drive",
+        description="OAuth2 redirect URI(s) for Google Drive. Can be a comma-separated list.",
         env="GOOGLE_DRIVE_REDIRECT_URI",
     )
 

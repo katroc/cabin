@@ -35,6 +35,7 @@ class IndexingConfig(BaseModel):
     max_items: int = Field(default=1000, description="Maximum number of items to index")
     include_attachments: bool = Field(default=False, description="Whether to process attachments")
     incremental: bool = Field(default=False, description="Whether to perform incremental sync")
+    modified_since: Optional[datetime] = Field(default=None, description="Only index items modified since this time")
     filters: Optional[Dict[str, Any]] = Field(default=None, description="Source-specific filters")
 
 class IndexingProgress(BaseModel):

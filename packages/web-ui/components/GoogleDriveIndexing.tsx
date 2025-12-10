@@ -45,6 +45,12 @@ export default function GoogleDriveIndexing({ isOpen, onClose, onBack }: GoogleD
     const [showAlert, setShowAlert] = useState(false)
     const [alertConfig, setAlertConfig] = useState<{ title: string; message: string; type: 'success' | 'error' | 'info' } | null>(null)
 
+    // Scheduled Sync State
+    const [isSyncEnabled, setIsSyncEnabled] = useState(false)
+    const [syncInterval, setSyncInterval] = useState(60)
+    const [lastSync, setLastSync] = useState<string | null>(null)
+    const [isSyncLoading, setIsSyncLoading] = useState(false)
+
     // Check connection status on mount and when URL has callback param
     useEffect(() => {
         const checkStatus = async () => {
@@ -100,6 +106,84 @@ export default function GoogleDriveIndexing({ isOpen, onClose, onBack }: GoogleD
             console.error('Failed to load folders:', error)
         } finally {
             setIsLoadingFolders(false)
+        }
+    }
+
+    // Fetch sync status when connected
+    useEffect(() => {
+        if (isConnected) {
+            fetchSyncStatus()
+        }
+    }, [isConnected])
+
+    const fetchSyncStatus = async () => {
+        try {
+            const response = await fetch('http://localhost:8788/api/data-sources/google-drive/sync-status')
+            if (response.ok) {
+                const data = await response.json()
+                setIsSyncEnabled(data.enabled)
+                setSyncInterval(data.interval_minutes)
+                setLastSync(data.last_sync)
+            }
+        } catch (error) {
+            console.error('Failed to fetch sync status:', error)
+        }
+    }
+
+    const handleSyncToggle = async (enabled: boolean) => {
+        setIsSyncLoading(true)
+        try {
+            const endpoint = enabled
+                ? 'http://localhost:8788/api/data-sources/google-drive/enable-scheduled-sync'
+                : 'http://localhost:8788/api/data-sources/google-drive/disable-scheduled-sync'
+
+            const body = enabled ? {
+                interval_minutes: syncInterval,
+                folder_ids: selectedFolders
+            } : undefined
+
+            const response = await fetch(endpoint, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: body ? JSON.stringify(body) : undefined
+            })
+
+            if (response.ok) {
+                const data = await response.json()
+                setIsSyncEnabled(data.config.enabled)
+                setSyncInterval(data.config.interval_minutes)
+                addToast(`Scheduled sync ${enabled ? 'enabled' : 'disabled'}`, 'success')
+            }
+        } catch (error) {
+            console.error('Failed to toggle sync:', error)
+            addToast('Failed to update sync settings', 'error')
+        } finally {
+            setIsSyncLoading(false)
+        }
+    }
+
+    const handleIntervalChange = async (minutes: number) => {
+        setSyncInterval(minutes)
+        if (isSyncEnabled) {
+            // Update config immediately if enabled
+            setIsSyncLoading(true)
+            try {
+                const response = await fetch('http://localhost:8788/api/data-sources/google-drive/enable-scheduled-sync', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        interval_minutes: minutes,
+                        folder_ids: selectedFolders
+                    })
+                })
+                if (response.ok) {
+                    addToast('Sync interval updated', 'success')
+                }
+            } catch (error) {
+                console.error('Failed to update interval:', error)
+            } finally {
+                setIsSyncLoading(false)
+            }
         }
     }
 
@@ -420,6 +504,73 @@ export default function GoogleDriveIndexing({ isOpen, onClose, onBack }: GoogleD
                                         {isLoadingFolders ? 'Loading folders...' : 'No folders found'}
                                     </div>
                                 )}
+                            </div>
+
+                            {/* Scheduled Sync */}
+                            <div className="form-section pt-6">
+                                <div className="flex items-center justify-between mb-4">
+                                    <h3 className="form-section-title ui-text-secondary text-sm uppercase tracking-wide">
+                                        Scheduled Sync
+                                    </h3>
+                                    {lastSync && (
+                                        <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                                            Last synced: {new Date(lastSync).toLocaleString()}
+                                        </span>
+                                    )}
+                                </div>
+
+                                <div className="p-4 rounded-lg border" style={{
+                                    background: 'var(--bg-tertiary)',
+                                    borderColor: 'var(--border)'
+                                }}>
+                                    <div className="flex items-center justify-between mb-4">
+                                        <div className="flex items-center gap-3">
+                                            <div className={`w-8 h-8 rounded-full flex items-center justify-center ${isSyncEnabled ? 'bg-green-500/20' : 'bg-gray-500/20'}`}>
+                                                <RefreshCw size={16} className={isSyncEnabled ? 'text-green-500 animate-spin' : 'text-gray-500'} style={{ animationDuration: '3s' }} />
+                                            </div>
+                                            <div>
+                                                <div className="font-medium" style={{ color: 'var(--text-primary)' }}>
+                                                    Automatic Sync
+                                                </div>
+                                                <div className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                                                    {isSyncEnabled
+                                                        ? `Syncing every ${syncInterval} minutes`
+                                                        : 'Enable to keep files up to date'}
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <label className="relative inline-flex items-center cursor-pointer">
+                                            <input
+                                                type="checkbox"
+                                                className="sr-only peer"
+                                                checked={isSyncEnabled}
+                                                onChange={(e) => handleSyncToggle(e.target.checked)}
+                                                disabled={isSyncLoading || selectedFolders.length === 0}
+                                            />
+                                            <div className="w-11 h-6 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-600"></div>
+                                        </label>
+                                    </div>
+
+                                    {isSyncEnabled && (
+                                        <div className="pt-4 border-t border-[color:var(--border)]">
+                                            <label className="label-base mb-2 block">Sync Interval</label>
+                                            <select
+                                                value={syncInterval}
+                                                onChange={(e) => handleIntervalChange(parseInt(e.target.value))}
+                                                className="input-base w-full"
+                                                disabled={isSyncLoading}
+                                            >
+                                                <option value={15}>Every 15 minutes</option>
+                                                <option value={30}>Every 30 minutes</option>
+                                                <option value={60}>Every hour</option>
+                                                <option value={360}>Every 6 hours</option>
+                                                <option value={720}>Every 12 hours</option>
+                                                <option value={1440}>Daily</option>
+                                            </select>
+                                        </div>
+                                    )}
+                                </div>
                             </div>
 
                             {/* Indexing Options */}
