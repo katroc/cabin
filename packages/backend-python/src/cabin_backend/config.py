@@ -428,6 +428,23 @@ class Settings(BaseSettings):
         env="CABIN_APP_CONFIG_PATH",
     )
 
+    # Google Drive OAuth Configuration
+    google_drive_client_id: str = Field(
+        "",
+        description="Google OAuth2 Client ID for Drive integration",
+        env="GOOGLE_DRIVE_CLIENT_ID",
+    )
+    google_drive_client_secret: str = Field(
+        "",
+        description="Google OAuth2 Client Secret for Drive integration",
+        env="GOOGLE_DRIVE_CLIENT_SECRET",
+    )
+    google_drive_redirect_uri: str = Field(
+        "http://localhost:8788/api/data-sources/google-drive/callback",
+        description="OAuth2 redirect URI for Google Drive",
+        env="GOOGLE_DRIVE_REDIRECT_URI",
+    )
+
     # Feature flag overrides via environment
     feature_rag_provenance_lock_override: Optional[bool] = Field(
         None, env="FEATURE_RAG_PROVENANCE_LOCK"

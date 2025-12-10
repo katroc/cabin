@@ -1,20 +1,9 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { HardDrive, Play, RefreshCw, CheckCircle, AlertCircle, Clock, ArrowLeft, X, FolderOpen, ExternalLink } from 'lucide-react'
+import { HardDrive, Play, RefreshCw, CheckCircle, AlertCircle, Clock, ArrowLeft, X, FolderOpen, LogOut, ExternalLink } from 'lucide-react'
 import AlertModal from './AlertModal'
 import { useToast } from './ToastProvider'
-
-interface GoogleDriveConfig {
-    clientId: string
-    clientSecret: string
-    redirectUri: string
-    accessToken?: string
-    refreshToken?: string
-    selectedFolders: string[]
-    maxItems: number
-    includeShared: boolean
-}
 
 interface DriveFolder {
     id: string
@@ -43,125 +32,128 @@ interface GoogleDriveIndexingProps {
 export default function GoogleDriveIndexing({ isOpen, onClose, onBack }: GoogleDriveIndexingProps) {
     const { addToast } = useToast()
 
-    const [config, setConfig] = useState<GoogleDriveConfig>({
-        clientId: '',
-        clientSecret: '',
-        redirectUri: typeof window !== 'undefined' ? `${window.location.origin}/auth/google/callback` : '',
-        selectedFolders: [],
-        maxItems: 1000,
-        includeShared: true
-    })
-
-    const [isAuthenticated, setIsAuthenticated] = useState(false)
-    const [isAuthenticating, setIsAuthenticating] = useState(false)
+    const [isConfigured, setIsConfigured] = useState(false)
+    const [isConnected, setIsConnected] = useState(false)
+    const [userEmail, setUserEmail] = useState<string | null>(null)
+    const [isLoading, setIsLoading] = useState(true)
     const [folders, setFolders] = useState<DriveFolder[]>([])
+    const [selectedFolders, setSelectedFolders] = useState<string[]>([])
     const [isLoadingFolders, setIsLoadingFolders] = useState(false)
+    const [maxItems, setMaxItems] = useState(1000)
     const [jobs, setJobs] = useState<IndexingJob[]>([])
     const [isIndexing, setIsIndexing] = useState(false)
     const [showAlert, setShowAlert] = useState(false)
     const [alertConfig, setAlertConfig] = useState<{ title: string; message: string; type: 'success' | 'error' | 'info' } | null>(null)
 
-    if (!isOpen) return null
+    // Check connection status on mount and when URL has callback param
+    useEffect(() => {
+        const checkStatus = async () => {
+            try {
+                const response = await fetch('http://localhost:8788/api/data-sources/google-drive/status')
+                if (response.ok) {
+                    const data = await response.json()
+                    setIsConfigured(data.configured)
+                    setIsConnected(data.connected)
+                    setUserEmail(data.user_email)
 
-    const handleAuthenticate = async () => {
-        if (!config.clientId || !config.clientSecret) {
-            setAlertConfig({
-                title: 'Missing Credentials',
-                message: 'Please provide your Google OAuth2 Client ID and Client Secret.',
-                type: 'info'
-            })
-            setShowAlert(true)
-            return
-        }
-
-        setIsAuthenticating(true)
-
-        // Open Google OAuth consent screen
-        const scopes = encodeURIComponent('https://www.googleapis.com/auth/drive.readonly')
-        const redirectUri = encodeURIComponent(config.redirectUri)
-        const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${config.clientId}&redirect_uri=${redirectUri}&response_type=code&scope=${scopes}&access_type=offline&prompt=consent`
-
-        // Open popup for OAuth
-        const popup = window.open(authUrl, 'Google OAuth', 'width=500,height=600')
-
-        // Listen for the callback
-        const checkClosed = setInterval(() => {
-            if (popup?.closed) {
-                clearInterval(checkClosed)
-                setIsAuthenticating(false)
-            }
-        }, 1000)
-
-        // For demo purposes, simulate authentication
-        // In production, you'd handle the OAuth callback and exchange the code for tokens
-        setTimeout(() => {
-            setIsAuthenticating(false)
-            addToast('Please complete the OAuth flow in the popup window', 'info')
-        }, 2000)
-    }
-
-    const handleTestConnection = async () => {
-        if (!config.accessToken && !config.refreshToken) {
-            setAlertConfig({
-                title: 'Not Authenticated',
-                message: 'Please connect with Google first.',
-                type: 'info'
-            })
-            setShowAlert(true)
-            return
-        }
-
-        setIsLoadingFolders(true)
-
-        try {
-            const response = await fetch('http://localhost:8788/api/data-sources/discover', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    source_type: 'google_drive',
-                    connection: {
-                        additional_config: {
-                            client_id: config.clientId,
-                            client_secret: config.clientSecret,
-                            refresh_token: config.refreshToken,
-                            access_token: config.accessToken
-                        }
+                    // If connected, load folders
+                    if (data.connected) {
+                        loadFolders()
                     }
-                })
-            })
+                }
+            } catch (error) {
+                console.error('Failed to check Google Drive status:', error)
+            } finally {
+                setIsLoading(false)
+            }
+        }
 
+        if (isOpen) {
+            checkStatus()
+        }
+    }, [isOpen])
+
+    // Check for callback param
+    useEffect(() => {
+        if (typeof window !== 'undefined') {
+            const params = new URLSearchParams(window.location.search)
+            if (params.get('google_drive_connected') === 'true') {
+                // Clean up URL
+                window.history.replaceState({}, '', window.location.pathname)
+                addToast('Google Drive connected successfully!', 'success')
+            }
+        }
+    }, [])
+
+    const loadFolders = async () => {
+        setIsLoadingFolders(true)
+        try {
+            const response = await fetch('http://localhost:8788/api/data-sources/google-drive/discover', {
+                method: 'POST'
+            })
             if (response.ok) {
                 const data = await response.json()
                 setFolders(data.sources || [])
-                setIsAuthenticated(true)
-                addToast('Connected to Google Drive!', 'success')
-            } else {
-                throw new Error('Failed to connect')
             }
         } catch (error) {
-            console.error('Connection test failed:', error)
-            setAlertConfig({
-                title: 'Connection Failed',
-                message: 'Could not connect to Google Drive. Please check your credentials.',
-                type: 'error'
-            })
-            setShowAlert(true)
+            console.error('Failed to load folders:', error)
         } finally {
             setIsLoadingFolders(false)
         }
     }
 
+    const handleConnect = async () => {
+        try {
+            const response = await fetch('http://localhost:8788/api/data-sources/google-drive/auth-url')
+            if (response.ok) {
+                const data = await response.json()
+                // Redirect to Google OAuth
+                window.location.href = data.auth_url
+            } else {
+                const error = await response.json()
+                setAlertConfig({
+                    title: 'Configuration Required',
+                    message: error.detail || 'Google Drive is not configured on the server.',
+                    type: 'error'
+                })
+                setShowAlert(true)
+            }
+        } catch (error) {
+            console.error('Failed to get auth URL:', error)
+            setAlertConfig({
+                title: 'Connection Error',
+                message: 'Failed to connect to the server.',
+                type: 'error'
+            })
+            setShowAlert(true)
+        }
+    }
+
+    const handleDisconnect = async () => {
+        try {
+            await fetch('http://localhost:8788/api/data-sources/google-drive/disconnect', {
+                method: 'POST'
+            })
+            setIsConnected(false)
+            setUserEmail(null)
+            setFolders([])
+            setSelectedFolders([])
+            addToast('Google Drive disconnected', 'info')
+        } catch (error) {
+            console.error('Failed to disconnect:', error)
+        }
+    }
+
     const handleFolderToggle = (folderId: string) => {
-        setConfig(prev => ({
-            ...prev,
-            selectedFolders: prev.selectedFolders.includes(folderId)
-                ? prev.selectedFolders.filter(id => id !== folderId)
-                : [...prev.selectedFolders, folderId]
-        }))
+        setSelectedFolders(prev =>
+            prev.includes(folderId)
+                ? prev.filter(id => id !== folderId)
+                : [...prev, folderId]
+        )
     }
 
     const handleStartIndexing = async () => {
-        if (config.selectedFolders.length === 0) {
+        if (selectedFolders.length === 0) {
             setAlertConfig({
                 title: 'No Folders Selected',
                 message: 'Please select at least one folder to index.',
@@ -174,24 +166,12 @@ export default function GoogleDriveIndexing({ isOpen, onClose, onBack }: GoogleD
         setIsIndexing(true)
 
         try {
-            const response = await fetch('http://localhost:8788/api/data-sources/index', {
+            const response = await fetch('http://localhost:8788/api/data-sources/google-drive/index', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    source_type: 'google_drive',
-                    connection: {
-                        additional_config: {
-                            client_id: config.clientId,
-                            client_secret: config.clientSecret,
-                            refresh_token: config.refreshToken,
-                            access_token: config.accessToken
-                        }
-                    },
-                    source_ids: config.selectedFolders,
-                    config: {
-                        max_items: config.maxItems,
-                        include_shared: config.includeShared
-                    }
+                    source_ids: selectedFolders,
+                    config: { max_items: maxItems }
                 })
             })
 
@@ -280,6 +260,8 @@ export default function GoogleDriveIndexing({ isOpen, onClose, onBack }: GoogleD
         }
     }
 
+    if (!isOpen) return null
+
     return (
         <div className="fixed inset-0 z-50 flex">
             <div className="drawer-overlay" onClick={onClose} />
@@ -303,181 +285,175 @@ export default function GoogleDriveIndexing({ isOpen, onClose, onBack }: GoogleD
                 </div>
 
                 <div className="p-6 space-y-6 divide-y divide-[color:var(--border-faint)]">
-                    {/* OAuth Configuration */}
-                    <div className="form-section pt-6 first:pt-0">
-                        <h3 className="form-section-title ui-text-secondary text-sm uppercase tracking-wide">
-                            Google OAuth2 Setup
-                        </h3>
-
-                        <div className="space-y-4">
-                            <div className="form-group">
-                                <label className="label-base">Client ID</label>
-                                <input
-                                    type="text"
-                                    value={config.clientId}
-                                    onChange={(e) => setConfig(prev => ({ ...prev, clientId: e.target.value }))}
-                                    placeholder="Your Google OAuth Client ID"
-                                    className="input-base"
-                                />
-                            </div>
-
-                            <div className="form-group">
-                                <label className="label-base">Client Secret</label>
-                                <input
-                                    type="password"
-                                    value={config.clientSecret}
-                                    onChange={(e) => setConfig(prev => ({ ...prev, clientSecret: e.target.value }))}
-                                    placeholder="Your Google OAuth Client Secret"
-                                    className="input-base"
-                                />
-                            </div>
-
-                            <div className="text-sm p-3 rounded-lg" style={{
-                                background: 'var(--bg-tertiary)',
-                                color: 'var(--text-secondary)',
-                                border: '1px solid var(--border)'
-                            }}>
-                                <div className="flex items-center gap-2 mb-2 font-medium">
-                                    <ExternalLink size={14} />
-                                    How to get credentials
-                                </div>
-                                <ol className="list-decimal list-inside space-y-1 text-xs" style={{ color: 'var(--text-muted)' }}>
-                                    <li>Go to Google Cloud Console → APIs & Services → Credentials</li>
-                                    <li>Create OAuth 2.0 Client ID (Web application)</li>
-                                    <li>Add <code className="px-1 rounded bg-black/10">{config.redirectUri}</code> as authorized redirect URI</li>
-                                    <li>Enable Google Drive API in your project</li>
-                                </ol>
-                            </div>
-
-                            {!isAuthenticated ? (
-                                <button
-                                    onClick={handleAuthenticate}
-                                    disabled={isAuthenticating || !config.clientId || !config.clientSecret}
-                                    className="btn-primary flex items-center gap-2"
-                                >
-                                    {isAuthenticating ? (
-                                        <RefreshCw size={16} className="animate-spin" />
-                                    ) : (
-                                        <HardDrive size={16} />
-                                    )}
-                                    {isAuthenticating ? 'Connecting...' : 'Connect with Google'}
-                                </button>
-                            ) : (
-                                <div className="flex items-center gap-2 text-sm" style={{ color: 'var(--success)' }}>
-                                    <CheckCircle size={16} />
-                                    Connected to Google Drive
-                                </div>
-                            )}
+                    {isLoading ? (
+                        <div className="flex items-center justify-center py-12">
+                            <RefreshCw className="animate-spin" size={24} style={{ color: 'var(--accent)' }} />
                         </div>
-                    </div>
-
-                    {/* Folder Selection */}
-                    {isAuthenticated && (
-                        <div className="form-section pt-6">
-                            <div className="flex items-center justify-between mb-4">
-                                <h3 className="form-section-title ui-text-secondary text-sm uppercase tracking-wide">
-                                    Select Folders to Index
+                    ) : !isConfigured ? (
+                        /* Not Configured */
+                        <div className="form-section pt-6 first:pt-0">
+                            <div className="text-center py-8">
+                                <AlertCircle size={48} className="mx-auto mb-4" style={{ color: 'var(--warning)' }} />
+                                <h3 className="text-lg font-medium mb-2" style={{ color: 'var(--text-primary)' }}>
+                                    Google Drive Not Configured
                                 </h3>
+                                <p className="text-sm mb-4" style={{ color: 'var(--text-muted)' }}>
+                                    The server needs to be configured with Google OAuth credentials.
+                                </p>
+                                <div className="text-sm p-4 rounded-lg text-left" style={{
+                                    background: 'var(--bg-tertiary)',
+                                    border: '1px solid var(--border)'
+                                }}>
+                                    <p className="font-medium mb-2" style={{ color: 'var(--text-secondary)' }}>
+                                        Set these environment variables:
+                                    </p>
+                                    <code className="block text-xs p-2 rounded" style={{ background: 'var(--bg-primary)' }}>
+                                        GOOGLE_DRIVE_CLIENT_ID=your-client-id<br />
+                                        GOOGLE_DRIVE_CLIENT_SECRET=your-secret<br />
+                                        GOOGLE_DRIVE_REDIRECT_URI=http://localhost:8788/api/data-sources/google-drive/callback
+                                    </code>
+                                </div>
+                            </div>
+                        </div>
+                    ) : !isConnected ? (
+                        /* Not Connected - Show Connect Button */
+                        <div className="form-section pt-6 first:pt-0">
+                            <div className="text-center py-8">
+                                <HardDrive size={48} className="mx-auto mb-4" style={{ color: 'var(--accent)' }} />
+                                <h3 className="text-lg font-medium mb-2" style={{ color: 'var(--text-primary)' }}>
+                                    Connect Your Google Drive
+                                </h3>
+                                <p className="text-sm mb-6" style={{ color: 'var(--text-muted)' }}>
+                                    Sign in with Google to index documents from your Drive.
+                                </p>
                                 <button
-                                    onClick={handleTestConnection}
-                                    disabled={isLoadingFolders}
-                                    className="btn-secondary text-xs flex items-center gap-1"
+                                    onClick={handleConnect}
+                                    className="btn-primary flex items-center gap-2 mx-auto"
                                 >
-                                    <RefreshCw size={12} className={isLoadingFolders ? 'animate-spin' : ''} />
-                                    Refresh
+                                    <ExternalLink size={16} />
+                                    Connect with Google
                                 </button>
                             </div>
-
-                            {folders.length > 0 ? (
-                                <div className="space-y-2 max-h-60 overflow-y-auto">
-                                    {folders.map(folder => (
-                                        <label
-                                            key={folder.id}
-                                            className="flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-colors"
-                                            style={{
-                                                background: config.selectedFolders.includes(folder.id)
-                                                    ? 'var(--accent-muted)'
-                                                    : 'var(--bg-tertiary)',
-                                                border: `1px solid ${config.selectedFolders.includes(folder.id) ? 'var(--accent)' : 'var(--border)'}`
-                                            }}
-                                        >
-                                            <input
-                                                type="checkbox"
-                                                checked={config.selectedFolders.includes(folder.id)}
-                                                onChange={() => handleFolderToggle(folder.id)}
-                                                className="rounded"
-                                            />
-                                            <FolderOpen size={18} style={{ color: 'var(--accent)' }} />
-                                            <div className="flex-1">
-                                                <div className="font-medium" style={{ color: 'var(--text-primary)' }}>
-                                                    {folder.name}
-                                                </div>
-                                                <div className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                                                    {folder.description}
-                                                </div>
-                                            </div>
-                                        </label>
-                                    ))}
-                                </div>
-                            ) : (
-                                <div className="text-center py-8" style={{ color: 'var(--text-muted)' }}>
-                                    {isLoadingFolders ? 'Loading folders...' : 'No folders found'}
-                                </div>
-                            )}
                         </div>
-                    )}
+                    ) : (
+                        /* Connected - Show Folders */
+                        <>
+                            {/* Connection Status */}
+                            <div className="form-section pt-6 first:pt-0">
+                                <div className="flex items-center justify-between p-4 rounded-lg" style={{
+                                    background: 'var(--bg-tertiary)',
+                                    border: '1px solid var(--border)'
+                                }}>
+                                    <div className="flex items-center gap-3">
+                                        <CheckCircle size={20} style={{ color: 'var(--success)' }} />
+                                        <div>
+                                            <div className="font-medium" style={{ color: 'var(--text-primary)' }}>
+                                                Connected to Google Drive
+                                            </div>
+                                            {userEmail && (
+                                                <div className="text-sm" style={{ color: 'var(--text-muted)' }}>
+                                                    {userEmail}
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                    <button
+                                        onClick={handleDisconnect}
+                                        className="btn-secondary text-sm flex items-center gap-1"
+                                    >
+                                        <LogOut size={14} />
+                                        Disconnect
+                                    </button>
+                                </div>
+                            </div>
 
-                    {/* Indexing Options */}
-                    {isAuthenticated && (
-                        <div className="form-section pt-6">
-                            <h3 className="form-section-title ui-text-secondary text-sm uppercase tracking-wide">
-                                Indexing Options
-                            </h3>
+                            {/* Folder Selection */}
+                            <div className="form-section pt-6">
+                                <div className="flex items-center justify-between mb-4">
+                                    <h3 className="form-section-title ui-text-secondary text-sm uppercase tracking-wide">
+                                        Select Folders to Index
+                                    </h3>
+                                    <button
+                                        onClick={loadFolders}
+                                        disabled={isLoadingFolders}
+                                        className="btn-secondary text-xs flex items-center gap-1"
+                                    >
+                                        <RefreshCw size={12} className={isLoadingFolders ? 'animate-spin' : ''} />
+                                        Refresh
+                                    </button>
+                                </div>
 
-                            <div className="space-y-4">
+                                {folders.length > 0 ? (
+                                    <div className="space-y-2 max-h-60 overflow-y-auto">
+                                        {folders.map(folder => (
+                                            <label
+                                                key={folder.id}
+                                                className="flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-colors"
+                                                style={{
+                                                    background: selectedFolders.includes(folder.id)
+                                                        ? 'var(--accent-muted)'
+                                                        : 'var(--bg-tertiary)',
+                                                    border: `1px solid ${selectedFolders.includes(folder.id) ? 'var(--accent)' : 'var(--border)'}`
+                                                }}
+                                            >
+                                                <input
+                                                    type="checkbox"
+                                                    checked={selectedFolders.includes(folder.id)}
+                                                    onChange={() => handleFolderToggle(folder.id)}
+                                                    className="rounded"
+                                                />
+                                                <FolderOpen size={18} style={{ color: 'var(--accent)' }} />
+                                                <div className="flex-1">
+                                                    <div className="font-medium" style={{ color: 'var(--text-primary)' }}>
+                                                        {folder.name}
+                                                    </div>
+                                                    <div className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                                                        {folder.description}
+                                                    </div>
+                                                </div>
+                                            </label>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <div className="text-center py-8" style={{ color: 'var(--text-muted)' }}>
+                                        {isLoadingFolders ? 'Loading folders...' : 'No folders found'}
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Indexing Options */}
+                            <div className="form-section pt-6">
+                                <h3 className="form-section-title ui-text-secondary text-sm uppercase tracking-wide">
+                                    Indexing Options
+                                </h3>
                                 <div className="form-group">
                                     <label className="label-base">
-                                        Max Items: {config.maxItems}
+                                        Max Items: {maxItems}
                                     </label>
                                     <input
                                         type="range"
                                         min="100"
                                         max="10000"
                                         step="100"
-                                        value={config.maxItems}
-                                        onChange={(e) => setConfig(prev => ({ ...prev, maxItems: parseInt(e.target.value) }))}
+                                        value={maxItems}
+                                        onChange={(e) => setMaxItems(parseInt(e.target.value))}
                                         className="w-full"
                                     />
                                 </div>
-
-                                <div className="flex items-center">
-                                    <input
-                                        type="checkbox"
-                                        id="includeShared"
-                                        checked={config.includeShared}
-                                        onChange={(e) => setConfig(prev => ({ ...prev, includeShared: e.target.checked }))}
-                                        className="mr-2"
-                                    />
-                                    <label htmlFor="includeShared" className="label-inline">
-                                        Include Shared Files
-                                    </label>
-                                </div>
                             </div>
-                        </div>
-                    )}
 
-                    {/* Start Indexing */}
-                    {isAuthenticated && (
-                        <div className="flex gap-3 pt-6">
-                            <button
-                                onClick={handleStartIndexing}
-                                disabled={isIndexing || config.selectedFolders.length === 0}
-                                className="btn-primary flex-1"
-                            >
-                                <Play size={16} />
-                                {isIndexing ? 'Indexing...' : 'Start Indexing'}
-                            </button>
-                        </div>
+                            {/* Start Indexing */}
+                            <div className="flex gap-3 pt-6">
+                                <button
+                                    onClick={handleStartIndexing}
+                                    disabled={isIndexing || selectedFolders.length === 0}
+                                    className="btn-primary flex-1"
+                                >
+                                    <Play size={16} />
+                                    {isIndexing ? 'Indexing...' : 'Start Indexing'}
+                                </button>
+                            </div>
+                        </>
                     )}
 
                     {/* Jobs History */}
@@ -486,7 +462,6 @@ export default function GoogleDriveIndexing({ isOpen, onClose, onBack }: GoogleD
                             <h3 className="form-section-title ui-text-secondary text-sm uppercase tracking-wide">
                                 Indexing History
                             </h3>
-
                             <div className="space-y-3">
                                 {jobs.map(job => (
                                     <div

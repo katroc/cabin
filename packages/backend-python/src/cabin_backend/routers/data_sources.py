@@ -3,20 +3,27 @@ Data sources router - handles data source discovery and indexing endpoints.
 """
 
 import logging
+import secrets
 from typing import Dict, Any, List, Optional
+from urllib.parse import urlencode
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 
 from ..models import (
     DataSourceIndexRequest, DataSourceDiscoveryRequest, DataSourceTestRequest,
     DataSourceIndexResponse
 )
+from ..config import settings
 from . import deps
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/data-sources", tags=["data-sources"])
+
+# In-memory storage for Google Drive OAuth tokens (in production, use a proper store)
+_google_drive_tokens: Dict[str, Dict[str, Any]] = {}
 
 
 # URL Ingestion request model
@@ -491,3 +498,166 @@ def get_document_chunks(document_id: str):
     except Exception as e:
         logger.error("Error getting document chunks: %s", str(e))
         raise HTTPException(status_code=500, detail=f"Failed to get document chunks: {e}")
+
+
+# ============================================================================
+# Google Drive OAuth Endpoints
+# ============================================================================
+
+@router.get("/google-drive/status")
+async def google_drive_status():
+    """Check if Google Drive is configured and connected."""
+    configured = bool(settings.google_drive_client_id and settings.google_drive_client_secret)
+    connected = bool(_google_drive_tokens.get("default"))  # Using "default" for single-user
+    
+    return {
+        "configured": configured,
+        "connected": connected,
+        "user_email": _google_drive_tokens.get("default", {}).get("email")
+    }
+
+
+@router.get("/google-drive/auth-url")
+async def google_drive_auth_url():
+    """Get the Google OAuth authorization URL."""
+    if not settings.google_drive_client_id or not settings.google_drive_client_secret:
+        raise HTTPException(
+            status_code=400, 
+            detail="Google Drive not configured. Set GOOGLE_DRIVE_CLIENT_ID and GOOGLE_DRIVE_CLIENT_SECRET environment variables."
+        )
+    
+    # Generate state token for CSRF protection
+    state = secrets.token_urlsafe(32)
+    _google_drive_tokens["_state"] = state
+    
+    params = {
+        "client_id": settings.google_drive_client_id,
+        "redirect_uri": settings.google_drive_redirect_uri,
+        "response_type": "code",
+        "scope": "https://www.googleapis.com/auth/drive.readonly email profile",
+        "access_type": "offline",
+        "prompt": "consent",
+        "state": state
+    }
+    
+    auth_url = f"https://accounts.google.com/o/oauth2/v2/auth?{urlencode(params)}"
+    return {"auth_url": auth_url}
+
+
+@router.get("/google-drive/callback")
+async def google_drive_callback(code: str = Query(...), state: str = Query(...)):
+    """Handle OAuth callback from Google."""
+    import aiohttp
+    
+    # Verify state
+    expected_state = _google_drive_tokens.get("_state")
+    if state != expected_state:
+        raise HTTPException(status_code=400, detail="Invalid state parameter")
+    
+    # Exchange code for tokens
+    token_url = "https://oauth2.googleapis.com/token"
+    async with aiohttp.ClientSession() as session:
+        async with session.post(token_url, data={
+            "client_id": settings.google_drive_client_id,
+            "client_secret": settings.google_drive_client_secret,
+            "code": code,
+            "grant_type": "authorization_code",
+            "redirect_uri": settings.google_drive_redirect_uri
+        }) as resp:
+            if resp.status != 200:
+                error_text = await resp.text()
+                logger.error(f"Token exchange failed: {error_text}")
+                raise HTTPException(status_code=400, detail="Failed to exchange code for tokens")
+            
+            tokens = await resp.json()
+    
+    # Get user info
+    user_email = None
+    try:
+        async with aiohttp.ClientSession() as session:
+            headers = {"Authorization": f"Bearer {tokens['access_token']}"}
+            async with session.get("https://www.googleapis.com/oauth2/v2/userinfo", headers=headers) as resp:
+                if resp.status == 200:
+                    user_info = await resp.json()
+                    user_email = user_info.get("email")
+    except Exception as e:
+        logger.warning(f"Failed to get user info: {e}")
+    
+    # Store tokens
+    _google_drive_tokens["default"] = {
+        "access_token": tokens.get("access_token"),
+        "refresh_token": tokens.get("refresh_token"),
+        "email": user_email
+    }
+    
+    logger.info(f"Google Drive connected for user: {user_email}")
+    
+    # Redirect back to the app
+    return RedirectResponse(url="http://localhost:3000?google_drive_connected=true")
+
+
+@router.post("/google-drive/disconnect")
+async def google_drive_disconnect():
+    """Disconnect Google Drive integration."""
+    if "default" in _google_drive_tokens:
+        del _google_drive_tokens["default"]
+    return {"success": True, "message": "Google Drive disconnected"}
+
+
+@router.post("/google-drive/discover")
+async def google_drive_discover():
+    """Discover available folders from connected Google Drive."""
+    tokens = _google_drive_tokens.get("default")
+    if not tokens:
+        raise HTTPException(status_code=401, detail="Google Drive not connected")
+    
+    if not deps.data_source_manager:
+        raise HTTPException(status_code=503, detail="Data source manager not available")
+    
+    try:
+        result = await deps.data_source_manager.discover_sources(
+            "google_drive",
+            {
+                "additional_config": {
+                    "client_id": settings.google_drive_client_id,
+                    "client_secret": settings.google_drive_client_secret,
+                    "refresh_token": tokens.get("refresh_token"),
+                    "access_token": tokens.get("access_token")
+                }
+            }
+        )
+        return {"sources": result}
+    except Exception as e:
+        logger.error(f"Failed to discover Google Drive sources: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/google-drive/index")
+async def google_drive_index(request: DataSourceIndexRequest):
+    """Start indexing selected Google Drive folders."""
+    tokens = _google_drive_tokens.get("default")
+    if not tokens:
+        raise HTTPException(status_code=401, detail="Google Drive not connected")
+    
+    if not deps.data_source_manager:
+        raise HTTPException(status_code=503, detail="Data source manager not available")
+    
+    try:
+        job_id = await deps.data_source_manager.start_indexing(
+            "google_drive",
+            {
+                "additional_config": {
+                    "client_id": settings.google_drive_client_id,
+                    "client_secret": settings.google_drive_client_secret,
+                    "refresh_token": tokens.get("refresh_token"),
+                    "access_token": tokens.get("access_token")
+                }
+            },
+            request.source_ids,
+            request.config or {}
+        )
+        return {"job_id": job_id, "status": "started"}
+    except Exception as e:
+        logger.error(f"Failed to start Google Drive indexing: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
