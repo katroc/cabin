@@ -1,10 +1,11 @@
 'use client'
 
 import { useState } from 'react'
-import { Database, Upload, Globe, Github, FileText, X, ArrowLeft, Settings2, Plus, Link } from 'lucide-react'
+import { Database, Upload, Globe, Github, FileText, X, ArrowLeft, Settings2, Plus, Link, HardDrive } from 'lucide-react'
 import ConfluenceIndexing from './ConfluenceIndexing'
 import FileUploadIndexing from './FileUploadIndexing'
 import URLIngestionIndexing from './URLIngestionIndexing'
+import GoogleDriveIndexing from './GoogleDriveIndexing'
 import DataSourceManagement from './DataSourceManagement'
 
 interface DataSource {
@@ -53,6 +54,15 @@ export default function DataSourceSelector({ isOpen, onClose }: DataSourceSelect
       component: ConfluenceIndexing,
       available: true,
       category: 'web'
+    },
+    {
+      id: 'google_drive',
+      name: 'Google Drive',
+      description: 'Index documents from your Google Drive folders',
+      icon: HardDrive,
+      component: GoogleDriveIndexing,
+      available: true,
+      category: 'cloud'
     },
     {
       id: 'github',
@@ -197,11 +207,10 @@ export default function DataSourceSelector({ isOpen, onClose }: DataSourceSelect
                                 : 'ui-bg-tertiary'
                               }
                             `}>
-                              <IconComponent className={`w-5 h-5 ${
-                                source.available
+                              <IconComponent className={`w-5 h-5 ${source.available
                                   ? 'ui-text-secondary group-hover:text-[var(--accent)]'
                                   : 'ui-text-muted'
-                              }`} />
+                                }`} />
                             </div>
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2 mb-1">
