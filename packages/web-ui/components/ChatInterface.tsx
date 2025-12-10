@@ -159,17 +159,21 @@ export default function ChatInterface({
     }
   }, [input, conversation?.id])
 
-  // Smooth scroll during streaming
+  // Smooth scroll during streaming - always scroll unless user has scrolled up
   useEffect(() => {
     if (!conversation || !streamingMessageId) return
 
     const container = messagesContainerRef.current
     if (!container) return
 
+    // Force auto-scrolling when streaming starts
+    setIsAutoScrolling(true)
+
     let rafId: number
     const scheduleScroll = () => {
       rafId = requestAnimationFrame(() => {
-        if (isAutoScrolling) {
+        // During streaming, keep scrolling to bottom if still auto-scrolling
+        if (isAutoScrolling && streamingMessageId) {
           container.scrollTop = container.scrollHeight
         }
         if (streamingMessageId) {

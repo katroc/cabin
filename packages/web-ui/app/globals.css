@@ -322,10 +322,14 @@ body {
 }
 
 @keyframes thinking-dot-pulse {
-  0%, 80%, 100% {
+
+  0%,
+  80%,
+  100% {
     opacity: 0.4;
     transform: scale(1);
   }
+
   40% {
     opacity: 1;
     transform: scale(1.2);
@@ -345,7 +349,9 @@ body {
   z-index: 40;
   display: flex;
   justify-content: flex-end;
-  pointer-events: none;
+  pointer-events: auto;
+  background: rgba(0, 0, 0, 0.3);
+  cursor: pointer;
 }
 
 .sources-panel {
@@ -1001,8 +1007,9 @@ body {
 
 /* Scroll to bottom button */
 .scroll-to-bottom-button {
-  position: absolute;
-  bottom: var(--space-6);
+  position: fixed;
+  bottom: 120px;
+  /* Position above the composer */
   left: 50%;
   transform: translateX(-50%);
   display: flex;
@@ -1017,7 +1024,7 @@ body {
   cursor: pointer;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
   transition: all 0.2s ease;
-  z-index: 20;
+  z-index: 50;
   animation: slideUp 0.3s ease;
 }
 
