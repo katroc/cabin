@@ -974,6 +974,7 @@ async def preview_folder_share(request: FolderShareAddRequest):
 async def browse_folder_share(request: FolderShareAddRequest, sub_path: str = ""):
     """Browse folders within a share. Returns list of subfolders for folder picker UI."""
     import socket
+    from pathlib import Path
     
     folders = []
     files = []

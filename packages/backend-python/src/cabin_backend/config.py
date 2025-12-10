@@ -10,7 +10,7 @@ except ModuleNotFoundError as exc:  # pragma: no cover - import guard
         "PyYAML is required to load application configuration. Install it via 'pip install pyyaml'."
     ) from exc
 from pydantic import BaseModel, Field
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 logger = logging.getLogger(__name__)
@@ -432,32 +432,40 @@ class Settings(BaseSettings):
     google_drive_client_id: str = Field(
         "",
         description="Google OAuth2 Client ID for Drive integration",
-        env="GOOGLE_DRIVE_CLIENT_ID",
+        validation_alias="GOOGLE_DRIVE_CLIENT_ID",
     )
     google_drive_client_secret: str = Field(
         "",
         description="Google OAuth2 Client Secret for Drive integration",
-        env="GOOGLE_DRIVE_CLIENT_SECRET",
+        validation_alias="GOOGLE_DRIVE_CLIENT_SECRET",
     )
     google_drive_redirect_uri: str = Field(
         "http://localhost:8788/api/data-sources/google-drive/callback",
         description="OAuth2 redirect URI(s) for Google Drive. Can be a comma-separated list.",
-        env="GOOGLE_DRIVE_REDIRECT_URI",
+        validation_alias="GOOGLE_DRIVE_REDIRECT_URI",
+    )
+
+    # CORS Configuration
+    allowed_origins: str = Field(
+        "http://localhost:3000,http://127.0.0.1:3000",
+        description="Comma-separated list of allowed origins for CORS",
+        validation_alias="CABIN_ALLOWED_ORIGINS",
     )
 
     # Feature flag overrides via environment
     feature_rag_provenance_lock_override: Optional[bool] = Field(
-        None, env="FEATURE_RAG_PROVENANCE_LOCK"
+        None, validation_alias="FEATURE_RAG_PROVENANCE_LOCK"
     )
-    feature_reranker_override: Optional[bool] = Field(None, env="FEATURE_RERANKER")
+    feature_reranker_override: Optional[bool] = Field(None, validation_alias="FEATURE_RERANKER")
     feature_heuristic_fallback_override: Optional[bool] = Field(
-        None, env="FEATURE_HEURISTIC_FALLBACK"
+        None, validation_alias="FEATURE_HEURISTIC_FALLBACK"
     )
 
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-        extra = "ignore"
+    model_config = SettingsConfigDict(
+        env_file=str(PROJECT_ROOT / ".env"),
+        env_file_encoding="utf-8",
+        extra="ignore"
+    )
 
     def resolved_app_config_path(self) -> Path:
         return _resolve_config_path(self.app_config_path)
