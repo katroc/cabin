@@ -77,10 +77,11 @@ export default function GoogleDriveIndexing({ isOpen, onClose, onBack }: GoogleD
     useEffect(() => {
         if (typeof window !== 'undefined') {
             const params = new URLSearchParams(window.location.search)
-            if (params.get('google_drive_connected') === 'true') {
+            if (params.get('show_data_sources') === 'google_drive') {
                 // Clean up URL
                 window.history.replaceState({}, '', window.location.pathname)
                 addToast('Google Drive connected successfully!', 'success')
+                // The component is already open if we're here
             }
         }
     }, [])

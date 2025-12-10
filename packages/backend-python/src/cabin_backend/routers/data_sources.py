@@ -32,6 +32,12 @@ class URLIngestionRequest(BaseModel):
     max_items: Optional[int] = 100
 
 
+class GoogleDriveIndexRequest(BaseModel):
+    """Request to index Google Drive folders."""
+    source_ids: List[str]  # Folder IDs to index
+    config: Optional[Dict[str, Any]] = None  # Indexing options
+
+
 @router.post("/url_ingestion/index")
 async def start_url_ingestion(request: URLIngestionRequest):
     """Start indexing URLs."""
@@ -592,8 +598,8 @@ async def google_drive_callback(code: str = Query(...), state: str = Query(...))
     
     logger.info(f"Google Drive connected for user: {user_email}")
     
-    # Redirect back to the app
-    return RedirectResponse(url="http://localhost:3000?google_drive_connected=true")
+    # Redirect back to the app's data sources section
+    return RedirectResponse(url="http://localhost:3000?show_data_sources=google_drive")
 
 
 @router.post("/google-drive/disconnect")
@@ -633,7 +639,7 @@ async def google_drive_discover():
 
 
 @router.post("/google-drive/index")
-async def google_drive_index(request: DataSourceIndexRequest):
+async def google_drive_index(request: GoogleDriveIndexRequest):
     """Start indexing selected Google Drive folders."""
     tokens = _google_drive_tokens.get("default")
     if not tokens:
