@@ -436,7 +436,23 @@ const SmartResponse: React.FC<SmartResponseProps> = ({
             <div className="response-toc-title">On this page</div>
             <div className="response-toc-list">
               {headings.map((heading) => (
-                <a key={heading.id} href={`#${heading.id}`} data-depth={heading.depth}>
+                <a
+                  key={heading.id}
+                  href={`#${heading.id}`}
+                  data-depth={heading.depth}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    const el = document.getElementById(heading.id);
+                    if (el) {
+                      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                      // Highlight briefly
+                      el.classList.add('toc-highlight');
+                      setTimeout(() => el.classList.remove('toc-highlight'), 1500);
+                      // Update URL
+                      history.replaceState(null, '', `#${heading.id}`);
+                    }
+                  }}
+                >
                   <span>{heading.text}</span>
                 </a>
               ))}
