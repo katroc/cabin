@@ -1,11 +1,12 @@
 'use client'
 
 import { useState } from 'react'
-import { Database, Upload, Globe, Github, FileText, X, ArrowLeft, Settings2, Plus, Link, HardDrive } from 'lucide-react'
+import { Database, Upload, Globe, Github, FileText, X, ArrowLeft, Settings2, Plus, Link, HardDrive, FolderOpen } from 'lucide-react'
 import ConfluenceIndexing from './ConfluenceIndexing'
 import FileUploadIndexing from './FileUploadIndexing'
 import URLIngestionIndexing from './URLIngestionIndexing'
 import GoogleDriveIndexing from './GoogleDriveIndexing'
+import FolderShareIndexing from './FolderShareIndexing'
 import DataSourceManagement from './DataSourceManagement'
 
 interface DataSource {
@@ -34,6 +35,15 @@ export default function DataSourceSelector({ isOpen, onClose }: DataSourceSelect
       description: 'Upload and index local documents (PDF, DOCX, Markdown, etc.)',
       icon: Upload,
       component: FileUploadIndexing,
+      available: true,
+      category: 'files'
+    },
+    {
+      id: 'folder_share',
+      name: 'Folder / Share',
+      description: 'Index documents from local folders or SMB/CIFS network shares',
+      icon: FolderOpen,
+      component: FolderShareIndexing,
       available: true,
       category: 'files'
     },
@@ -208,8 +218,8 @@ export default function DataSourceSelector({ isOpen, onClose }: DataSourceSelect
                               }
                             `}>
                               <IconComponent className={`w-5 h-5 ${source.available
-                                  ? 'ui-text-secondary group-hover:text-[var(--accent)]'
-                                  : 'ui-text-muted'
+                                ? 'ui-text-secondary group-hover:text-[var(--accent)]'
+                                : 'ui-text-muted'
                                 }`} />
                             </div>
                             <div className="flex-1 min-w-0">
