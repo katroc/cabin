@@ -246,6 +246,8 @@ interface SettingsContextType {
 
 const SettingsContext = createContext<SettingsContextType | null>(null)
 
+import { getApiUrl } from '../../lib/config'
+
 interface SettingsProviderProps {
   children: ReactNode
   settingsEndpoint?: string
@@ -253,8 +255,11 @@ interface SettingsProviderProps {
 
 export function SettingsProvider({
   children,
-  settingsEndpoint = 'http://localhost:8788/api/settings'
+  settingsEndpoint
 }: SettingsProviderProps) {
+  // Use the provided endpoint or default to the configured API URL
+  const finalSettingsEndpoint = settingsEndpoint || getApiUrl('/api/settings')
+
   const [state, dispatch] = useReducer(settingsReducer, {
     data: defaultSettings,
     originalData: defaultSettings,
@@ -272,7 +277,7 @@ export function SettingsProvider({
       dispatch({ type: 'SET_LOADING', payload: true })
 
       try {
-        const response = await fetch(settingsEndpoint)
+        const response = await fetch(finalSettingsEndpoint)
         if (!response.ok) {
           throw new Error(`Failed to load settings: ${response.status}`)
         }
@@ -400,7 +405,7 @@ export function SettingsProvider({
         fuzzyPartialRatioMin: state.data.fuzzyPartialRatioMin
       }
 
-      const response = await fetch(settingsEndpoint, {
+      const response = await fetch(finalSettingsEndpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(backendData)
@@ -419,7 +424,7 @@ export function SettingsProvider({
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred'
       dispatch({ type: 'SAVE_ERROR', payload: errorMessage })
     }
-  }, [state.data, settingsEndpoint])
+  }, [state.data, finalSettingsEndpoint])
 
   const resetSettings = useCallback(() => {
     dispatch({ type: 'RESET_TO_ORIGINAL' })

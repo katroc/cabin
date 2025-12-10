@@ -3,6 +3,7 @@
 import { useCallback, useRef, useState } from 'react'
 import { splitThinking, deriveAnswerFromThinking } from '../../utils/thinking'
 import type { ChatMode, PersonaType } from '../../components/contexts/UIPreferencesProvider'
+import { getApiUrl } from '../../lib/config'
 
 // Re-export types for convenience
 export type { ChatMode, PersonaType }
@@ -46,12 +47,12 @@ export interface Message {
 // API endpoints
 const ENDPOINTS = {
     rag: {
-        standard: 'http://localhost:8788/api/chat',
-        stream: 'http://localhost:8788/api/chat/stream',
+        standard: getApiUrl('/api/chat'),
+        stream: getApiUrl('/api/chat/stream'),
     },
     llm: {
-        standard: 'http://localhost:8788/api/chat/direct',
-        stream: 'http://localhost:8788/api/chat/direct/stream',
+        standard: getApiUrl('/api/chat/direct'),
+        stream: getApiUrl('/api/chat/direct/stream'),
     },
 }
 

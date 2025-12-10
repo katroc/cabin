@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useEffect } from 'react'
 import { Upload, File, Trash2, Play, CheckCircle, AlertCircle, Clock, X, ArrowLeft, FolderUp, FileUp } from 'lucide-react'
+import { getApiUrl } from '../lib/config'
 
 interface UploadedFile {
   file: File
@@ -147,7 +148,7 @@ export default function FileUploadIndexing({ isOpen, onClose, onBack }: FileUplo
         formData.append('files', file)
       })
 
-      const response = await fetch('http://localhost:8788/api/files/upload', {
+      const response = await fetch(getApiUrl('/api/files/upload'), {
         method: 'POST',
         body: formData
       })
@@ -186,7 +187,7 @@ export default function FileUploadIndexing({ isOpen, onClose, onBack }: FileUplo
     setIsIndexing(true)
 
     try {
-      const response = await fetch('http://localhost:8788/api/files/index', {
+      const response = await fetch(getApiUrl('/api/files/index'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -231,7 +232,7 @@ export default function FileUploadIndexing({ isOpen, onClose, onBack }: FileUplo
   const pollJobProgress = async (jobId: string) => {
     const pollInterval = setInterval(async () => {
       try {
-        const response = await fetch(`http://localhost:8788/api/data-sources/jobs/${jobId}`)
+        const response = await fetch(getApiUrl(`/api/data-sources/jobs/${jobId}`))
         const progress = await response.json()
 
         setJobs(prev => prev.map(job =>

@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { HardDrive, Play, RefreshCw, CheckCircle, AlertCircle, Clock, ArrowLeft, X, FolderOpen, LogOut, ExternalLink } from 'lucide-react'
 import AlertModal from './AlertModal'
 import { useToast } from './ToastProvider'
+import { getApiUrl } from '../lib/config'
 
 interface DriveFolder {
     id: string
@@ -55,7 +56,7 @@ export default function GoogleDriveIndexing({ isOpen, onClose, onBack }: GoogleD
     useEffect(() => {
         const checkStatus = async () => {
             try {
-                const response = await fetch('http://localhost:8788/api/data-sources/google-drive/status')
+                const response = await fetch(getApiUrl('/api/data-sources/google-drive/status'))
                 if (response.ok) {
                     const data = await response.json()
                     setIsConfigured(data.configured)
@@ -95,7 +96,7 @@ export default function GoogleDriveIndexing({ isOpen, onClose, onBack }: GoogleD
     const loadFolders = async () => {
         setIsLoadingFolders(true)
         try {
-            const response = await fetch('http://localhost:8788/api/data-sources/google-drive/discover', {
+            const response = await fetch(getApiUrl('/api/data-sources/google-drive/discover'), {
                 method: 'POST'
             })
             if (response.ok) {
@@ -118,7 +119,7 @@ export default function GoogleDriveIndexing({ isOpen, onClose, onBack }: GoogleD
 
     const fetchSyncStatus = async () => {
         try {
-            const response = await fetch('http://localhost:8788/api/data-sources/google-drive/sync-status')
+            const response = await fetch(getApiUrl('/api/data-sources/google-drive/sync-status'))
             if (response.ok) {
                 const data = await response.json()
                 setIsSyncEnabled(data.enabled)
@@ -134,8 +135,8 @@ export default function GoogleDriveIndexing({ isOpen, onClose, onBack }: GoogleD
         setIsSyncLoading(true)
         try {
             const endpoint = enabled
-                ? 'http://localhost:8788/api/data-sources/google-drive/enable-scheduled-sync'
-                : 'http://localhost:8788/api/data-sources/google-drive/disable-scheduled-sync'
+                ? getApiUrl('/api/data-sources/google-drive/enable-scheduled-sync')
+                : getApiUrl('/api/data-sources/google-drive/disable-scheduled-sync')
 
             const body = enabled ? {
                 interval_minutes: syncInterval,
@@ -168,7 +169,7 @@ export default function GoogleDriveIndexing({ isOpen, onClose, onBack }: GoogleD
             // Update config immediately if enabled
             setIsSyncLoading(true)
             try {
-                const response = await fetch('http://localhost:8788/api/data-sources/google-drive/enable-scheduled-sync', {
+                const response = await fetch(getApiUrl('/api/data-sources/google-drive/enable-scheduled-sync'), {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -189,7 +190,17 @@ export default function GoogleDriveIndexing({ isOpen, onClose, onBack }: GoogleD
 
     const handleConnect = async () => {
         try {
-            const response = await fetch('http://localhost:8788/api/data-sources/google-drive/auth-url')
+            // Construct redirect URI for OAuth callback (must match backend config)
+            const redirectUri = getApiUrl('/api/data-sources/google-drive/callback')
+            // Return URL for final redirect after callback (current frontend origin)
+            const returnUrl = window.location.origin
+
+            const params = new URLSearchParams({
+                redirect_uri: redirectUri,
+                return_url: returnUrl
+            })
+
+            const response = await fetch(getApiUrl(`/api/data-sources/google-drive/auth-url?${params.toString()}`))
             if (response.ok) {
                 const data = await response.json()
                 // Redirect to Google OAuth
@@ -216,7 +227,7 @@ export default function GoogleDriveIndexing({ isOpen, onClose, onBack }: GoogleD
 
     const handleDisconnect = async () => {
         try {
-            await fetch('http://localhost:8788/api/data-sources/google-drive/disconnect', {
+            await fetch(getApiUrl('/api/data-sources/google-drive/disconnect'), {
                 method: 'POST'
             })
             setIsConnected(false)
@@ -251,7 +262,7 @@ export default function GoogleDriveIndexing({ isOpen, onClose, onBack }: GoogleD
         setIsIndexing(true)
 
         try {
-            const response = await fetch('http://localhost:8788/api/data-sources/google-drive/index', {
+            const response = await fetch(getApiUrl('/api/data-sources/google-drive/index'), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -282,7 +293,7 @@ export default function GoogleDriveIndexing({ isOpen, onClose, onBack }: GoogleD
             // Poll for progress
             const pollProgress = async () => {
                 try {
-                    const progressResponse = await fetch(`http://localhost:8788/api/data-sources/jobs/${jobId}`)
+                    const progressResponse = await fetch(getApiUrl(`/api/data-sources/jobs/${jobId}`))
 
                     if (progressResponse.ok) {
                         const progressData = await progressResponse.json()

@@ -5,6 +5,7 @@ import { Database, Play, Trash2, RefreshCw, CheckCircle, AlertCircle, Clock, Wif
 import ConfirmationModal from './ConfirmationModal'
 import AlertModal from './AlertModal'
 import { useToast } from './ToastProvider'
+import { getApiUrl } from '../lib/config'
 
 interface ConfluenceConfig {
   baseUrl: string
@@ -89,7 +90,7 @@ export default function ConfluenceIndexing({ isOpen, onClose, onBack }: Confluen
     setConnectionStatus('untested')
 
     try {
-      const testResponse = await fetch('http://localhost:8788/api/data-sources/test-connection', {
+      const testResponse = await fetch(getApiUrl('/api/data-sources/test-connection'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -132,7 +133,7 @@ export default function ConfluenceIndexing({ isOpen, onClose, onBack }: Confluen
       if (config.indexAllSpaces) {
         // Discover all available spaces
         try {
-          const discoveryResponse = await fetch('http://localhost:8788/api/data-sources/discover', {
+          const discoveryResponse = await fetch(getApiUrl('/api/data-sources/discover'), {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -161,7 +162,7 @@ export default function ConfluenceIndexing({ isOpen, onClose, onBack }: Confluen
       }
 
       // Start the indexing job
-      const indexingResponse = await fetch('http://localhost:8788/api/data-sources/index', {
+      const indexingResponse = await fetch(getApiUrl('/api/data-sources/index'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -204,7 +205,7 @@ export default function ConfluenceIndexing({ isOpen, onClose, onBack }: Confluen
       // Poll for progress updates
       const pollProgress = async () => {
         try {
-          const progressResponse = await fetch(`http://localhost:8788/api/data-sources/jobs/${jobId}`)
+          const progressResponse = await fetch(getApiUrl(`/api/data-sources/jobs/${jobId}`))
 
           if (progressResponse.ok) {
             const progressData = await progressResponse.json()
@@ -212,16 +213,16 @@ export default function ConfluenceIndexing({ isOpen, onClose, onBack }: Confluen
             setJobs(prev => prev.map(job =>
               job.id === jobId
                 ? {
-                    ...job,
-                    status: progressData.status,
-                    progress: progressData.total_items > 0
-                      ? Math.min(100, Math.max(0, Math.floor((progressData.processed_items / progressData.total_items) * 100)))
-                      : progressData.processed_items > 0 ? 50 : 0, // Show some progress even without total
-                    totalPages: progressData.total_items,
-                    indexedPages: progressData.processed_items,
-                    error: progressData.error_message,
-                    completedAt: progressData.completed_at ? new Date(progressData.completed_at) : undefined
-                  }
+                  ...job,
+                  status: progressData.status,
+                  progress: progressData.total_items > 0
+                    ? Math.min(100, Math.max(0, Math.floor((progressData.processed_items / progressData.total_items) * 100)))
+                    : progressData.processed_items > 0 ? 50 : 0, // Show some progress even without total
+                  totalPages: progressData.total_items,
+                  indexedPages: progressData.processed_items,
+                  error: progressData.error_message,
+                  completedAt: progressData.completed_at ? new Date(progressData.completed_at) : undefined
+                }
                 : job
             ))
 

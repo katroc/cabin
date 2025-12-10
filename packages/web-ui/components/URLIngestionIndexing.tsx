@@ -2,6 +2,7 @@
 
 import { useState, useCallback } from 'react'
 import { Link, Plus, Trash2, Play, CheckCircle, AlertCircle, Clock, X, ArrowLeft, Globe } from 'lucide-react'
+import { getApiUrl } from '../lib/config'
 
 interface URLItem {
   id: string
@@ -91,7 +92,7 @@ export default function URLIngestionIndexing({ isOpen, onClose, onBack }: URLIng
       const urlList = validUrls.map(item => item.url)
 
       // Start indexing job
-      const startResponse = await fetch('http://localhost:8788/api/data-sources/url_ingestion/index', {
+      const startResponse = await fetch(getApiUrl('/api/data-sources/url_ingestion/index'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -121,7 +122,7 @@ export default function URLIngestionIndexing({ isOpen, onClose, onBack }: URLIng
       // Poll for progress
       const pollInterval = setInterval(async () => {
         try {
-          const progressResponse = await fetch(`http://localhost:8788/api/data-sources/url_ingestion/jobs/${job_id}`)
+          const progressResponse = await fetch(getApiUrl(`/api/data-sources/url_ingestion/jobs/${job_id}`))
 
           if (!progressResponse.ok) {
             clearInterval(pollInterval)
@@ -133,15 +134,15 @@ export default function URLIngestionIndexing({ isOpen, onClose, onBack }: URLIng
           setJobs(prev => prev.map(job =>
             job.id === job_id
               ? {
-                  ...job,
-                  status: progressData.status,
-                  progress: progressData.processed_items / progressData.total_items * 100 || 0,
-                  processedUrls: progressData.processed_items || 0,
-                  completedAt: progressData.status === 'completed' || progressData.status === 'failed'
-                    ? new Date()
-                    : undefined,
-                  error: progressData.error_message
-                }
+                ...job,
+                status: progressData.status,
+                progress: progressData.processed_items / progressData.total_items * 100 || 0,
+                processedUrls: progressData.processed_items || 0,
+                completedAt: progressData.status === 'completed' || progressData.status === 'failed'
+                  ? new Date()
+                  : undefined,
+                error: progressData.error_message
+              }
               : job
           ))
 
@@ -239,9 +240,8 @@ export default function URLIngestionIndexing({ isOpen, onClose, onBack }: URLIng
                 {urls.map((item) => (
                   <div
                     key={item.id}
-                    className={`flex items-center gap-3 rounded-lg border p-3 ui-bg-secondary ${
-                      item.status === 'valid' ? 'ui-border-light' : 'border-red-500/30'
-                    }`}
+                    className={`flex items-center gap-3 rounded-lg border p-3 ui-bg-secondary ${item.status === 'valid' ? 'ui-border-light' : 'border-red-500/30'
+                      }`}
                   >
                     <div className="flex-shrink-0">
                       {item.status === 'valid' ? (

@@ -13,6 +13,7 @@ import {
   TrendingUp
 } from 'lucide-react'
 import { usePerformanceDashboardState } from '../app/hooks/usePerformanceDashboardState'
+import { getApiUrl } from '../lib/config'
 
 interface ComponentTiming {
   component: string
@@ -122,7 +123,7 @@ export default function PerformanceDashboard({ isOpen, onClose }: PerformanceDas
 
     try {
       // Fetch summary data
-      const summaryResponse = await fetch(`http://localhost:8788/api/performance/summary`)
+      const summaryResponse = await fetch(getApiUrl('/api/performance/summary'))
       if (summaryResponse.ok) {
         const summaryData = await summaryResponse.json()
         cacheSummary(summaryData)
@@ -130,7 +131,7 @@ export default function PerformanceDashboard({ isOpen, onClose }: PerformanceDas
 
       // Fetch recent metrics
       try {
-        const metricsResponse = await fetch(`http://localhost:8788/api/performance/metrics`, {
+        const metricsResponse = await fetch(getApiUrl('/api/performance/metrics'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ limit: 20 })
@@ -148,7 +149,7 @@ export default function PerformanceDashboard({ isOpen, onClose }: PerformanceDas
 
       // Fetch component breakdown
       try {
-        const componentResponse = await fetch(`http://localhost:8788/api/performance/components`)
+        const componentResponse = await fetch(getApiUrl('/api/performance/components'))
         if (componentResponse.ok) {
           const componentData = await componentResponse.json()
           cacheComponentStats(componentData.components || {})
@@ -159,7 +160,7 @@ export default function PerformanceDashboard({ isOpen, onClose }: PerformanceDas
 
       // Fetch vLLM metrics
       try {
-        const vllmMetricsResponse = await fetch(`http://localhost:8788/api/performance/vllm`)
+        const vllmMetricsResponse = await fetch(getApiUrl('/api/performance/vllm'))
         if (vllmMetricsResponse.ok) {
           const vllmData = await vllmMetricsResponse.json()
           console.log('vLLM metrics received:', vllmData)
@@ -171,7 +172,7 @@ export default function PerformanceDashboard({ isOpen, onClose }: PerformanceDas
 
       // Fetch vLLM health
       try {
-        const healthResponse = await fetch(`http://localhost:8788/api/performance/vllm/health`)
+        const healthResponse = await fetch(getApiUrl('/api/performance/vllm/health'))
         if (healthResponse.ok) {
           const healthData = await healthResponse.json()
           cacheVllmHealth(healthData)

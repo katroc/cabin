@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react'
 import { ArrowLeft, Database, FileText, Globe, Upload, Trash2, RefreshCw, CheckCircle, AlertCircle, Clock, Info, X, Grid, List, Table, ChevronUp, Layers, Link } from 'lucide-react'
+import { getApiUrl } from '../lib/config'
 import FilterBar from './DataSourceManagement/FilterBar'
 import DocumentTable from './DataSourceManagement/DocumentTable'
 import DocumentGrid from './DataSourceManagement/DocumentGrid'
@@ -216,7 +217,7 @@ export default function DataSourceManagement({ isOpen, onClose, onBack }: DataSo
       params.append('offset', ((pagination.currentPage - 1) * view.itemsPerPage).toString())
 
       const offset = (pagination.currentPage - 1) * view.itemsPerPage
-      const response = await fetch(`http://localhost:8788/api/data-sources/documents?${params}`)
+      const response = await fetch(getApiUrl(`/api/data-sources/documents?${params}`))
       if (response.ok) {
         const data = await response.json()
         setDocuments(data.documents || [])
@@ -239,7 +240,7 @@ export default function DataSourceManagement({ isOpen, onClose, onBack }: DataSo
 
   const fetchStats = async () => {
     try {
-      const response = await fetch('http://localhost:8788/api/data-sources/stats')
+      const response = await fetch(getApiUrl('/api/data-sources/stats'))
       if (response.ok) {
         const data = await response.json()
         setStats(data)
@@ -375,7 +376,7 @@ export default function DataSourceManagement({ isOpen, onClose, onBack }: DataSo
   const handleConfirmClearIndex = async () => {
     setShowClearConfirmation(false)
     try {
-      const response = await fetch('http://localhost:8788/api/index', {
+      const response = await fetch(getApiUrl('/api/index'), {
         method: 'DELETE'
       })
       if (response.ok) {

@@ -281,6 +281,8 @@ export default function BulkActions({ selectedIds, actions, onActionComplete, ha
 // Type for addToast function
 type AddToastFn = (message: string, type: 'success' | 'error' | 'info' | 'warning', duration?: number) => void
 
+import { getApiUrl } from '../../lib/config'
+
 // Default bulk actions
 export const defaultBulkActions: BulkAction[] = [
   {
@@ -289,7 +291,7 @@ export const defaultBulkActions: BulkAction[] = [
     icon: Trash2,
     action: async (selectedIds: string[], addToast?: AddToastFn) => {
       try {
-        const response = await fetch('http://localhost:8788/api/data-sources/documents', {
+        const response = await fetch(getApiUrl('/api/data-sources/documents'), {
           method: 'DELETE',
           headers: {
             'Content-Type': 'application/json',
@@ -340,7 +342,7 @@ export const defaultBulkActions: BulkAction[] = [
     icon: Download,
     action: async (selectedIds: string[], addToast?: AddToastFn) => {
       try {
-        const response = await fetch('http://localhost:8788/api/data-sources/documents')
+        const response = await fetch(getApiUrl('/api/data-sources/documents'))
         if (!response.ok) throw new Error('Failed to fetch documents')
 
         const data = await response.json()
