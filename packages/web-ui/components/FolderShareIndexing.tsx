@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { FolderOpen, Plus, Trash2, Play, CheckCircle, AlertCircle, Clock, X, ArrowLeft, RefreshCw, Settings, Server } from 'lucide-react'
+import { FolderOpen, Plus, Trash2, Play, CheckCircle, AlertCircle, Clock, X, ArrowLeft, RefreshCw, Settings, Server, Eye, ChevronRight, Folder, FileText } from 'lucide-react'
 import { getApiUrl } from '../lib/config'
 import { useToast } from './ToastProvider'
 
@@ -24,6 +24,23 @@ interface ChangeSet {
     total_changes: number
     has_changes: boolean
     scan_time: string
+}
+
+interface PreviewResult {
+    success: boolean
+    message?: string
+    file_count: number
+    folder_count: number
+    extension_breakdown: Record<string, number>
+    sample_files: { name: string; path: string; size: number; extension: string }[]
+}
+
+interface BrowseResult {
+    success: boolean
+    current_path: string
+    folders: { name: string; path: string }[]
+    files: { name: string; size: number; extension: string }[]
+    file_count: number
 }
 
 interface IndexingJob {
@@ -56,6 +73,12 @@ export default function FolderShareIndexing({ isOpen, onClose, onBack }: FolderS
     const [selectedShare, setSelectedShare] = useState<string | null>(null)
     const [scanResult, setScanResult] = useState<ChangeSet | null>(null)
     const [showAdvanced, setShowAdvanced] = useState(false)
+    const [previewResult, setPreviewResult] = useState<PreviewResult | null>(null)
+    const [isPreviewing, setIsPreviewing] = useState(false)
+    const [showBrowser, setShowBrowser] = useState(false)
+    const [browserPath, setBrowserPath] = useState('')
+    const [browseResult, setBrowseResult] = useState<BrowseResult | null>(null)
+    const [selectedFolders, setSelectedFolders] = useState<string[]>([])
 
     const { addToast } = useToast()
 
@@ -115,10 +138,82 @@ export default function FolderShareIndexing({ isOpen, onClose, onBack }: FolderS
             setSmbUsername('')
             setSmbPassword('')
             setIsSmb(false)
+            setPreviewResult(null)
+            setShowBrowser(false)
+            setSelectedFolders([])
         } catch (error) {
             console.error('Failed to add folder share:', error)
             addToast('Failed to add folder share', 'error')
         }
+    }
+
+    const handlePreview = async () => {
+        const trimmedPath = pathInput.trim()
+        if (!trimmedPath) return
+
+        setIsPreviewing(true)
+        setPreviewResult(null)
+
+        try {
+            const response = await fetch(getApiUrl('/api/data-sources/folder-share/preview'), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    path: trimmedPath,
+                    smb_username: isSmb && smbUsername ? smbUsername : undefined,
+                    smb_password: isSmb && smbPassword ? smbPassword : undefined,
+                })
+            })
+
+            const data = await response.json()
+            setPreviewResult(data)
+
+            if (!data.success) {
+                addToast(data.message || 'Preview failed', 'error')
+            }
+        } catch (error) {
+            console.error('Failed to preview:', error)
+            addToast('Failed to preview folder', 'error')
+        } finally {
+            setIsPreviewing(false)
+        }
+    }
+
+    const handleBrowse = async (subPath: string = '') => {
+        const trimmedPath = pathInput.trim()
+        if (!trimmedPath) return
+
+        try {
+            const response = await fetch(getApiUrl(`/api/data-sources/folder-share/browse?sub_path=${encodeURIComponent(subPath)}`), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    path: trimmedPath,
+                    smb_username: isSmb && smbUsername ? smbUsername : undefined,
+                    smb_password: isSmb && smbPassword ? smbPassword : undefined,
+                })
+            })
+
+            const data = await response.json()
+            if (data.success) {
+                setBrowseResult(data)
+                setBrowserPath(subPath)
+                setShowBrowser(true)
+            } else {
+                addToast(data.message || 'Browse failed', 'error')
+            }
+        } catch (error) {
+            console.error('Failed to browse:', error)
+            addToast('Failed to browse folder', 'error')
+        }
+    }
+
+    const toggleFolderSelection = (path: string) => {
+        setSelectedFolders(prev =>
+            prev.includes(path)
+                ? prev.filter(p => p !== path)
+                : [...prev, path]
+        )
     }
 
     const handleRemoveShare = async (shareId: string) => {
@@ -285,6 +380,8 @@ export default function FolderShareIndexing({ isOpen, onClose, onBack }: FolderS
                                 onChange={(e) => {
                                     setPathInput(e.target.value)
                                     detectSmbPath(e.target.value)
+                                    setPreviewResult(null)
+                                    setShowBrowser(false)
                                 }}
                                 placeholder="/path/to/folder or smb://server/share"
                                 className="flex-1 rounded-lg border px-4 py-2 text-base ui-bg-secondary ui-border-light ui-text-primary focus:border-[var(--accent)] focus:outline-none"
@@ -298,14 +395,151 @@ export default function FolderShareIndexing({ isOpen, onClose, onBack }: FolderS
                                 <Settings size={18} />
                             </button>
                             <button
-                                onClick={handleAddShare}
+                                onClick={handlePreview}
+                                disabled={!pathInput.trim() || isPreviewing || isIndexing}
+                                className="btn-secondary flex items-center gap-2"
+                                title="Preview files in this folder"
+                            >
+                                {isPreviewing ? (
+                                    <RefreshCw size={16} className="animate-spin" />
+                                ) : (
+                                    <Eye size={16} />
+                                )}
+                                Preview
+                            </button>
+                            <button
+                                onClick={() => handleBrowse('')}
                                 disabled={!pathInput.trim() || isIndexing}
                                 className="btn-secondary flex items-center gap-2"
+                                title="Browse and select folders"
+                            >
+                                <Folder size={16} />
+                                Browse
+                            </button>
+                            <button
+                                onClick={handleAddShare}
+                                disabled={!pathInput.trim() || isIndexing}
+                                className="btn-primary flex items-center gap-2"
                             >
                                 <Plus size={16} />
                                 Add
                             </button>
                         </div>
+
+                        {/* Preview Result */}
+                        {previewResult && previewResult.success && (
+                            <div className="mb-3 p-4 rounded-lg border ui-bg-tertiary ui-border-light">
+                                <div className="flex items-center gap-2 mb-2">
+                                    <FileText className="w-4 h-4 text-green-400" />
+                                    <span className="font-medium ui-text-primary">
+                                        Found {previewResult.file_count} indexable files in {previewResult.folder_count} folders
+                                    </span>
+                                </div>
+
+                                {/* Extension breakdown */}
+                                {Object.keys(previewResult.extension_breakdown).length > 0 && (
+                                    <div className="flex flex-wrap gap-2 mt-2">
+                                        {Object.entries(previewResult.extension_breakdown).map(([ext, count]) => (
+                                            <span key={ext} className="text-xs px-2 py-1 rounded ui-bg-secondary ui-text-muted">
+                                                {ext}: {count}
+                                            </span>
+                                        ))}
+                                    </div>
+                                )}
+
+                                {/* Sample files */}
+                                {previewResult.sample_files.length > 0 && (
+                                    <details className="mt-3">
+                                        <summary className="cursor-pointer text-xs ui-text-muted hover:ui-text-secondary">
+                                            Show sample files ({Math.min(previewResult.sample_files.length, 20)})
+                                        </summary>
+                                        <div className="mt-2 max-h-32 overflow-y-auto text-xs space-y-1">
+                                            {previewResult.sample_files.slice(0, 20).map((f, i) => (
+                                                <div key={i} className="ui-text-muted truncate" title={f.path}>
+                                                    {f.name}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </details>
+                                )}
+                            </div>
+                        )}
+
+                        {/* Folder Browser */}
+                        {showBrowser && browseResult && browseResult.success && (
+                            <div className="mb-3 p-4 rounded-lg border ui-bg-tertiary ui-border-light">
+                                <div className="flex items-center justify-between mb-3">
+                                    <div className="flex items-center gap-2">
+                                        <Folder className="w-4 h-4 ui-text-secondary" />
+                                        <span className="text-sm font-medium ui-text-primary">
+                                            {browserPath ? `/${browserPath}` : 'Root'}
+                                        </span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        {browserPath && (
+                                            <button
+                                                onClick={() => handleBrowse(browserPath.split('/').slice(0, -1).join('/'))}
+                                                className="btn-secondary btn-small"
+                                            >
+                                                <ArrowLeft size={14} /> Up
+                                            </button>
+                                        )}
+                                        <button
+                                            onClick={() => setShowBrowser(false)}
+                                            className="btn-icon btn-small"
+                                        >
+                                            <X size={14} />
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {/* Folders List */}
+                                <div className="max-h-48 overflow-y-auto space-y-1">
+                                    {browseResult.folders.map((folder) => (
+                                        <div
+                                            key={folder.path}
+                                            className="flex items-center justify-between p-2 rounded hover:ui-bg-secondary group"
+                                        >
+                                            <div
+                                                className="flex items-center gap-2 flex-1 cursor-pointer"
+                                                onClick={() => handleBrowse(folder.path)}
+                                            >
+                                                <Folder size={16} className="ui-text-muted" />
+                                                <span className="text-sm ui-text-primary">{folder.name}</span>
+                                                <ChevronRight size={14} className="ui-text-muted opacity-0 group-hover:opacity-100" />
+                                            </div>
+                                            <input
+                                                type="checkbox"
+                                                checked={selectedFolders.includes(folder.path)}
+                                                onChange={() => toggleFolderSelection(folder.path)}
+                                                className="w-4 h-4 rounded border-gray-600 bg-transparent"
+                                                title="Select for indexing"
+                                            />
+                                        </div>
+                                    ))}
+
+                                    {browseResult.folders.length === 0 && (
+                                        <div className="text-xs ui-text-muted py-2">
+                                            No subfolders in this directory
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Files count */}
+                                {browseResult.file_count > 0 && (
+                                    <div className="mt-2 pt-2 border-t ui-border-light text-xs ui-text-muted">
+                                        {browseResult.file_count} files in this folder
+                                    </div>
+                                )}
+
+                                {/* Selected folders summary */}
+                                {selectedFolders.length > 0 && (
+                                    <div className="mt-2 pt-2 border-t ui-border-light text-xs">
+                                        <span className="text-green-400">{selectedFolders.length} folders selected</span>
+                                    </div>
+                                )}
+                            </div>
+                        )}
 
                         {/* Advanced options */}
                         {showAdvanced && (

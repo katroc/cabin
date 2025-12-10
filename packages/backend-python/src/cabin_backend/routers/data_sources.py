@@ -830,6 +830,258 @@ async def add_folder_share(request: FolderShareAddRequest):
     return {"share_id": share_id, "status": "added", "share": share_config}
 
 
+@router.post("/folder-share/preview")
+async def preview_folder_share(request: FolderShareAddRequest):
+    """Preview files in a folder/SMB share without adding it. Returns file count and type breakdown."""
+    import socket
+    
+    files_found = []
+    folder_count = 0
+    
+    is_smb = request.path.startswith('smb://') or request.path.startswith('//')
+    
+    if is_smb:
+        # SMB share preview
+        try:
+            from smb.SMBConnection import SMBConnection
+            
+            # Parse SMB URL
+            if request.path.startswith('smb://'):
+                path_part = request.path[6:]
+            else:
+                path_part = request.path[2:]
+            
+            parts = path_part.split('/')
+            server = parts[0]
+            share_name = parts[1] if len(parts) > 1 else ''
+            sub_path = '/'.join(parts[2:]) if len(parts) > 2 else ''
+            
+            if not share_name:
+                return {"success": False, "message": "Invalid SMB path - no share specified"}
+            
+            username = request.smb_username or ''
+            password = request.smb_password or ''
+            client_name = socket.gethostname()[:15]
+            
+            conn = SMBConnection(
+                username, password,
+                client_name, server,
+                use_ntlm_v2=True,
+                is_direct_tcp=True
+            )
+            
+            if not conn.connect(server, 445, timeout=30):
+                return {"success": False, "message": f"Failed to connect to SMB server: {server}"}
+            
+            # Supported extensions
+            supported_exts = {'.txt', '.md', '.pdf', '.docx', '.doc', '.html', '.htm', '.csv', '.json', '.xml'}
+            
+            def scan_directory(dir_path: str, depth: int):
+                nonlocal folder_count
+                if depth > 3:  # Limit preview depth
+                    return
+                
+                try:
+                    path_to_list = f"/{dir_path}" if dir_path else "/"
+                    entries = conn.listPath(share_name, path_to_list)
+                    
+                    for entry in entries:
+                        if entry.filename in ['.', '..']:
+                            continue
+                        
+                        entry_path = f"{dir_path}/{entry.filename}" if dir_path else entry.filename
+                        
+                        if entry.isDirectory:
+                            folder_count += 1
+                            scan_directory(entry_path, depth + 1)
+                        else:
+                            ext = Path(entry.filename).suffix.lower()
+                            if ext in supported_exts:
+                                files_found.append({
+                                    "name": entry.filename,
+                                    "path": entry_path,
+                                    "size": entry.file_size,
+                                    "extension": ext
+                                })
+                except Exception as e:
+                    logger.debug(f"Error scanning {dir_path}: {e}")
+            
+            scan_directory(sub_path, 0)
+            conn.close()
+            
+        except ImportError:
+            return {"success": False, "message": "pysmb not installed"}
+        except Exception as e:
+            return {"success": False, "message": str(e)}
+    else:
+        # Local folder preview
+        try:
+            root_path = Path(request.path)
+            if not root_path.exists():
+                return {"success": False, "message": f"Path does not exist: {request.path}"}
+            if not root_path.is_dir():
+                return {"success": False, "message": f"Path is not a directory: {request.path}"}
+            
+            supported_exts = {'.txt', '.md', '.pdf', '.docx', '.doc', '.html', '.htm', '.csv', '.json', '.xml'}
+            
+            def scan_local(path: Path, depth: int):
+                nonlocal folder_count
+                if depth > 3:
+                    return
+                
+                try:
+                    for item in path.iterdir():
+                        if item.name.startswith('.'):
+                            continue
+                        if item.is_dir():
+                            folder_count += 1
+                            scan_local(item, depth + 1)
+                        elif item.is_file():
+                            ext = item.suffix.lower()
+                            if ext in supported_exts:
+                                files_found.append({
+                                    "name": item.name,
+                                    "path": str(item.relative_to(root_path)),
+                                    "size": item.stat().st_size,
+                                    "extension": ext
+                                })
+                except PermissionError:
+                    pass
+            
+            scan_local(root_path, 0)
+            
+        except Exception as e:
+            return {"success": False, "message": str(e)}
+    
+    # Group by extension
+    ext_breakdown = {}
+    for f in files_found:
+        ext = f["extension"]
+        ext_breakdown[ext] = ext_breakdown.get(ext, 0) + 1
+    
+    return {
+        "success": True,
+        "path": request.path,
+        "is_smb": is_smb,
+        "file_count": len(files_found),
+        "folder_count": folder_count,
+        "extension_breakdown": ext_breakdown,
+        "sample_files": files_found[:20],  # First 20 files as sample
+    }
+
+
+@router.post("/folder-share/browse")
+async def browse_folder_share(request: FolderShareAddRequest, sub_path: str = ""):
+    """Browse folders within a share. Returns list of subfolders for folder picker UI."""
+    import socket
+    
+    folders = []
+    files = []
+    
+    is_smb = request.path.startswith('smb://') or request.path.startswith('//')
+    
+    if is_smb:
+        try:
+            from smb.SMBConnection import SMBConnection
+            
+            if request.path.startswith('smb://'):
+                path_part = request.path[6:]
+            else:
+                path_part = request.path[2:]
+            
+            parts = path_part.split('/')
+            server = parts[0]
+            share_name = parts[1] if len(parts) > 1 else ''
+            base_path = '/'.join(parts[2:]) if len(parts) > 2 else ''
+            
+            if not share_name:
+                return {"success": False, "message": "Invalid SMB path"}
+            
+            username = request.smb_username or ''
+            password = request.smb_password or ''
+            client_name = socket.gethostname()[:15]
+            
+            conn = SMBConnection(
+                username, password,
+                client_name, server,
+                use_ntlm_v2=True,
+                is_direct_tcp=True
+            )
+            
+            if not conn.connect(server, 445, timeout=30):
+                return {"success": False, "message": f"Failed to connect to SMB server: {server}"}
+            
+            # Construct the path to list
+            full_path = f"{base_path}/{sub_path}".strip('/') if sub_path else base_path
+            path_to_list = f"/{full_path}" if full_path else "/"
+            
+            entries = conn.listPath(share_name, path_to_list)
+            
+            for entry in entries:
+                if entry.filename in ['.', '..']:
+                    continue
+                
+                entry_path = f"{full_path}/{entry.filename}" if full_path else entry.filename
+                
+                if entry.isDirectory:
+                    folders.append({
+                        "name": entry.filename,
+                        "path": entry_path,
+                        "full_smb_path": f"smb://{server}/{share_name}/{entry_path}"
+                    })
+                else:
+                    files.append({
+                        "name": entry.filename,
+                        "size": entry.file_size,
+                        "extension": Path(entry.filename).suffix.lower()
+                    })
+            
+            conn.close()
+            
+        except Exception as e:
+            return {"success": False, "message": str(e)}
+    else:
+        try:
+            root_path = Path(request.path)
+            browse_path = root_path / sub_path if sub_path else root_path
+            
+            if not browse_path.exists():
+                return {"success": False, "message": f"Path does not exist: {browse_path}"}
+            
+            for item in browse_path.iterdir():
+                if item.name.startswith('.'):
+                    continue
+                
+                rel_path = str(item.relative_to(root_path))
+                
+                if item.is_dir():
+                    folders.append({
+                        "name": item.name,
+                        "path": rel_path,
+                        "full_path": str(item)
+                    })
+                elif item.is_file():
+                    files.append({
+                        "name": item.name,
+                        "size": item.stat().st_size,
+                        "extension": item.suffix.lower()
+                    })
+                    
+        except Exception as e:
+            return {"success": False, "message": str(e)}
+    
+    # Sort folders alphabetically
+    folders.sort(key=lambda x: x["name"].lower())
+    
+    return {
+        "success": True,
+        "current_path": sub_path or "/",
+        "folders": folders,
+        "files": files[:50],  # Limit file preview
+        "file_count": len(files)
+    }
+
+
 @router.get("/folder-share/list")
 async def list_folder_shares():
     """List all registered folder shares."""
