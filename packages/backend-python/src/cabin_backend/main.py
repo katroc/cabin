@@ -25,6 +25,7 @@ from .routers.settings import load_default_ui_settings, UISettingsPayload
 from .data_sources.confluence import ConfluenceDataSource  # noqa: F401
 from .data_sources.file_upload import FileUploadDataSource  # noqa: F401
 from .data_sources.url_ingestion import URLIngestionDataSource  # noqa: F401
+from .data_sources.google_drive import GoogleDriveDataSource  # noqa: F401
 
 # Import routers
 from .routers import (
