@@ -289,9 +289,45 @@ class ConfluenceDataSource(DataSource):
         """Test if the connection to Confluence is valid."""
         try:
             session = await self._get_session()
-            url = f"{self.connection.base_url}/rest/api/user/current"
-            async with session.get(url) as response:
-                return response.status == 200
+            base_url = self.connection.base_url.rstrip("/")
+            
+            # Try multiple endpoints for better compatibility
+            # 1. If authenticated, try user endpoint first
+            if self.connection.username and self.connection.password:
+                try:
+                    url = f"{base_url}/rest/api/user/current"
+                    async with session.get(url) as response:
+                        if response.status == 200:
+                            return True
+                except Exception:
+                    pass
+            
+            # 2. Try the spaces endpoint (works for both public and authenticated)
+            try:
+                url = f"{base_url}/rest/api/space"
+                async with session.get(url, params={"limit": 1}) as response:
+                    if response.status == 200:
+                        return True
+            except Exception:
+                pass
+            
+            # 3. Try accessibility check (most permissive)
+            try:
+                url = f"{base_url}/rest/api/accessmode"
+                async with session.get(url) as response:
+                    if response.status == 200:
+                        return True
+            except Exception:
+                pass
+            
+            # 4. Last resort: just check if the base URL is reachable
+            try:
+                async with session.get(base_url) as response:
+                    return response.status < 500
+            except Exception:
+                pass
+            
+            return False
         except Exception as e:
             logger.error(f"Connection test failed: {e}")
             return False

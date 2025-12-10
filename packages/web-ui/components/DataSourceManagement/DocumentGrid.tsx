@@ -36,7 +36,38 @@ export default function DocumentGrid({
     }
   }
 
-  const formatFileSize = (bytes: number) => {
+  const getSourceLabel = (sourceType: string) => {
+    switch (sourceType) {
+      case 'file_upload':
+        return 'File Upload'
+      case 'confluence':
+        return 'Confluence'
+      case 'url_ingestion':
+        return 'URL'
+      case 'web_scraping':
+        return 'Web Scrape'
+      case 'database':
+        return 'Database'
+      default:
+        return sourceType.replace('_', ' ')
+    }
+  }
+
+  const getSpaceInfo = (doc: IndexedDocument) => {
+    if (doc.source_type === 'confluence' && (doc as any).space_name) {
+      return (doc as any).space_name
+    }
+    if ((doc as any).source_detail) {
+      return (doc as any).source_detail
+    }
+    if (doc.content_type) {
+      return doc.content_type
+    }
+    return null
+  }
+
+  const formatFileSize = (bytes: number | undefined | null) => {
+    if (bytes === undefined || bytes === null || isNaN(bytes) || bytes < 0) return '-'
     if (bytes === 0) return '0 B'
     const k = 1024
     const sizes = ['B', 'KB', 'MB', 'GB']
@@ -116,12 +147,11 @@ export default function DocumentGrid({
 
             {/* Status Indicator */}
             <div className="absolute top-3 right-3 z-10">
-              <div className={`w-3 h-3 rounded-full ${
-                doc.status === 'indexed' ? 'bg-[var(--success)]' :
+              <div className={`w-3 h-3 rounded-full ${doc.status === 'indexed' ? 'bg-[var(--success)]' :
                 doc.status === 'error' ? 'bg-[var(--error)]' :
-                doc.status === 'processing' ? 'bg-[var(--accent)] animate-pulse' :
-                'bg-[var(--warning)]'
-              }`} />
+                  doc.status === 'processing' ? 'bg-[var(--accent)] animate-pulse' :
+                    'bg-[var(--warning)]'
+                }`} />
             </div>
 
             {/* Content */}
@@ -140,15 +170,15 @@ export default function DocumentGrid({
               <div className="space-y-1 text-xs ui-text-muted text-center">
                 <div className="flex items-center justify-center gap-1">
                   {getSourceIcon(doc.source_type)}
-                  <span className="capitalize">{doc.source_type.replace('_', ' ')}</span>
+                  <span>{getSourceLabel(doc.source_type)}</span>
                 </div>
 
-                {doc.file_size && (
-                  <div>{formatFileSize(doc.file_size)}</div>
+                {doc.chunk_count && (
+                  <div>{doc.chunk_count} chunks</div>
                 )}
 
-                {doc.page_count && (
-                  <div>{doc.page_count} pages</div>
+                {getSpaceInfo(doc) && (
+                  <div className="truncate max-w-[100px] mx-auto">{getSpaceInfo(doc)}</div>
                 )}
 
                 {doc.last_modified && (

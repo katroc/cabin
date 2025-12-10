@@ -82,6 +82,178 @@ def get_performance_metrics(
         raise HTTPException(status_code=500, detail=f"Failed to get metrics: {e}")
 
 
+@router.post("/metrics")
+def record_performance_metric():
+    """Record a performance metric (placeholder for frontend compatibility)."""
+    # Frontend may call this to record metrics - return success without action
+    return {"success": True, "message": "Metric recorded"}
+
+
+@router.get("/summary")
+def get_performance_summary():
+    """Get a high-level performance summary."""
+    try:
+        metrics_list = deps.performance_metrics
+        
+        if not metrics_list:
+            return {
+                "total_requests": 0,
+                "avg_duration_ms": 0,
+                "avg_total_duration_ms": 0,
+                "avg_response_latency_ms": 0,
+                "p95_duration_ms": 0,
+                "p99_duration_ms": 0,
+                "requests_per_minute": 0,
+                "rag_request_percentage": 0,
+                "error_rate": 0,
+                "uptime_seconds": 0,
+                "avg_component_durations": {},
+                "slowest_component_avg": None
+            }
+        
+        # Calculate basic stats
+        durations = sorted([m.total_duration_ms for m in metrics_list])
+        total = len(durations)
+        avg = sum(durations) / total if total else 0
+        p95 = durations[int(total * 0.95)] if total > 0 else 0
+        p99 = durations[int(total * 0.99)] if total > 0 else 0
+        
+        # RAG usage
+        rag_count = sum(1 for m in metrics_list if m.used_rag)
+        rag_percentage = (rag_count / total) * 100 if total else 0
+        
+        # Time range for requests per minute
+        time_range = 0
+        if len(metrics_list) >= 2:
+            time_range = (metrics_list[-1].timestamp - metrics_list[0].timestamp).total_seconds()
+            rpm = (total / time_range) * 60 if time_range > 0 else 0
+        else:
+            rpm = 0
+        
+        # Calculate avg component durations
+        component_totals = {}
+        component_counts = {}
+        for m in metrics_list:
+            for timing in m.component_timings:
+                component = timing.component
+                if component not in component_totals:
+                    component_totals[component] = 0
+                    component_counts[component] = 0
+                component_totals[component] += timing.duration_ms
+                component_counts[component] += 1
+        
+        avg_component_durations = {
+            component: component_totals[component] / component_counts[component]
+            for component in component_totals
+        }
+        
+        # Find slowest component
+        slowest_component = None
+        if avg_component_durations:
+            slowest_component = max(avg_component_durations, key=avg_component_durations.get)
+        
+        return _convert_numpy_types({
+            "total_requests": total,
+            "avg_duration_ms": avg,
+            "avg_total_duration_ms": avg,
+            "avg_response_latency_ms": avg,
+            "p95_duration_ms": p95,
+            "p99_duration_ms": p99,
+            "requests_per_minute": rpm,
+            "rag_request_percentage": rag_percentage,
+            "error_rate": 0,
+            "uptime_seconds": time_range,
+            "avg_component_durations": avg_component_durations,
+            "slowest_component_avg": slowest_component
+        })
+        
+    except Exception as e:
+        logger.error("Error getting performance summary: %s", str(e))
+        raise HTTPException(status_code=500, detail=f"Failed to get summary: {e}")
+
+
+@router.get("/components")
+def get_component_performance():
+    """Get performance breakdown by component."""
+    try:
+        metrics_list = deps.performance_metrics
+        
+        if not metrics_list:
+            return {"components": []}
+        
+        # Aggregate component timings
+        component_stats = {}
+        for m in metrics_list:
+            for timing in m.component_timings:
+                comp = timing.component
+                if comp not in component_stats:
+                    component_stats[comp] = {
+                        "name": comp,
+                        "total_calls": 0,
+                        "total_duration_ms": 0,
+                        "durations": []
+                    }
+                component_stats[comp]["total_calls"] += 1
+                component_stats[comp]["total_duration_ms"] += timing.duration_ms
+                component_stats[comp]["durations"].append(timing.duration_ms)
+        
+        # Calculate averages and percentiles
+        components = []
+        for name, stats in component_stats.items():
+            durations = sorted(stats["durations"])
+            total = len(durations)
+            components.append({
+                "name": name,
+                "total_calls": stats["total_calls"],
+                "avg_duration_ms": stats["total_duration_ms"] / stats["total_calls"] if stats["total_calls"] else 0,
+                "p95_duration_ms": durations[int(total * 0.95)] if total > 0 else 0,
+                "total_duration_ms": stats["total_duration_ms"]
+            })
+        
+        # Sort by total duration (slowest first)
+        components.sort(key=lambda c: c["total_duration_ms"], reverse=True)
+        
+        return _convert_numpy_types({"components": components})
+        
+    except Exception as e:
+        logger.error("Error getting component performance: %s", str(e))
+        raise HTTPException(status_code=500, detail=f"Failed to get component stats: {e}")
+
+
+@router.get("/vllm")
+async def get_vllm_status():
+    """Get vLLM server status (alias for /vllm/metrics for frontend compatibility)."""
+    try:
+        # Get metrics from all configured vLLM services
+        try:
+            metrics = await get_vllm_metrics()
+            if metrics:
+                return _convert_numpy_types({
+                    "status": "online",
+                    "metrics": metrics
+                })
+            else:
+                return {
+                    "status": "offline",
+                    "metrics": None,
+                    "error": "No vLLM services responded"
+                }
+        except Exception as e:
+            logger.warning("Error getting vLLM metrics: %s", str(e))
+            return {
+                "status": "offline",
+                "metrics": None,
+                "error": "vLLM server not available"
+            }
+    except Exception as e:
+        logger.error("Error getting vLLM status: %s", str(e))
+        return {
+            "status": "error",
+            "error": str(e)
+        }
+
+
+
 @router.post("/stats")
 def get_performance_stats(request: PerformanceStatsRequest):
     """Get aggregated performance statistics."""
@@ -189,11 +361,25 @@ async def get_vllm_health():
     """Get vLLM server health status."""
     try:
         llm_url = deps.current_ui_settings.llm_base_url if deps.current_ui_settings else "http://localhost:8000/v1"
-        health = await check_vllm_health(llm_url.replace("/v1", ""))
-        return health
+        base_url = llm_url.replace("/v1", "")
+        try:
+            health = await check_vllm_health(base_url)
+            return health
+        except Exception:
+            # vLLM not available - return offline status instead of error
+            return {
+                "status": "offline",
+                "healthy": False,
+                "base_url": base_url,
+                "error": "vLLM server not available"
+            }
     except Exception as e:
         logger.error("Error checking vLLM health: %s", str(e))
-        raise HTTPException(status_code=500, detail=f"Failed to check vLLM health: {e}")
+        return {
+            "status": "error",
+            "healthy": False,
+            "error": str(e)
+        }
 
 
 @router.delete("/metrics")

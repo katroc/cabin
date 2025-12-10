@@ -233,7 +233,8 @@ export default function DataSourceManagement({ isOpen, onClose, onBack }: DataSo
     }
   }
 
-  const formatFileSize = (bytes: number) => {
+  const formatFileSize = (bytes: number | undefined | null) => {
+    if (bytes === undefined || bytes === null || isNaN(bytes) || bytes < 0) return '-'
     if (bytes === 0) return '0 Bytes'
     const k = 1024
     const sizes = ['Bytes', 'KB', 'MB', 'GB']
@@ -403,37 +404,37 @@ export default function DataSourceManagement({ isOpen, onClose, onBack }: DataSo
     <div className="drawer-overlay" onClick={onClose}>
       <div className="drawer-panel fixed right-0 top-0 h-full w-full max-w-6xl overflow-hidden">
         {/* Header */}
-         <div className="drawer-header" onClick={(e) => e.stopPropagation()}>
-           <div className="flex items-center gap-3">
-             <button onClick={onBack} className="btn-close">
-               <ArrowLeft className="w-4 h-4" />
-             </button>
-             <div className="drawer-title">
-               <Database className="w-5 h-5 ui-text-secondary" />
-               Data Source Management
-             </div>
-           </div>
-           <div className="flex items-center gap-2">
-             <button
-               onClick={handleClearIndex}
-               className="btn-secondary btn-small"
-             >
-               <Trash2 className="w-4 h-4" />
-               Clear Index
-             </button>
-             <button
-               onClick={handleRefresh}
-               disabled={loading}
-               className="btn-secondary btn-small"
-             >
-               <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-               Refresh
-             </button>
-             <button onClick={onClose} className="btn-close">
-               <X className="w-4 h-4" />
-             </button>
-           </div>
-         </div>
+        <div className="drawer-header" onClick={(e) => e.stopPropagation()}>
+          <div className="flex items-center gap-3">
+            <button onClick={onBack} className="btn-close">
+              <ArrowLeft className="w-4 h-4" />
+            </button>
+            <div className="drawer-title">
+              <Database className="w-5 h-5 ui-text-secondary" />
+              Data Source Management
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleClearIndex}
+              className="btn-secondary btn-small"
+            >
+              <Trash2 className="w-4 h-4" />
+              Clear Index
+            </button>
+            <button
+              onClick={handleRefresh}
+              disabled={loading}
+              className="btn-secondary btn-small"
+            >
+              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+              Refresh
+            </button>
+            <button onClick={onClose} className="btn-close">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
 
         <div className="p-6 overflow-y-auto h-full" onClick={(e) => e.stopPropagation()}>
           {/* Error Display */}
@@ -501,71 +502,68 @@ export default function DataSourceManagement({ isOpen, onClose, onBack }: DataSo
 
 
           {/* Documents Header with Bulk Actions */}
-           <div className="flex items-center justify-between h-12 mb-4">
-             <div className="flex items-center gap-4 h-full">
-               <h3 className="text-lg font-semibold ui-text-primary">
-                 Documents ({pagination.totalItems})
-               </h3>
+          <div className="flex items-center justify-between h-12 mb-4">
+            <div className="flex items-center gap-4 h-full">
+              <h3 className="text-lg font-semibold ui-text-primary">
+                Documents ({pagination.totalItems})
+              </h3>
 
-               {/* Items Per Page Selector */}
-               <select
-                 value={view.itemsPerPage}
-                 onChange={(e) => {
-                   const newItemsPerPage = parseInt(e.target.value)
-                   setView({ ...view, itemsPerPage: newItemsPerPage })
-                   setPagination({ ...pagination, currentPage: 1 })
-                 }}
-                 className="px-3 py-2 text-sm border ui-border-light rounded-md ui-bg-secondary btn-standard"
-               >
-                 <option value={25}>25 per page</option>
-                 <option value={50}>50 per page</option>
-                 <option value={100}>100 per page</option>
-                 <option value={200}>200 per page</option>
-               </select>
+              {/* Items Per Page Selector */}
+              <select
+                value={view.itemsPerPage}
+                onChange={(e) => {
+                  const newItemsPerPage = parseInt(e.target.value)
+                  setView({ ...view, itemsPerPage: newItemsPerPage })
+                  setPagination({ ...pagination, currentPage: 1 })
+                }}
+                className="px-3 py-2 text-sm border ui-border-light rounded-md ui-bg-secondary btn-standard"
+              >
+                <option value={25}>25 per page</option>
+                <option value={50}>50 per page</option>
+                <option value={100}>100 per page</option>
+                <option value={200}>200 per page</option>
+              </select>
 
-               {/* View Toggle */}
-               <div className="flex items-center gap-1 p-1 ui-bg-secondary border ui-border-faint rounded-lg h-9">
-                 <button
-                   onClick={() => setView({ ...view, type: 'table' })}
-                   className={`p-2 rounded-md transition-colors h-7 w-7 flex items-center justify-center ${
-                     view.type === 'table' ? 'ui-bg-tertiary' : 'hover:ui-bg-tertiary'
-                   }`}
-                   title="Table view"
-                 >
-                   <Table className="w-4 h-4" />
-                 </button>
-                 <button
-                   onClick={() => setView({ ...view, type: 'grid' })}
-                   className={`p-2 rounded-md transition-colors h-7 w-7 flex items-center justify-center ${
-                     view.type === 'grid' ? 'ui-bg-tertiary' : 'hover:ui-bg-tertiary'
-                   }`}
-                   title="Grid view"
-                 >
-                   <Grid className="w-4 h-4" />
-                 </button>
-                 <button
-                   onClick={() => setView({ ...view, type: 'list' })}
-                   className={`p-2 rounded-md transition-colors h-7 w-7 flex items-center justify-center ${
-                     view.type === 'list' ? 'ui-bg-tertiary' : 'hover:ui-bg-tertiary'
-                   }`}
-                   title="List view"
-                 >
-                   <List className="w-4 h-4" />
-                 </button>
-               </div>
-             </div>
+              {/* View Toggle */}
+              <div className="flex items-center gap-1 p-1 ui-bg-secondary border ui-border-faint rounded-lg h-9">
+                <button
+                  onClick={() => setView({ ...view, type: 'table' })}
+                  className={`p-2 rounded-md transition-colors h-7 w-7 flex items-center justify-center ${view.type === 'table' ? 'ui-bg-tertiary' : 'hover:ui-bg-tertiary'
+                    }`}
+                  title="Table view"
+                >
+                  <Table className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => setView({ ...view, type: 'grid' })}
+                  className={`p-2 rounded-md transition-colors h-7 w-7 flex items-center justify-center ${view.type === 'grid' ? 'ui-bg-tertiary' : 'hover:ui-bg-tertiary'
+                    }`}
+                  title="Grid view"
+                >
+                  <Grid className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => setView({ ...view, type: 'list' })}
+                  className={`p-2 rounded-md transition-colors h-7 w-7 flex items-center justify-center ${view.type === 'list' ? 'ui-bg-tertiary' : 'hover:ui-bg-tertiary'
+                    }`}
+                  title="List view"
+                >
+                  <List className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
 
-             {/* Bulk Actions in Documents Header */}
-             <div className="flex items-center h-full">
-               <BulkActions
-                 selectedIds={Array.from(selection.selectedIds)}
-                 actions={defaultBulkActions}
-                 onActionComplete={handleBulkActionComplete}
-                 hasSelection={selection.selectedIds.size > 0}
-                 compact={true}
-               />
-             </div>
-           </div>
+            {/* Bulk Actions in Documents Header */}
+            <div className="flex items-center h-full">
+              <BulkActions
+                selectedIds={Array.from(selection.selectedIds)}
+                actions={defaultBulkActions}
+                onActionComplete={handleBulkActionComplete}
+                hasSelection={selection.selectedIds.size > 0}
+                compact={true}
+              />
+            </div>
+          </div>
 
           {/* Document Display */}
           {loading ? (
@@ -659,11 +657,10 @@ export default function DataSourceManagement({ isOpen, onClose, onBack }: DataSo
                           <button
                             key={pageNum}
                             onClick={() => setPagination({ ...pagination, currentPage: pageNum })}
-                            className={`px-3 py-1 text-sm border rounded-md ${
-                              pagination.currentPage === pageNum
+                            className={`px-3 py-1 text-sm border rounded-md ${pagination.currentPage === pageNum
                                 ? 'ui-bg-tertiary border-[var(--accent)] ui-text-primary'
                                 : 'ui-border-light hover:ui-bg-tertiary'
-                            }`}
+                              }`}
                           >
                             {pageNum}
                           </button>

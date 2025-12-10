@@ -60,7 +60,41 @@ export default function DocumentTable({
     }
   }
 
-  const formatFileSize = (bytes: number) => {
+  const getSourceLabel = (sourceType: string) => {
+    switch (sourceType) {
+      case 'file_upload':
+        return 'File Upload'
+      case 'confluence':
+        return 'Confluence'
+      case 'url_ingestion':
+        return 'URL'
+      case 'web_scraping':
+        return 'Web Scrape'
+      case 'database':
+        return 'Database'
+      default:
+        return sourceType.replace('_', ' ')
+    }
+  }
+
+  const getSpaceInfo = (doc: IndexedDocument) => {
+    // For Confluence - show space name
+    if (doc.source_type === 'confluence' && (doc as any).space_name) {
+      return (doc as any).space_name
+    }
+    // For URLs - show domain
+    if ((doc as any).source_detail) {
+      return (doc as any).source_detail
+    }
+    // For files - show content type
+    if (doc.content_type) {
+      return doc.content_type
+    }
+    return '-'
+  }
+
+  const formatFileSize = (bytes: number | undefined | null) => {
+    if (bytes === undefined || bytes === null || isNaN(bytes) || bytes < 0) return '-'
     if (bytes === 0) return '0 B'
     const k = 1024
     const sizes = ['B', 'KB', 'MB', 'GB']
@@ -126,22 +160,14 @@ export default function DocumentTable({
               </button>
             </th>
             <th className="text-left p-3 w-20">
-              <button
-                onClick={() => handleSort('file_size')}
-                className="flex items-center gap-2 hover:ui-text-primary transition-colors"
-              >
-                Size
-                {getSortIcon('file_size')}
-              </button>
+              <span className="flex items-center gap-2">
+                Chunks
+              </span>
             </th>
-            <th className="text-left p-3 w-20">
-              <button
-                onClick={() => handleSort('page_count')}
-                className="flex items-center gap-2 hover:ui-text-primary transition-colors"
-              >
-                Pages
-                {getSortIcon('page_count')}
-              </button>
+            <th className="text-left p-3 w-32">
+              <span className="flex items-center gap-2">
+                Space / Info
+              </span>
             </th>
             <th className="text-left p-3 w-24">
               <button
@@ -203,29 +229,28 @@ export default function DocumentTable({
               <td className="p-3">
                 <div className="flex items-center gap-2">
                   {getSourceIcon(doc.source_type)}
-                  <span className="text-sm ui-text-secondary capitalize">
-                    {doc.source_type.replace('_', ' ')}
+                  <span className="text-sm ui-text-secondary">
+                    {getSourceLabel(doc.source_type)}
                   </span>
                 </div>
               </td>
               <td className="p-3">
-                <span className="text-sm ui-text-secondary">
-                  {doc.file_size ? formatFileSize(doc.file_size) : '-'}
+                <span className="text-sm ui-text-secondary font-medium">
+                  {doc.chunk_count || '-'}
                 </span>
               </td>
               <td className="p-3">
-                <span className="text-sm ui-text-secondary">
-                  {doc.page_count || '-'}
+                <span className="text-sm ui-text-muted truncate max-w-[120px] block" title={getSpaceInfo(doc)}>
+                  {getSpaceInfo(doc)}
                 </span>
               </td>
               <td className="p-3">
                 <div className="flex items-center gap-2">
-                  <div className={`w-2 h-2 rounded-full ${
-                    doc.status === 'indexed' ? 'bg-[var(--success)]' :
+                  <div className={`w-2 h-2 rounded-full ${doc.status === 'indexed' ? 'bg-[var(--success)]' :
                     doc.status === 'error' ? 'bg-[var(--error)]' :
-                    doc.status === 'processing' ? 'bg-[var(--accent)] animate-pulse' :
-                    'bg-[var(--warning)]'
-                  }`} />
+                      doc.status === 'processing' ? 'bg-[var(--accent)] animate-pulse' :
+                        'bg-[var(--warning)]'
+                    }`} />
                   <span className={`text-sm capitalize ${getStatusColor(doc.status)}`}>
                     {doc.status}
                   </span>

@@ -89,13 +89,14 @@ class VectorStore:
         except Exception as exc:
             logger.warning("Failed to delete document %s from Chroma: %s", document_id, exc)
 
-    def add_documents(self, chunks: List[ChildChunk]):
-        """Embeds and stores a list of ChildChunks in ChromaDB."""
+    def add_documents(self, chunks: List[ChildChunk]) -> int:
+        """Embeds and stores a list of ChildChunks in ChromaDB. Returns count of added chunks."""
         if not chunks:
-            return
+            return 0
 
         # Process chunks in smaller batches to avoid ChromaDB payload size limits
         batch_size = 50  # Reduced batch size to prevent 413 Payload Too Large errors
+        added_count = 0
 
         for i in range(0, len(chunks), batch_size):
             batch_chunks = chunks[i:i + batch_size]
@@ -126,6 +127,7 @@ class VectorStore:
             try:
                 self.chroma.add(ids=ids, embeddings=embeddings, documents=documents, metadatas=metadatas)
                 logger.info(f"Successfully added batch of {len(batch_chunks)} chunks")
+                added_count += len(batch_chunks)
             except Exception as e:
                 logger.error(f"Failed to add batch of {len(batch_chunks)} chunks: {e}")
                 # Try with even smaller batch if this one fails
@@ -149,14 +151,19 @@ class VectorStore:
                                 metadatas=[self._sanitize_metadata(single_metadata)]
                             )
                             logger.info(f"Successfully added individual chunk: {chunk.id}")
+                            added_count += 1
                         except Exception as single_e:
                             logger.error(f"Failed to add individual chunk {chunk.id}: {single_e}")
                 else:
-                    raise e
+                    # If it was already a single chunk and failed, we can't do much
+                    pass
 
         # Mark BM25 index for rebuild after adding documents
-        self._bm25_needs_rebuild = True
-        logger.debug("Marked BM25 index for rebuild after adding %d chunks", len(chunks))
+        if added_count > 0:
+            self._bm25_needs_rebuild = True
+            logger.debug("Marked BM25 index for rebuild after adding %d chunks", added_count)
+        
+        return added_count
 
     @staticmethod
     def _sanitize_metadata(metadata: Dict[str, Any]) -> Dict[str, Any]:

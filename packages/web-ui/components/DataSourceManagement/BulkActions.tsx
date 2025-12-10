@@ -3,6 +3,8 @@
 import { useState } from 'react'
 import { Trash2, Download, Archive, Tag, MoreHorizontal, CheckCircle, LucideIcon } from 'lucide-react'
 import { BulkAction } from './types'
+import ConfirmationModal from '../ConfirmationModal'
+import { useToast } from '../ToastProvider'
 
 interface BulkActionsProps {
   selectedIds: string[]
@@ -15,21 +17,36 @@ interface BulkActionsProps {
 export default function BulkActions({ selectedIds, actions, onActionComplete, hasSelection, compact = false }: BulkActionsProps) {
   const [executingAction, setExecutingAction] = useState<string | null>(null)
   const [showDropdown, setShowDropdown] = useState(false)
+  const [confirmAction, setConfirmAction] = useState<BulkAction | null>(null)
+  const { addToast } = useToast()
 
   const handleAction = async (action: BulkAction) => {
     if (executingAction) return
 
+    // Show confirmation modal if required
+    if (action.requiresConfirmation) {
+      setConfirmAction(action)
+      setShowDropdown(false)
+      return
+    }
+
+    await executeAction(action)
+  }
+
+  const executeAction = async (action: BulkAction) => {
     setExecutingAction(action.id)
-    setShowDropdown(false)
+    setConfirmAction(null)
 
     try {
-       await action.action(selectedIds)
+      await action.action(selectedIds, addToast)
       onActionComplete?.()
     } catch (error) {
-       console.error(`Failed to execute action ${action.id}:`, error)
-       // TODO: Show error toast with user-friendly message
-       alert(`Failed to ${action.label.toLowerCase()} documents: ${error instanceof Error ? error.message : 'Unknown error'}`)
-     } finally {
+      console.error(`Failed to execute action ${action.id}:`, error)
+      addToast(
+        `Failed to ${action.label.toLowerCase()}: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        'error'
+      )
+    } finally {
       setExecutingAction(null)
     }
   }
@@ -40,114 +57,15 @@ export default function BulkActions({ selectedIds, actions, onActionComplete, ha
   if (compact) {
     // Compact mode for header
     return (
-      <div className="flex items-center gap-3">
-        {hasSelection && (
-          <>
-            <div className="flex items-center gap-2 text-sm ui-text-muted">
-              <CheckCircle className="w-3 h-3 text-[var(--success)]" />
-              <span>{selectedIds.length} selected</span>
-            </div>
-
-            {/* Primary Actions */}
-            {primaryActions.map((action) => (
-              <button
-                key={action.id}
-                onClick={() => handleAction(action)}
-                disabled={executingAction !== null || selectedIds.length === 0}
-                className={`
-                  inline-flex items-center gap-2 px-3 py-2 rounded-md
-                  transition-all duration-200 text-sm btn-small
-                  ${action.id === 'delete'
-                    ? 'ui-bg-tertiary border border-[var(--error)] text-[var(--error)] hover:bg-[var(--error)] hover:text-white'
-                    : 'btn-primary'
-                  }
-                  ${executingAction === action.id || selectedIds.length === 0
-                    ? 'opacity-50 cursor-not-allowed'
-                    : 'hover:opacity-90'
-                  }
-                `}
-              >
-                {executingAction === action.id ? (
-                  <div className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                ) : (
-                  <action.icon className="w-3 h-3" />
-                )}
-                {action.label}
-              </button>
-            ))}
-
-            {/* Secondary Actions Dropdown */}
-            {secondaryActions.length > 0 && (
-              <div className="relative">
-                <button
-                  onClick={() => setShowDropdown(!showDropdown)}
-                  disabled={executingAction !== null || selectedIds.length === 0}
-                  className={`inline-flex items-center gap-2 px-3 py-2 btn-secondary rounded-md text-sm btn-small ${
-                    executingAction !== null || selectedIds.length === 0
-                      ? 'opacity-50 cursor-not-allowed'
-                      : 'hover:ui-bg-tertiary'
-                  }`}
-                >
-                  <MoreHorizontal className="w-3 h-3" />
-                  More
-                </button>
-
-                {showDropdown && (
-                  <>
-                    <div
-                      className="fixed inset-0 z-10"
-                      onClick={() => setShowDropdown(false)}
-                    />
-                    <div className="absolute right-0 top-full mt-1 w-48 ui-bg-secondary border ui-border-faint rounded-[var(--radius-md)] shadow-lg z-20">
-                      {secondaryActions.map((action) => (
-                        <button
-                          key={action.id}
-                          onClick={() => handleAction(action)}
-                          disabled={executingAction !== null || selectedIds.length === 0}
-                          className={`
-                            w-full flex items-center gap-3 px-4 py-3 text-left text-sm
-                            hover:ui-bg-tertiary transition-colors
-                            ${executingAction === action.id || selectedIds.length === 0 ? 'opacity-50' : ''}
-                            ${action.id === secondaryActions[secondaryActions.length - 1].id ? '' : 'border-b ui-border-faint'}
-                          `}
-                        >
-                          {executingAction === action.id ? (
-                            <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                          ) : (
-                            <action.icon className="w-4 h-4 ui-text-muted" />
-                          )}
-                          <span className="ui-text-primary">{action.label}</span>
-                        </button>
-                      ))}
-                    </div>
-                  </>
-                )}
+      <>
+        <div className="flex items-center gap-3">
+          {hasSelection && (
+            <>
+              <div className="flex items-center gap-2 text-sm ui-text-muted">
+                <CheckCircle className="w-3 h-3 text-[var(--success)]" />
+                <span>{selectedIds.length} selected</span>
               </div>
-            )}
-          </>
-        )}
-      </div>
-    )
-  }
 
-  // Full mode for main content area
-  return (
-    <div className={`transition-all duration-300 ease-in-out ${
-      hasSelection
-        ? 'p-4 ui-bg-tertiary border ui-border-faint rounded-lg'
-        : 'p-2 ui-bg-secondary border ui-border-faint rounded-md opacity-60'
-    }`}>
-      {hasSelection ? (
-        <>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <CheckCircle className="w-4 h-4 text-[var(--success)]" />
-              <span className="font-medium ui-text-primary">
-                {selectedIds.length} document{selectedIds.length > 1 ? 's' : ''} selected
-              </span>
-            </div>
-
-            <div className="flex items-center gap-2">
               {/* Primary Actions */}
               {primaryActions.map((action) => (
                 <button
@@ -156,7 +74,7 @@ export default function BulkActions({ selectedIds, actions, onActionComplete, ha
                   disabled={executingAction !== null || selectedIds.length === 0}
                   className={`
                     inline-flex items-center gap-2 px-3 py-2 rounded-md
-                    transition-all duration-200 text-sm btn-standard
+                    transition-all duration-200 text-sm btn-small
                     ${action.id === 'delete'
                       ? 'ui-bg-tertiary border border-[var(--error)] text-[var(--error)] hover:bg-[var(--error)] hover:text-white'
                       : 'btn-primary'
@@ -168,9 +86,9 @@ export default function BulkActions({ selectedIds, actions, onActionComplete, ha
                   `}
                 >
                   {executingAction === action.id ? (
-                    <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                    <div className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
                   ) : (
-                    <action.icon className="w-4 h-4" />
+                    <action.icon className="w-3 h-3" />
                   )}
                   {action.label}
                 </button>
@@ -182,13 +100,12 @@ export default function BulkActions({ selectedIds, actions, onActionComplete, ha
                   <button
                     onClick={() => setShowDropdown(!showDropdown)}
                     disabled={executingAction !== null || selectedIds.length === 0}
-                    className={`inline-flex items-center gap-2 px-3 py-2 btn-secondary rounded-md text-sm btn-standard ${
-                      executingAction !== null || selectedIds.length === 0
+                    className={`inline-flex items-center gap-2 px-3 py-2 btn-secondary rounded-md text-sm btn-small ${executingAction !== null || selectedIds.length === 0
                         ? 'opacity-50 cursor-not-allowed'
                         : 'hover:ui-bg-tertiary'
-                    }`}
+                      }`}
                   >
-                    <MoreHorizontal className="w-4 h-4" />
+                    <MoreHorizontal className="w-3 h-3" />
                     More
                   </button>
 
@@ -198,7 +115,7 @@ export default function BulkActions({ selectedIds, actions, onActionComplete, ha
                         className="fixed inset-0 z-10"
                         onClick={() => setShowDropdown(false)}
                       />
-                      <div className="absolute right-0 top-full mt-1 w-48 ui-bg-secondary border ui-border-faint rounded-lg shadow-lg z-20">
+                      <div className="absolute right-0 top-full mt-1 w-48 ui-bg-secondary border ui-border-faint rounded-[var(--radius-md)] shadow-lg z-20">
                         {secondaryActions.map((action) => (
                           <button
                             key={action.id}
@@ -224,17 +141,145 @@ export default function BulkActions({ selectedIds, actions, onActionComplete, ha
                   )}
                 </div>
               )}
-            </div>
-          </div>
-        </>
-      ) : (
-        <div className="flex items-center justify-center">
-          <span className="text-sm ui-text-muted">Select documents to perform bulk actions</span>
+            </>
+          )}
         </div>
-      )}
-    </div>
+
+        {/* Confirmation Modal */}
+        <ConfirmationModal
+          isOpen={confirmAction !== null}
+          title={confirmAction?.label || 'Confirm Action'}
+          message={confirmAction?.confirmationMessage || `Are you sure you want to ${confirmAction?.label.toLowerCase()} ${selectedIds.length} document${selectedIds.length > 1 ? 's' : ''}?`}
+          confirmText={confirmAction?.label || 'Confirm'}
+          cancelText="Cancel"
+          onConfirm={() => confirmAction && executeAction(confirmAction)}
+          onCancel={() => setConfirmAction(null)}
+          type="danger"
+        />
+      </>
+    )
+  }
+
+  // Full mode for main content area
+  return (
+    <>
+      <div className={`transition-all duration-300 ease-in-out ${hasSelection
+          ? 'p-4 ui-bg-tertiary border ui-border-faint rounded-lg'
+          : 'p-2 ui-bg-secondary border ui-border-faint rounded-md opacity-60'
+        }`}>
+        {hasSelection ? (
+          <>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <CheckCircle className="w-4 h-4 text-[var(--success)]" />
+                <span className="font-medium ui-text-primary">
+                  {selectedIds.length} document{selectedIds.length > 1 ? 's' : ''} selected
+                </span>
+              </div>
+
+              <div className="flex items-center gap-2">
+                {/* Primary Actions */}
+                {primaryActions.map((action) => (
+                  <button
+                    key={action.id}
+                    onClick={() => handleAction(action)}
+                    disabled={executingAction !== null || selectedIds.length === 0}
+                    className={`
+                      inline-flex items-center gap-2 px-3 py-2 rounded-md
+                      transition-all duration-200 text-sm btn-standard
+                      ${action.id === 'delete'
+                        ? 'ui-bg-tertiary border border-[var(--error)] text-[var(--error)] hover:bg-[var(--error)] hover:text-white'
+                        : 'btn-primary'
+                      }
+                      ${executingAction === action.id || selectedIds.length === 0
+                        ? 'opacity-50 cursor-not-allowed'
+                        : 'hover:opacity-90'
+                      }
+                    `}
+                  >
+                    {executingAction === action.id ? (
+                      <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                    ) : (
+                      <action.icon className="w-4 h-4" />
+                    )}
+                    {action.label}
+                  </button>
+                ))}
+
+                {/* Secondary Actions Dropdown */}
+                {secondaryActions.length > 0 && (
+                  <div className="relative">
+                    <button
+                      onClick={() => setShowDropdown(!showDropdown)}
+                      disabled={executingAction !== null || selectedIds.length === 0}
+                      className={`inline-flex items-center gap-2 px-3 py-2 btn-secondary rounded-md text-sm btn-standard ${executingAction !== null || selectedIds.length === 0
+                          ? 'opacity-50 cursor-not-allowed'
+                          : 'hover:ui-bg-tertiary'
+                        }`}
+                    >
+                      <MoreHorizontal className="w-4 h-4" />
+                      More
+                    </button>
+
+                    {showDropdown && (
+                      <>
+                        <div
+                          className="fixed inset-0 z-10"
+                          onClick={() => setShowDropdown(false)}
+                        />
+                        <div className="absolute right-0 top-full mt-1 w-48 ui-bg-secondary border ui-border-faint rounded-lg shadow-lg z-20">
+                          {secondaryActions.map((action) => (
+                            <button
+                              key={action.id}
+                              onClick={() => handleAction(action)}
+                              disabled={executingAction !== null || selectedIds.length === 0}
+                              className={`
+                                w-full flex items-center gap-3 px-4 py-3 text-left text-sm
+                                hover:ui-bg-tertiary transition-colors
+                                ${executingAction === action.id || selectedIds.length === 0 ? 'opacity-50' : ''}
+                                ${action.id === secondaryActions[secondaryActions.length - 1].id ? '' : 'border-b ui-border-faint'}
+                              `}
+                            >
+                              {executingAction === action.id ? (
+                                <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                              ) : (
+                                <action.icon className="w-4 h-4 ui-text-muted" />
+                              )}
+                              <span className="ui-text-primary">{action.label}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          </>
+        ) : (
+          <div className="flex items-center justify-center">
+            <span className="text-sm ui-text-muted">Select documents to perform bulk actions</span>
+          </div>
+        )}
+      </div>
+
+      {/* Confirmation Modal */}
+      <ConfirmationModal
+        isOpen={confirmAction !== null}
+        title={confirmAction?.label || 'Confirm Action'}
+        message={confirmAction?.confirmationMessage || `Are you sure you want to ${confirmAction?.label.toLowerCase()} ${selectedIds.length} document${selectedIds.length > 1 ? 's' : ''}?`}
+        confirmText={confirmAction?.label || 'Confirm'}
+        cancelText="Cancel"
+        onConfirm={() => confirmAction && executeAction(confirmAction)}
+        onCancel={() => setConfirmAction(null)}
+        type="danger"
+      />
+    </>
   )
 }
+
+// Type for addToast function
+type AddToastFn = (message: string, type: 'success' | 'error' | 'info' | 'warning', duration?: number) => void
 
 // Default bulk actions
 export const defaultBulkActions: BulkAction[] = [
@@ -242,7 +287,7 @@ export const defaultBulkActions: BulkAction[] = [
     id: 'delete',
     label: 'Delete',
     icon: Trash2,
-    action: async (selectedIds: string[]) => {
+    action: async (selectedIds: string[], addToast?: AddToastFn) => {
       try {
         const response = await fetch('http://localhost:8788/api/data-sources/documents', {
           method: 'DELETE',
@@ -258,16 +303,18 @@ export const defaultBulkActions: BulkAction[] = [
         }
 
         const result = await response.json()
-         console.log('Delete result:', result)
+        console.log('Delete result:', result)
 
-         if (result.deleted_count === 0) {
-           throw new Error('No documents were deleted. This may be because the documents no longer exist or have already been deleted.')
-         }
+        if (result.deleted_count === 0) {
+          throw new Error('No documents were deleted. This may be because the documents no longer exist or have already been deleted.')
+        }
 
-         // Show success message
-         alert(`Successfully deleted ${result.deleted_count} document${result.deleted_count > 1 ? 's' : ''}`)
+        // Show success toast
+        if (addToast) {
+          addToast(`Successfully deleted ${result.deleted_count} document${result.deleted_count > 1 ? 's' : ''}`, 'success')
+        }
 
-         return result
+        return result
       } catch (error) {
         console.error('Failed to delete documents:', error)
         throw error

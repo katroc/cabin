@@ -199,22 +199,20 @@ class URLIngestionDataSource(DataSource):
         logger.info(f"Starting document extraction from {len(self._urls)} URLs")
 
         try:
-            # Initialize progress tracking
+            processed_count = 0
+
+            # Use source_ids as URLs if provided (from frontend), otherwise use self._urls
+            urls_to_process = source_ids if source_ids else self._urls
+            logger.info(f"URLs to process: {urls_to_process}")
+            
+            # Initialize progress tracking with correct total
             if self._job_id:
                 self._progress = IndexingProgress(
                     job_id=self._job_id,
                     status="running",
                     started_at=datetime.now(),
-                    total_items=len(self._urls)
+                    total_items=len(urls_to_process)
                 )
-
-            processed_count = 0
-
-            # Filter URLs if source_ids provided
-            urls_to_process = self._urls
-            if source_ids:
-                urls_to_process = [url for url in self._urls if url in source_ids]
-                logger.info(f"Filtered to {len(urls_to_process)} URLs based on source_ids")
 
             # Fetch URLs
             async with aiohttp.ClientSession() as session:

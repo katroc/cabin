@@ -36,7 +36,7 @@ ui_settings:
   chunk_size_tokens: 250
   chunk_stride_tokens: 75
   max_html_chars: 500000
-  drop_boilerplate: false
+  drop_boilerplate: true
   drop_labels:
   - template
   - archive

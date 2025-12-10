@@ -248,6 +248,15 @@ class DataSourceManager:
                         )
                         continue
 
+                    # Check for extraction warnings
+                    warnings = document.metadata.get("extraction_warnings", [])
+                    if warnings:
+                        logger.warning(f"Document {document.id} has extraction warnings: {warnings}")
+                    
+                    if not document.content or not document.content.strip():
+                        logger.warning(f"Document {document.id} has empty content. Skipping chunking.")
+                        continue
+
                     ingest_request = IngestRequest(
                         page_title=document.title,
                         text=document.content,
@@ -282,7 +291,10 @@ class DataSourceManager:
                                 score,
                             )
 
-                    self.vector_store.add_documents(child_chunks)
+                    added_count = self.vector_store.add_documents(child_chunks)
+                    
+                    if added_count == 0 and len(child_chunks) > 0:
+                        raise RuntimeError(f"Failed to add any chunks for document {document.id} to vector store")
                     elapsed = time.perf_counter() - start_time
 
                     stats["processed"] += 1

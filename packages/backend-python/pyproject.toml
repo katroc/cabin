@@ -17,6 +17,8 @@ dependencies = [
     "rank-bm25",
     "stopwordsiso",
     "setuptools",
+    "PyPDF2",
+    "python-docx",
 ]
 
 [tool.pdm]
