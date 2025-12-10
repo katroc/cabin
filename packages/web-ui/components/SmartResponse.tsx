@@ -583,7 +583,7 @@ const SmartResponse: React.FC<SmartResponseProps> = ({
               >
                 {section.content}
               </ReactMarkdown>
-              {(isAnimating || isStreaming) && index === sections.length - 1 && (
+              {(isAnimating || isStreaming) && index === sections.length - 1 && displayedAnswer && (
                 <span className="streaming-cursor"></span>
               )}
             </div>
