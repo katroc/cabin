@@ -294,25 +294,6 @@ const SmartResponse: React.FC<SmartResponseProps> = ({
 
   const sections = parseResponse(displayedAnswer, queryType);
 
-  const headingCounterRef = React.useRef<Map<string, number>>(new Map());
-  const previousAnswerRef = React.useRef<string | null>(null);
-
-  if (previousAnswerRef.current !== displayedAnswer) {
-    headingCounterRef.current = new Map();
-    previousAnswerRef.current = displayedAnswer;
-  }
-
-  const getHeadingId = React.useCallback(
-    (text: string) => {
-      const map = headingCounterRef.current;
-      const base = slugify(text);
-      const count = map.get(base) ?? 0;
-      map.set(base, count + 1);
-      return count === 0 ? base : `${base}-${count}`;
-    },
-    []
-  );
-
   const headings = React.useMemo(() => {
     if (!displayedAnswer) return [] as { depth: number; text: string; id: string }[];
     const headingRegex = /^(#{1,4})\s+(.+)$/gm;
@@ -336,10 +317,41 @@ const SmartResponse: React.FC<SmartResponseProps> = ({
     return collected;
   }, [displayedAnswer]);
 
+  // Create a map to quickly look up heading IDs by text
+  const headingIdMap = React.useMemo(() => {
+    const map = new Map<string, string[]>();
+    for (const h of headings) {
+      const existing = map.get(h.text) || [];
+      existing.push(h.id);
+      map.set(h.text, existing);
+    }
+    return map;
+  }, [headings]);
+
+  // Track which heading occurrence we're on
+  const headingOccurrenceRef = React.useRef<Map<string, number>>(new Map());
+
+  // Reset occurrence counter when answer changes
+  React.useEffect(() => {
+    headingOccurrenceRef.current = new Map();
+  }, [displayedAnswer]);
+
+  // Get heading ID from precomputed list (matches TOC exactly)
+  const getHeadingIdFromMap = React.useCallback((text: string) => {
+    const trimmedText = text.trim();
+    const occurrences = headingIdMap.get(trimmedText) || [];
+    const countRef = headingOccurrenceRef.current;
+    const occurrence = countRef.get(trimmedText) ?? 0;
+    countRef.set(trimmedText, occurrence + 1);
+
+    // Return the ID for this occurrence, or fallback to slugify
+    return occurrences[occurrence] || slugify(trimmedText);
+  }, [headingIdMap]);
+
   const headingComponents = {
     h1: ({ node, children }: any) => {
       const text = getNodeText(node);
-      const id = getHeadingId(text);
+      const id = getHeadingIdFromMap(text);
       return (
         <h1 id={id} className="response-h1">
           {renderWithCitations(children)}
@@ -348,7 +360,7 @@ const SmartResponse: React.FC<SmartResponseProps> = ({
     },
     h2: ({ node, children }: any) => {
       const text = getNodeText(node);
-      const id = getHeadingId(text);
+      const id = getHeadingIdFromMap(text);
       return (
         <h2 id={id} className="response-h2">
           {renderWithCitations(children)}
@@ -357,7 +369,7 @@ const SmartResponse: React.FC<SmartResponseProps> = ({
     },
     h3: ({ node, children }: any) => {
       const text = getNodeText(node);
-      const id = getHeadingId(text);
+      const id = getHeadingIdFromMap(text);
       return (
         <h3 id={id} className="response-h3">
           {renderWithCitations(children)}
@@ -366,7 +378,7 @@ const SmartResponse: React.FC<SmartResponseProps> = ({
     },
     h4: ({ node, children }: any) => {
       const text = getNodeText(node);
-      const id = getHeadingId(text);
+      const id = getHeadingIdFromMap(text);
       return (
         <h4 id={id} className="response-h4">
           {renderWithCitations(children)}
