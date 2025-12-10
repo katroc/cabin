@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { ArrowUpDown, ArrowUp, ArrowDown, FileText, Globe, Upload, Database, ExternalLink, Eye, MoreHorizontal, AlertTriangle } from 'lucide-react'
+import { ArrowUpDown, ArrowUp, ArrowDown, FileText, Globe, Upload, Database, ExternalLink, Eye, MoreHorizontal, AlertTriangle, Trash2 } from 'lucide-react'
 import { IndexedDocument, SortOptions } from './types'
 
 interface DocumentTableProps {
@@ -14,6 +14,8 @@ interface DocumentTableProps {
   onPreviewDocument?: (document: IndexedDocument) => void
 }
 
+// Separate state for action menu (click) vs row hover
+
 export default function DocumentTable({
   documents,
   sort,
@@ -23,7 +25,7 @@ export default function DocumentTable({
   onSelectAll,
   onPreviewDocument
 }: DocumentTableProps) {
-  const [hoveredRow, setHoveredRow] = useState<string | null>(null)
+  const [actionMenuId, setActionMenuId] = useState<string | null>(null)
 
   const handleSort = (field: SortOptions['field']) => {
     if (sort.field === field) {
@@ -144,10 +146,10 @@ export default function DocumentTable({
 
   return (
     <div className="overflow-x-auto">
-      <table className="w-full table-fixed">
+      <table className="w-full min-w-[800px]">
         <thead>
           <tr className="border-b ui-border-light">
-            <th className="w-12 p-3">
+            <th className="w-10 p-3 text-center align-middle">
               <input
                 type="checkbox"
                 checked={allSelected}
@@ -158,7 +160,7 @@ export default function DocumentTable({
                 className="rounded"
               />
             </th>
-            <th className="text-left p-3 w-64">
+            <th className="text-left p-3">
               <button
                 onClick={() => handleSort('title')}
                 className="flex items-center gap-2 hover:ui-text-primary transition-colors"
@@ -204,7 +206,7 @@ export default function DocumentTable({
                 {getSortIcon('last_modified')}
               </button>
             </th>
-            <th className="w-12 p-3">Actions</th>
+            <th className="w-20 p-3 text-center">Actions</th>
           </tr>
         </thead>
         <tbody>
@@ -215,10 +217,8 @@ export default function DocumentTable({
                 border-b ui-border-faint hover:ui-bg-tertiary transition-colors
                 ${selectedIds.has(doc.id) ? 'ui-bg-tertiary' : ''}
               `}
-              onMouseEnter={() => setHoveredRow(doc.id)}
-              onMouseLeave={() => setHoveredRow(null)}
             >
-              <td className="p-3">
+              <td className="p-3 text-center align-middle">
                 <input
                   type="checkbox"
                   checked={selectedIds.has(doc.id)}
@@ -226,9 +226,9 @@ export default function DocumentTable({
                   className="rounded"
                 />
               </td>
-              <td className="p-3">
+              <td className="p-3 align-middle">
                 <div className="flex items-center gap-3">
-                  <div className="p-2 ui-bg-secondary rounded-md flex-shrink-0">
+                  <div className="p-1.5 ui-bg-secondary rounded flex-shrink-0">
                     {getSourceIcon(doc.source_type)}
                   </div>
                   <div className="min-w-0 flex-1">
@@ -293,25 +293,58 @@ export default function DocumentTable({
                   )}
                 </div>
               </td>
-              <td className="p-3">
+              <td className="p-3 align-middle">
                 <div className="flex items-center gap-1">
                   {onPreviewDocument && (
                     <button
                       onClick={() => onPreviewDocument(doc)}
-                      className="p-1 hover:ui-bg-secondary rounded transition-colors"
+                      className="p-1.5 hover:ui-bg-secondary rounded transition-colors"
                       title="Preview document"
                     >
                       <Eye className="w-4 h-4 ui-text-muted" />
                     </button>
                   )}
-                  {hoveredRow === doc.id && (
+                  <div className="relative">
                     <button
-                      className="p-1 hover:ui-bg-secondary rounded transition-colors"
+                      onClick={() => setActionMenuId(actionMenuId === doc.id ? null : doc.id)}
+                      className="p-1.5 hover:ui-bg-secondary rounded transition-colors"
                       title="More actions"
                     >
                       <MoreHorizontal className="w-4 h-4 ui-text-muted" />
                     </button>
-                  )}
+                    {actionMenuId === doc.id && (
+                      <>
+                        <div
+                          className="fixed inset-0 z-10"
+                          onClick={() => setActionMenuId(null)}
+                        />
+                        <div className="absolute right-0 top-full mt-1 w-40 ui-bg-secondary border ui-border-faint rounded-lg shadow-lg z-20">
+                          {onPreviewDocument && (
+                            <button
+                              onClick={() => {
+                                onPreviewDocument(doc)
+                                setActionMenuId(null)
+                              }}
+                              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:ui-bg-tertiary transition-colors rounded-t-lg"
+                            >
+                              <Eye className="w-4 h-4" />
+                              Preview
+                            </button>
+                          )}
+                          <button
+                            onClick={() => {
+                              onSelectDocument(doc.id)
+                              setActionMenuId(null)
+                            }}
+                            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:ui-bg-tertiary text-[var(--error)] transition-colors rounded-b-lg"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                            Select for Delete
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
                 </div>
               </td>
             </tr>
