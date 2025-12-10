@@ -15,6 +15,7 @@ interface FolderShare {
     created_at: string
     last_indexed: string | null
     document_count: number
+    total_files?: number
 }
 
 interface ChangeSet {
@@ -645,8 +646,18 @@ export default function FolderShareIndexing({ isOpen, onClose, onBack }: FolderS
 
                                         <div className="flex items-center justify-between">
                                             <div className="flex items-center gap-4 text-xs ui-text-muted">
-                                                <span>
-                                                    {share.document_count} documents
+                                                <span className="flex items-center gap-1">
+                                                    <FileText size={12} />
+                                                    {share.document_count > 0 ? (
+                                                        <>
+                                                            <span className="text-green-400">{share.document_count}</span>
+                                                            {share.total_files ? ` / ${share.total_files}` : ''} indexed
+                                                        </>
+                                                    ) : share.total_files ? (
+                                                        <>{share.total_files} files available</>
+                                                    ) : (
+                                                        <>Not indexed</>
+                                                    )}
                                                 </span>
                                                 {share.last_indexed && (
                                                     <span>

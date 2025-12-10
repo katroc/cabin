@@ -816,6 +816,7 @@ async def add_folder_share(request: FolderShareAddRequest):
         "created_at": datetime.now().isoformat(),
         "last_indexed": None,
         "document_count": 0,
+        "total_files": 0,  # Total indexable files discovered
     }
     
     # Store SMB credentials separately (in production, encrypt these)
@@ -826,6 +827,91 @@ async def add_folder_share(request: FolderShareAddRequest):
     
     _folder_shares[share_id] = share_config
     logger.info(f"Added folder share: {request.path} (ID: {share_id})")
+    
+    # Run initial file count in background (don't block the response)
+    try:
+        import socket
+        from pathlib import Path as PathLib
+        
+        file_count = 0
+        is_smb = share_config["is_smb"]
+        supported_exts = {'.txt', '.md', '.pdf', '.docx', '.doc', '.html', '.htm', '.csv', '.json', '.xml'}
+        
+        if is_smb:
+            try:
+                from smb.SMBConnection import SMBConnection
+                
+                if request.path.startswith('smb://'):
+                    path_part = request.path[6:]
+                else:
+                    path_part = request.path[2:]
+                
+                parts = path_part.split('/')
+                server = parts[0]
+                share_name = parts[1] if len(parts) > 1 else ''
+                sub_path = '/'.join(parts[2:]) if len(parts) > 2 else ''
+                
+                username = request.smb_username or ''
+                password = request.smb_password or ''
+                client_name = socket.gethostname()[:15]
+                
+                conn = SMBConnection(
+                    username, password,
+                    client_name, server,
+                    use_ntlm_v2=True,
+                    is_direct_tcp=True
+                )
+                
+                if conn.connect(server, 445, timeout=10):
+                    def count_files(dir_path: str, depth: int):
+                        nonlocal file_count
+                        if depth > 3:
+                            return
+                        try:
+                            path_to_list = f"/{dir_path}" if dir_path else "/"
+                            entries = conn.listPath(share_name, path_to_list)
+                            for entry in entries:
+                                if entry.filename in ['.', '..']:
+                                    continue
+                                entry_path = f"{dir_path}/{entry.filename}" if dir_path else entry.filename
+                                if entry.isDirectory:
+                                    count_files(entry_path, depth + 1)
+                                else:
+                                    ext = PathLib(entry.filename).suffix.lower()
+                                    if ext in supported_exts:
+                                        file_count += 1
+                        except Exception:
+                            pass
+                    
+                    count_files(sub_path, 0)
+                    conn.close()
+            except Exception as e:
+                logger.debug(f"Failed to count SMB files: {e}")
+        else:
+            def count_local_files(path: PathLib, depth: int):
+                nonlocal file_count
+                if depth > 3:
+                    return
+                try:
+                    for item in path.iterdir():
+                        if item.name.startswith('.'):
+                            continue
+                        if item.is_dir():
+                            count_local_files(item, depth + 1)
+                        elif item.is_file():
+                            ext = item.suffix.lower()
+                            if ext in supported_exts:
+                                file_count += 1
+                except Exception:
+                    pass
+            
+            count_local_files(PathLib(request.path), 0)
+        
+        share_config["total_files"] = file_count
+        _folder_shares[share_id] = share_config
+        logger.info(f"Found {file_count} indexable files in {request.path}")
+    except Exception as e:
+        logger.debug(f"Error counting files: {e}")
     
     return {"share_id": share_id, "status": "added", "share": share_config}
 
