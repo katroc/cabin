@@ -1009,8 +1009,8 @@ body {
 .scroll-to-bottom-button {
   position: fixed;
   bottom: 120px;
-  /* Position above the composer */
-  left: 50%;
+  /* Center relative to chat area (viewport minus 320px sidebar) */
+  left: calc(320px + (100vw - 320px) / 2);
   transform: translateX(-50%);
   display: flex;
   align-items: center;
