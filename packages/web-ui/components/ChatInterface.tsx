@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Loader2, BookOpen, ArrowDown } from 'lucide-react'
+import { BookOpen, ArrowDown } from 'lucide-react'
 import ExportDropdown from './ExportDropdown'
 import { useUIPreferences } from './contexts/UIPreferencesProvider'
 import ConversationSourcesPanel, { AggregatedSource } from './ConversationSourcesPanel'
@@ -389,12 +389,7 @@ export default function ChatInterface({
     return () => { stopGeneration() }
   }, [stopGeneration])
 
-  const streamingPlaceholderVisible = useMemo(() => {
-    if (!isProcessing) return false
-    if (!lastAssistantIdRef.current) return false
-    const assistantMessage = messages.find(msg => msg.id === lastAssistantIdRef.current)
-    return !assistantMessage?.content
-  }, [isProcessing, messages])
+  // Removed: streamingPlaceholderVisible - now using thinking bubble in SmartResponse instead
 
   const hasMessages = messages.length > 0
   const canStop = isProcessing && Boolean(abortController)
@@ -462,20 +457,7 @@ export default function ChatInterface({
             />
           ))}
 
-          {streamingPlaceholderVisible && (
-            <div className="flex justify-start">
-              <div className="w-full">
-                <div className="rounded-xl border px-4 py-5 ui-bg-secondary ui-border-faint">
-                  <div className="text-center">
-                    <Loader2 className="mx-auto animate-spin text-[var(--accent)]" />
-                    <p className="mt-3 text-sm ui-text-secondary">
-                      Generating response...
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
+          {/* Removed: Generating response placeholder - now using thinking bubble in SmartResponse */}
 
           <div ref={messagesEndRef} />
         </div>
