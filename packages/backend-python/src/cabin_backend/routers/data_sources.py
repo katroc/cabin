@@ -1005,13 +1005,22 @@ async def scan_folder_share_for_changes(share_id: str):
     share = _folder_shares[share_id]
     
     try:
+        # Get file extensions - use None for default, not empty set
+        file_extensions = share.get("file_extensions")
+        if file_extensions:
+            file_extensions = set(file_extensions)
+        else:
+            file_extensions = None  # Let the monitor use defaults
+        
         change_set = folder_change_monitor.scan_for_changes(
             share_id=share_id,
             root_path=share["path"],
             recursive=share.get("recursive", True),
             max_depth=share.get("max_depth", 10),
-            file_extensions=set(share.get("file_extensions") or []),
+            file_extensions=file_extensions,
             exclude_patterns=share.get("exclude_patterns"),
+            smb_username=share.get("smb_username"),
+            smb_password=share.get("smb_password"),
         )
         
         return {
@@ -1128,13 +1137,22 @@ async def _run_folder_share_sync():
             # Scan for changes
             logger.info(f"Scanning folder share {share_id} for changes...")
             
+            # Get file extensions - use None for default, not empty set
+            file_extensions = share.get("file_extensions")
+            if file_extensions:
+                file_extensions = set(file_extensions)
+            else:
+                file_extensions = None
+            
             change_set = folder_change_monitor.scan_for_changes(
                 share_id=share_id,
                 root_path=share["path"],
                 recursive=share.get("recursive", True),
                 max_depth=share.get("max_depth", 10),
-                file_extensions=set(share.get("file_extensions") or []),
+                file_extensions=file_extensions,
                 exclude_patterns=share.get("exclude_patterns"),
+                smb_username=share.get("smb_username"),
+                smb_password=share.get("smb_password"),
             )
             
             if not change_set.has_changes:

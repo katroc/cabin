@@ -134,6 +134,21 @@ class FolderChangeMonitor:
             logger.error(f"Failed to clear state for {share_id}: {e}")
             return False
     
+    def _is_smb_path(self, path: str) -> bool:
+        """Check if path is an SMB URL."""
+        return path.startswith('smb://') or path.startswith('//')
+    
+    def _smb_url_to_unc(self, smb_url: str) -> str:
+        """Convert smb://server/share/path to UNC path \\\\server\\share\\path."""
+        if smb_url.startswith('smb://'):
+            path = smb_url.replace('smb://', '')
+            parts = path.split('/')
+            unc = '\\\\' + '\\'.join(parts)
+            return unc
+        elif smb_url.startswith('//'):
+            return smb_url.replace('/', '\\')
+        return smb_url
+
     def scan_for_changes(
         self,
         share_id: str,
@@ -142,6 +157,8 @@ class FolderChangeMonitor:
         max_depth: int = 10,
         file_extensions: Optional[Set[str]] = None,
         exclude_patterns: Optional[List[str]] = None,
+        smb_username: Optional[str] = None,
+        smb_password: Optional[str] = None,
     ) -> ChangeSet:
         """
         Scan a folder for changes compared to stored state.
@@ -153,6 +170,8 @@ class FolderChangeMonitor:
             max_depth: Maximum directory depth
             file_extensions: File extensions to include
             exclude_patterns: Glob patterns to exclude
+            smb_username: Optional SMB username for authentication
+            smb_password: Optional SMB password for authentication
         
         Returns:
             ChangeSet with added, modified, and deleted files
@@ -165,7 +184,15 @@ class FolderChangeMonitor:
         old_state = self.load_state(share_id)
         old_paths = set(old_state.keys())
         
-        # Scan current files
+        # Check if this is an SMB path
+        if self._is_smb_path(root_path):
+            return self._scan_smb_for_changes(
+                share_id, root_path, old_state, old_paths, scan_time,
+                recursive, max_depth, file_extensions, exclude_patterns,
+                smb_username, smb_password
+            )
+        
+        # Local path scanning
         current_files: Dict[str, FileState] = {}
         root = Path(root_path)
         
@@ -254,6 +281,127 @@ class FolderChangeMonitor:
             )
         else:
             logger.debug(f"Change scan for {share_id}: no changes detected")
+        
+        return change_set
+    
+    def _scan_smb_for_changes(
+        self,
+        share_id: str,
+        root_path: str,
+        old_state: Dict[str, FileState],
+        old_paths: Set[str],
+        scan_time: datetime,
+        recursive: bool,
+        max_depth: int,
+        file_extensions: Optional[Set[str]],
+        exclude_patterns: Optional[List[str]],
+        smb_username: Optional[str],
+        smb_password: Optional[str],
+    ) -> ChangeSet:
+        """Scan SMB share for changes using smbprotocol."""
+        import fnmatch
+        
+        try:
+            from smbclient import listdir, stat as smb_stat
+            import smbclient
+            import stat as stat_module
+        except ImportError:
+            logger.error("smbprotocol not installed, cannot scan SMB share")
+            return ChangeSet(added=[], modified=[], deleted=[], scan_time=scan_time)
+        
+        # Register session if credentials provided
+        try:
+            if smb_username:
+                parts = root_path.replace('smb://', '').split('/')
+                server = parts[0]
+                smbclient.register_session(
+                    server,
+                    username=smb_username,
+                    password=smb_password,
+                )
+        except Exception as e:
+            logger.warning(f"Failed to register SMB session: {e}")
+        
+        def should_exclude(name: str) -> bool:
+            if not exclude_patterns:
+                return False
+            for pattern in exclude_patterns:
+                if fnmatch.fnmatch(name, pattern):
+                    return True
+            return False
+        
+        current_files: Dict[str, FileState] = {}
+        
+        def scan_smb_directory(smb_path: str, depth: int):
+            if depth > max_depth:
+                return
+            
+            try:
+                unc_path = self._smb_url_to_unc(smb_path)
+                
+                for entry in listdir(unc_path):
+                    if should_exclude(entry):
+                        continue
+                    
+                    entry_unc = f"{unc_path}\\{entry}"
+                    entry_smb = f"{smb_path}/{entry}"
+                    
+                    try:
+                        entry_stat = smb_stat(entry_unc)
+                        
+                        if stat_module.S_ISDIR(entry_stat.st_mode):
+                            if recursive:
+                                scan_smb_directory(entry_smb, depth + 1)
+                        elif stat_module.S_ISREG(entry_stat.st_mode):
+                            # Check extension filter
+                            ext = Path(entry).suffix.lower()
+                            if file_extensions and ext not in file_extensions:
+                                continue
+                            
+                            current_files[entry_unc] = FileState(
+                                path=entry_unc,
+                                mtime=entry_stat.st_mtime,
+                                size=entry_stat.st_size,
+                            )
+                    except Exception as e:
+                        logger.debug(f"Cannot stat SMB entry {entry_unc}: {e}")
+            
+            except Exception as e:
+                logger.error(f"Error scanning SMB path {smb_path}: {e}")
+        
+        scan_smb_directory(root_path, 0)
+        current_paths = set(current_files.keys())
+        
+        # Determine changes
+        added = list(current_paths - old_paths)
+        deleted = list(old_paths - current_paths)
+        
+        # Check for modifications
+        modified = []
+        for path in current_paths & old_paths:
+            old_file = old_state[path]
+            new_file = current_files[path]
+            if old_file.mtime != new_file.mtime or old_file.size != new_file.size:
+                modified.append(path)
+        
+        # Update state
+        self._states[share_id] = current_files
+        self.save_state(share_id)
+        
+        change_set = ChangeSet(
+            added=added,
+            modified=modified,
+            deleted=deleted,
+            scan_time=scan_time
+        )
+        
+        if change_set.has_changes:
+            logger.info(
+                f"SMB change scan for {share_id}: "
+                f"+{len(added)} added, ~{len(modified)} modified, -{len(deleted)} deleted"
+            )
+        else:
+            logger.debug(f"SMB change scan for {share_id}: no changes detected")
         
         return change_set
     
