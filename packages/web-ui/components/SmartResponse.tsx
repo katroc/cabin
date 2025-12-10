@@ -396,25 +396,39 @@ const SmartResponse: React.FC<SmartResponseProps> = ({
     <div ref={containerRef} className={`smart-response ${getResponseClass(queryType)}`}>
       {/* Main content */}
       <div className={`response-content ${isStreaming ? 'streaming-content' : ''}`} onClick={onContentClick}>
+        {/* Thinking indicator - show during streaming, or as disclosure once complete */}
         {thinking && (
-          <div className="thinking-disclosure">
-            <button
-              type="button"
-              className="thinking-toggle"
-              onClick={() => setShowThinking(prev => !prev)}
-              aria-expanded={showThinking}
-              aria-controls="thinking-content"
-            >
-              <span className="chevron" aria-hidden>{showThinking ? '▾' : '▸'}</span>
-              <span className="thinking-label">{showThinking ? 'Hide thinking' : 'Show thinking'}</span>
-            </button>
-            {showThinking && (
-              <div id="thinking-content" className="thinking-block" aria-label="Model thinking">
-                <div className="thinking-header">Thinking</div>
-                <pre className="thinking-text">{thinking}</pre>
+          isStreaming && !answer ? (
+            // Small thinking bubble during streaming when no answer yet
+            <div className="thinking-streaming">
+              <div className="thinking-streaming-dots">
+                <span></span>
+                <span></span>
+                <span></span>
               </div>
-            )}
-          </div>
+              <span className="thinking-streaming-label">Thinking...</span>
+            </div>
+          ) : (
+            // Show toggle only when there's actual content to show
+            <div className="thinking-disclosure">
+              <button
+                type="button"
+                className="thinking-toggle"
+                onClick={() => setShowThinking(prev => !prev)}
+                aria-expanded={showThinking}
+                aria-controls="thinking-content"
+              >
+                <span className="chevron" aria-hidden>{showThinking ? '▾' : '▸'}</span>
+                <span className="thinking-label">{showThinking ? 'Hide thinking' : 'Show thinking'}</span>
+              </button>
+              {showThinking && (
+                <div id="thinking-content" className="thinking-block" aria-label="Model thinking">
+                  <div className="thinking-header">Thinking</div>
+                  <pre className="thinking-text">{thinking}</pre>
+                </div>
+              )}
+            </div>
+          )
         )}
 
         {headings.length > 1 && (
@@ -509,7 +523,7 @@ const SmartResponse: React.FC<SmartResponseProps> = ({
                     <div className="callout callout-info">
                       <div className="callout-icon">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                          <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/>
+                          <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z" />
                         </svg>
                       </div>
                       <div className="callout-content">{children}</div>
@@ -522,7 +536,7 @@ const SmartResponse: React.FC<SmartResponseProps> = ({
                       {children}
                       <span className="link-icon">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                          <path d="M19 19H5V5h7V3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z"/>
+                          <path d="M19 19H5V5h7V3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z" />
                         </svg>
                       </span>
                     </a>
@@ -586,7 +600,7 @@ const SmartResponse: React.FC<SmartResponseProps> = ({
                 </svg>
               ) : (
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" className="citations-icon">
-                  <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+                  <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" />
                 </svg>
               )}
               <span className="citations-title">
@@ -634,7 +648,7 @@ const SmartResponse: React.FC<SmartResponseProps> = ({
                           >
                             View Source
                             <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-                              <path d="M19 19H5V5h7V3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z"/>
+                              <path d="M19 19H5V5h7V3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z" />
                             </svg>
                           </a>
                         )}
