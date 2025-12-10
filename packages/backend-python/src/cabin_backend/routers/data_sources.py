@@ -834,6 +834,7 @@ async def add_folder_share(request: FolderShareAddRequest):
 async def preview_folder_share(request: FolderShareAddRequest):
     """Preview files in a folder/SMB share without adding it. Returns file count and type breakdown."""
     import socket
+    from pathlib import Path
     
     files_found = []
     folder_count = 0
