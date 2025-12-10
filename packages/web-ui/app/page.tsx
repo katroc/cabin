@@ -106,6 +106,21 @@ export default function Home() {
     setIsHydrated(true)
   }, [])
 
+  // Detect OAuth callback and auto-open data sources panel
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    const params = new URLSearchParams(window.location.search)
+    const showDataSources = params.get('show_data_sources')
+
+    if (showDataSources) {
+      // Clean up URL
+      window.history.replaceState({}, '', window.location.pathname)
+      // Open data sources panel
+      setIsDataSourceSelectorOpen(true)
+    }
+  }, [])
+
   useEffect(() => {
     if (!isHydrated || typeof window === 'undefined') return
 
