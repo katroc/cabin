@@ -298,29 +298,33 @@ class FolderChangeMonitor:
         smb_username: Optional[str],
         smb_password: Optional[str],
     ) -> ChangeSet:
-        """Scan SMB share for changes using smbprotocol."""
+        """Scan SMB share for changes using pysmb (supports guest access)."""
         import fnmatch
+        import socket
         
         try:
-            from smbclient import listdir, stat as smb_stat
-            import smbclient
-            import stat as stat_module
+            from smb.SMBConnection import SMBConnection
         except ImportError:
-            logger.error("smbprotocol not installed, cannot scan SMB share")
+            logger.error("pysmb not installed, cannot scan SMB share. Install with: pip install pysmb")
             return ChangeSet(added=[], modified=[], deleted=[], scan_time=scan_time)
         
-        # Register session if credentials provided
-        try:
-            if smb_username:
-                parts = root_path.replace('smb://', '').split('/')
-                server = parts[0]
-                smbclient.register_session(
-                    server,
-                    username=smb_username,
-                    password=smb_password,
-                )
-        except Exception as e:
-            logger.warning(f"Failed to register SMB session: {e}")
+        # Parse SMB URL
+        # smb://server/share/path or //server/share/path
+        if root_path.startswith('smb://'):
+            path_part = root_path[6:]  # Remove smb://
+        elif root_path.startswith('//'):
+            path_part = root_path[2:]  # Remove //
+        else:
+            path_part = root_path
+        
+        parts = path_part.split('/')
+        server = parts[0]
+        share_name = parts[1] if len(parts) > 1 else ''
+        sub_path = '/'.join(parts[2:]) if len(parts) > 2 else ''
+        
+        if not share_name:
+            logger.error(f"Invalid SMB path, no share specified: {root_path}")
+            return ChangeSet(added=[], modified=[], deleted=[], scan_time=scan_time)
         
         def should_exclude(name: str) -> bool:
             if not exclude_patterns:
@@ -332,44 +336,74 @@ class FolderChangeMonitor:
         
         current_files: Dict[str, FileState] = {}
         
-        def scan_smb_directory(smb_path: str, depth: int):
-            if depth > max_depth:
-                return
+        try:
+            # Create SMB connection (use empty strings for guest access)
+            username = smb_username or ''
+            password = smb_password or ''
+            client_name = socket.gethostname()[:15]  # NetBIOS name limit
             
-            try:
-                unc_path = self._smb_url_to_unc(smb_path)
+            conn = SMBConnection(
+                username, password, 
+                client_name, server,
+                use_ntlm_v2=True, 
+                is_direct_tcp=True
+            )
+            
+            if not conn.connect(server, 445, timeout=30):
+                logger.error(f"Failed to connect to SMB server: {server}")
+                return ChangeSet(added=[], modified=[], deleted=[], scan_time=scan_time)
+            
+            logger.info(f"Connected to SMB server {server}, scanning share '{share_name}'")
+            
+            def scan_smb_directory(smb_sub_path: str, depth: int):
+                if depth > max_depth:
+                    return
                 
-                for entry in listdir(unc_path):
-                    if should_exclude(entry):
-                        continue
+                try:
+                    # List files in directory
+                    path_to_list = f"/{smb_sub_path}" if smb_sub_path else "/"
+                    files = conn.listPath(share_name, path_to_list)
                     
-                    entry_unc = f"{unc_path}\\{entry}"
-                    entry_smb = f"{smb_path}/{entry}"
-                    
-                    try:
-                        entry_stat = smb_stat(entry_unc)
+                    for f in files:
+                        # Skip . and ..
+                        if f.filename in ['.', '..']:
+                            continue
                         
-                        if stat_module.S_ISDIR(entry_stat.st_mode):
+                        if should_exclude(f.filename):
+                            continue
+                        
+                        # Build path for this entry
+                        entry_path = f"{smb_sub_path}/{f.filename}" if smb_sub_path else f.filename
+                        
+                        if f.isDirectory:
                             if recursive:
-                                scan_smb_directory(entry_smb, depth + 1)
-                        elif stat_module.S_ISREG(entry_stat.st_mode):
+                                scan_smb_directory(entry_path, depth + 1)
+                        else:
                             # Check extension filter
-                            ext = Path(entry).suffix.lower()
+                            ext = Path(f.filename).suffix.lower()
                             if file_extensions and ext not in file_extensions:
                                 continue
                             
-                            current_files[entry_unc] = FileState(
-                                path=entry_unc,
-                                mtime=entry_stat.st_mtime,
-                                size=entry_stat.st_size,
+                            # Create unique path identifier
+                            file_key = f"//{server}/{share_name}/{entry_path}"
+                            
+                            current_files[file_key] = FileState(
+                                path=file_key,
+                                mtime=f.last_write_time,
+                                size=f.file_size,
                             )
-                    except Exception as e:
-                        logger.debug(f"Cannot stat SMB entry {entry_unc}: {e}")
+                
+                except Exception as e:
+                    logger.error(f"Error scanning SMB directory {smb_sub_path}: {e}")
             
-            except Exception as e:
-                logger.error(f"Error scanning SMB path {smb_path}: {e}")
+            # Start scanning from sub_path or root
+            scan_smb_directory(sub_path, 0)
+            conn.close()
+            
+        except Exception as e:
+            logger.error(f"SMB scan failed for {root_path}: {e}")
+            return ChangeSet(added=[], modified=[], deleted=[], scan_time=scan_time)
         
-        scan_smb_directory(root_path, 0)
         current_paths = set(current_files.keys())
         
         # Determine changes
