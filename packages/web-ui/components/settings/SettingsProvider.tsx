@@ -77,13 +77,8 @@ export interface ExtendedSettingsData {
   dedupThreshold: number
 
 
-
   // Advanced - Verification
   fuzzyPartialRatioMin: number
-
-  // Model Selection
-  llmModel: string
-  embeddingModel: string
 }
 
 interface SettingsState {

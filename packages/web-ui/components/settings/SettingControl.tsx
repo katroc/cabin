@@ -94,7 +94,7 @@ export function SettingControl(props: SettingControlProps) {
             min={sliderProps.min}
             max={sliderProps.max}
             step={sliderProps.step}
-            value={internalValue}
+            value={Number(internalValue)}
             onChange={(e) => handleChange(Number(e.target.value))}
             disabled={props.disabled}
             className={`${baseClasses} h-2 bg-[color:var(--bg-tertiary)] rounded-lg appearance-none cursor-pointer
@@ -230,7 +230,7 @@ export function SettingControl(props: SettingControlProps) {
       <input
         type={inputProps.type}
         id={props.id}
-        value={internalValue}
+        value={typeof internalValue === 'boolean' ? '' : internalValue}
         onChange={(e) => {
           const newValue = inputProps.type === 'number' ? Number(e.target.value) : e.target.value
           handleChange(newValue)

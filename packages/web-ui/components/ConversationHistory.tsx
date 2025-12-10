@@ -1,6 +1,6 @@
 'use client'
 
-import { ReactNode, useEffect, useMemo, useState } from 'react'
+import { ReactNode, useEffect, useMemo, useState, useRef } from 'react'
 import { MessageSquare, Pin, Trash2, Search } from 'lucide-react'
 
 interface ConversationMessage {
@@ -43,6 +43,8 @@ export default function ConversationHistory({
   headerActions
 }: ConversationHistoryProps) {
   const [searchTerm, setSearchTerm] = useState('')
+  const [confirmClear, setConfirmClear] = useState(false)
+  const confirmTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
   const filteredConversations = useMemo(() => {
     const term = searchTerm.trim().toLowerCase()
@@ -78,11 +80,32 @@ export default function ConversationHistory({
             {conversations.length > 0 && (
               <button
                 type="button"
-                onClick={onDeleteAllConversations}
-                className={`text-xs font-medium px-3 py-1.5 rounded-full border transition-colors disabled:opacity-40 disabled:cursor-not-allowed min-w-[60px] ui-bg-primary ui-border-light ${conversations.length === 0 ? 'ui-text-muted' : 'ui-text-secondary'}`}
+                onClick={() => {
+                  if (confirmClear) {
+                    // Clear the timeout and delete
+                    if (confirmTimeoutRef.current) {
+                      clearTimeout(confirmTimeoutRef.current)
+                      confirmTimeoutRef.current = null
+                    }
+                    setConfirmClear(false)
+                    onDeleteAllConversations()
+                  } else {
+                    // Show confirmation
+                    setConfirmClear(true)
+                    // Reset after 3 seconds
+                    confirmTimeoutRef.current = setTimeout(() => {
+                      setConfirmClear(false)
+                      confirmTimeoutRef.current = null
+                    }, 3000)
+                  }
+                }}
+                className={`text-xs font-medium px-3 py-1.5 rounded-full border transition-colors disabled:opacity-40 disabled:cursor-not-allowed min-w-[60px] ${confirmClear
+                    ? 'bg-red-500/10 text-red-500 border-red-500/50 hover:bg-red-500/20'
+                    : 'ui-bg-primary ui-border-light ui-text-secondary'
+                  }`}
                 disabled={conversations.length === 0}
               >
-                Clear
+                {confirmClear ? 'Confirm?' : 'Clear'}
               </button>
             )}
             <button

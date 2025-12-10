@@ -1,11 +1,12 @@
 'use client'
 
 import { useState, useEffect, useMemo } from 'react'
-import { ArrowLeft, Database, FileText, Globe, Upload, Trash2, RefreshCw, CheckCircle, AlertCircle, Clock, Info, X, Grid, List, Table, ChevronUp } from 'lucide-react'
+import { ArrowLeft, Database, FileText, Globe, Upload, Trash2, RefreshCw, CheckCircle, AlertCircle, Clock, Info, X, Grid, List, Table, ChevronUp, Layers, Link } from 'lucide-react'
 import FilterBar from './DataSourceManagement/FilterBar'
 import DocumentTable from './DataSourceManagement/DocumentTable'
 import DocumentGrid from './DataSourceManagement/DocumentGrid'
 import DocumentList from './DataSourceManagement/DocumentList'
+import DocumentPreview from './DataSourceManagement/DocumentPreview'
 import BulkActions, { defaultBulkActions } from './DataSourceManagement/BulkActions'
 import ConfirmationModal from './ConfirmationModal'
 import { useToast } from './ToastProvider'
@@ -72,6 +73,25 @@ export default function DataSourceManagement({ isOpen, onClose, onBack }: DataSo
     selectAll: false,
     excludedIds: new Set()
   })
+
+  const [previewDocument, setPreviewDocument] = useState<IndexedDocument | null>(null)
+  const [showPreview, setShowPreview] = useState(false)
+
+  const handlePreviewDocument = (doc: IndexedDocument) => {
+    // Toggle: if same document already previewed, close it
+    if (showPreview && previewDocument?.id === doc.id) {
+      setShowPreview(false)
+      setPreviewDocument(null)
+    } else {
+      setPreviewDocument(doc)
+      setShowPreview(true)
+    }
+  }
+
+  const handleClosePreview = () => {
+    setShowPreview(false)
+    setPreviewDocument(null)
+  }
 
 
 
@@ -233,7 +253,8 @@ export default function DataSourceManagement({ isOpen, onClose, onBack }: DataSo
     }
   }
 
-  const formatFileSize = (bytes: number) => {
+  const formatFileSize = (bytes: number | undefined | null) => {
+    if (bytes === undefined || bytes === null || isNaN(bytes) || bytes < 0) return '-'
     if (bytes === 0) return '0 Bytes'
     const k = 1024
     const sizes = ['Bytes', 'KB', 'MB', 'GB']
@@ -403,37 +424,37 @@ export default function DataSourceManagement({ isOpen, onClose, onBack }: DataSo
     <div className="drawer-overlay" onClick={onClose}>
       <div className="drawer-panel fixed right-0 top-0 h-full w-full max-w-6xl overflow-hidden">
         {/* Header */}
-         <div className="drawer-header" onClick={(e) => e.stopPropagation()}>
-           <div className="flex items-center gap-3">
-             <button onClick={onBack} className="btn-close">
-               <ArrowLeft className="w-4 h-4" />
-             </button>
-             <div className="drawer-title">
-               <Database className="w-5 h-5 ui-text-secondary" />
-               Data Source Management
-             </div>
-           </div>
-           <div className="flex items-center gap-2">
-             <button
-               onClick={handleClearIndex}
-               className="btn-secondary btn-small"
-             >
-               <Trash2 className="w-4 h-4" />
-               Clear Index
-             </button>
-             <button
-               onClick={handleRefresh}
-               disabled={loading}
-               className="btn-secondary btn-small"
-             >
-               <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-               Refresh
-             </button>
-             <button onClick={onClose} className="btn-close">
-               <X className="w-4 h-4" />
-             </button>
-           </div>
-         </div>
+        <div className="drawer-header" onClick={(e) => e.stopPropagation()}>
+          <div className="flex items-center gap-3">
+            <button onClick={onBack} className="btn-close">
+              <ArrowLeft className="w-4 h-4" />
+            </button>
+            <div className="drawer-title">
+              <Database className="w-5 h-5 ui-text-secondary" />
+              Data Source Management
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleClearIndex}
+              className="btn-secondary btn-small"
+            >
+              <Trash2 className="w-4 h-4" />
+              Clear Index
+            </button>
+            <button
+              onClick={handleRefresh}
+              disabled={loading}
+              className="btn-secondary btn-small"
+            >
+              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+              Refresh
+            </button>
+            <button onClick={onClose} className="btn-close">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
 
         <div className="p-6 overflow-y-auto h-full" onClick={(e) => e.stopPropagation()}>
           {/* Error Display */}
@@ -451,20 +472,29 @@ export default function DataSourceManagement({ isOpen, onClose, onBack }: DataSo
           {stats && (
             <div className="mb-6">
               <h3 className="text-lg font-semibold ui-text-primary mb-4">Overview</h3>
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+
+              {/* Main Stats Row */}
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-4">
                 <div className="p-4 ui-bg-tertiary border ui-border-faint rounded-lg">
                   <div className="flex items-center gap-2 mb-2">
                     <FileText className="w-4 h-4 ui-text-secondary" />
-                    <span className="text-sm font-medium ui-text-secondary">Total Documents</span>
+                    <span className="text-sm font-medium ui-text-secondary">Documents</span>
                   </div>
                   <div className="text-2xl font-bold ui-text-primary">{stats.total_documents}</div>
+                </div>
+                <div className="p-4 ui-bg-tertiary border ui-border-faint rounded-lg">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Layers className="w-4 h-4 ui-text-secondary" />
+                    <span className="text-sm font-medium ui-text-secondary">Chunks</span>
+                  </div>
+                  <div className="text-2xl font-bold ui-text-primary">{(stats as any).total_chunks || 0}</div>
                 </div>
                 <div className="p-4 ui-bg-tertiary border ui-border-faint rounded-lg">
                   <div className="flex items-center gap-2 mb-2">
                     <Database className="w-4 h-4 ui-text-secondary" />
                     <span className="text-sm font-medium ui-text-secondary">Total Size</span>
                   </div>
-                  <div className="text-2xl font-bold ui-text-primary">{formatFileSize(stats.total_size)}</div>
+                  <div className="text-xl font-bold ui-text-primary">{formatFileSize(stats.total_size)}</div>
                 </div>
                 <div className="p-4 ui-bg-tertiary border ui-border-faint rounded-lg">
                   <div className="flex items-center gap-2 mb-2">
@@ -477,7 +507,7 @@ export default function DataSourceManagement({ isOpen, onClose, onBack }: DataSo
                 </div>
                 <div className="p-4 ui-bg-tertiary border ui-border-faint rounded-lg">
                   <div className="flex items-center gap-2 mb-2">
-                    <CheckCircle className="w-4 h-4 ui-text-secondary" />
+                    <CheckCircle className="w-4 h-4 text-[var(--success)]" />
                     <span className="text-sm font-medium ui-text-secondary">Indexed</span>
                   </div>
                   <div className="text-2xl font-bold text-[var(--success)]">
@@ -485,6 +515,53 @@ export default function DataSourceManagement({ isOpen, onClose, onBack }: DataSo
                   </div>
                 </div>
               </div>
+
+              {/* Source Breakdown */}
+              {stats.sources && Object.keys(stats.sources).length > 0 && (
+                <div className="p-4 ui-bg-tertiary border ui-border-faint rounded-lg">
+                  <div className="flex items-center gap-2 mb-3">
+                    <span className="text-sm font-medium ui-text-secondary">Sources</span>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {Object.entries(stats.sources).map(([sourceType, sourceData]) => {
+                      const getSourceIcon = () => {
+                        switch (sourceType) {
+                          case 'file_upload': return <Upload className="w-3 h-3" />
+                          case 'confluence': return <Globe className="w-3 h-3" />
+                          case 'url_ingestion': return <Link className="w-3 h-3" />
+                          default: return <FileText className="w-3 h-3" />
+                        }
+                      }
+                      const getSourceLabel = () => {
+                        switch (sourceType) {
+                          case 'file_upload': return 'File Upload'
+                          case 'confluence': return 'Confluence'
+                          case 'url_ingestion': return 'URL'
+                          default: return sourceType.replace('_', ' ')
+                        }
+                      }
+                      const getBadgeColor = () => {
+                        switch (sourceType) {
+                          case 'file_upload': return 'bg-blue-500/20 text-blue-400 border-blue-500/30'
+                          case 'confluence': return 'bg-orange-500/20 text-orange-400 border-orange-500/30'
+                          case 'url_ingestion': return 'bg-purple-500/20 text-purple-400 border-purple-500/30'
+                          default: return 'bg-gray-500/20 text-gray-400 border-gray-500/30'
+                        }
+                      }
+                      return (
+                        <div
+                          key={sourceType}
+                          className={`flex items-center gap-2 px-3 py-1.5 rounded-full border text-sm ${getBadgeColor()}`}
+                        >
+                          {getSourceIcon()}
+                          <span>{getSourceLabel()}</span>
+                          <span className="font-semibold">{(sourceData as any).count}</span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -496,76 +573,74 @@ export default function DataSourceManagement({ isOpen, onClose, onBack }: DataSo
             availableStatuses={availableOptions.statuses}
             availableContentTypes={availableOptions.contentTypes}
             availableTags={availableOptions.tags}
+            resultCount={filters.search ? filteredAndSortedDocuments.length : undefined}
           />
 
 
 
           {/* Documents Header with Bulk Actions */}
-           <div className="flex items-center justify-between h-12 mb-4">
-             <div className="flex items-center gap-4 h-full">
-               <h3 className="text-lg font-semibold ui-text-primary">
-                 Documents ({pagination.totalItems})
-               </h3>
+          <div className="flex items-center justify-between h-12 mb-4">
+            <div className="flex items-center gap-4 h-full">
+              <h3 className="text-lg font-semibold ui-text-primary">
+                Documents ({pagination.totalItems})
+              </h3>
 
-               {/* Items Per Page Selector */}
-               <select
-                 value={view.itemsPerPage}
-                 onChange={(e) => {
-                   const newItemsPerPage = parseInt(e.target.value)
-                   setView({ ...view, itemsPerPage: newItemsPerPage })
-                   setPagination({ ...pagination, currentPage: 1 })
-                 }}
-                 className="px-3 py-2 text-sm border ui-border-light rounded-md ui-bg-secondary btn-standard"
-               >
-                 <option value={25}>25 per page</option>
-                 <option value={50}>50 per page</option>
-                 <option value={100}>100 per page</option>
-                 <option value={200}>200 per page</option>
-               </select>
+              {/* Items Per Page Selector */}
+              <select
+                value={view.itemsPerPage}
+                onChange={(e) => {
+                  const newItemsPerPage = parseInt(e.target.value)
+                  setView({ ...view, itemsPerPage: newItemsPerPage })
+                  setPagination({ ...pagination, currentPage: 1 })
+                }}
+                className="px-3 py-2 text-sm border ui-border-light rounded-md ui-bg-secondary btn-standard"
+              >
+                <option value={25}>25 per page</option>
+                <option value={50}>50 per page</option>
+                <option value={100}>100 per page</option>
+                <option value={200}>200 per page</option>
+              </select>
 
-               {/* View Toggle */}
-               <div className="flex items-center gap-1 p-1 ui-bg-secondary border ui-border-faint rounded-lg h-9">
-                 <button
-                   onClick={() => setView({ ...view, type: 'table' })}
-                   className={`p-2 rounded-md transition-colors h-7 w-7 flex items-center justify-center ${
-                     view.type === 'table' ? 'ui-bg-tertiary' : 'hover:ui-bg-tertiary'
-                   }`}
-                   title="Table view"
-                 >
-                   <Table className="w-4 h-4" />
-                 </button>
-                 <button
-                   onClick={() => setView({ ...view, type: 'grid' })}
-                   className={`p-2 rounded-md transition-colors h-7 w-7 flex items-center justify-center ${
-                     view.type === 'grid' ? 'ui-bg-tertiary' : 'hover:ui-bg-tertiary'
-                   }`}
-                   title="Grid view"
-                 >
-                   <Grid className="w-4 h-4" />
-                 </button>
-                 <button
-                   onClick={() => setView({ ...view, type: 'list' })}
-                   className={`p-2 rounded-md transition-colors h-7 w-7 flex items-center justify-center ${
-                     view.type === 'list' ? 'ui-bg-tertiary' : 'hover:ui-bg-tertiary'
-                   }`}
-                   title="List view"
-                 >
-                   <List className="w-4 h-4" />
-                 </button>
-               </div>
-             </div>
+              {/* View Toggle */}
+              <div className="flex items-center gap-1 p-1 ui-bg-secondary border ui-border-faint rounded-lg h-9">
+                <button
+                  onClick={() => setView({ ...view, type: 'table' })}
+                  className={`p-2 rounded-md transition-colors h-7 w-7 flex items-center justify-center ${view.type === 'table' ? 'ui-bg-tertiary' : 'hover:ui-bg-tertiary'
+                    }`}
+                  title="Table view"
+                >
+                  <Table className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => setView({ ...view, type: 'grid' })}
+                  className={`p-2 rounded-md transition-colors h-7 w-7 flex items-center justify-center ${view.type === 'grid' ? 'ui-bg-tertiary' : 'hover:ui-bg-tertiary'
+                    }`}
+                  title="Grid view"
+                >
+                  <Grid className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => setView({ ...view, type: 'list' })}
+                  className={`p-2 rounded-md transition-colors h-7 w-7 flex items-center justify-center ${view.type === 'list' ? 'ui-bg-tertiary' : 'hover:ui-bg-tertiary'
+                    }`}
+                  title="List view"
+                >
+                  <List className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
 
-             {/* Bulk Actions in Documents Header */}
-             <div className="flex items-center h-full">
-               <BulkActions
-                 selectedIds={Array.from(selection.selectedIds)}
-                 actions={defaultBulkActions}
-                 onActionComplete={handleBulkActionComplete}
-                 hasSelection={selection.selectedIds.size > 0}
-                 compact={true}
-               />
-             </div>
-           </div>
+            {/* Bulk Actions in Documents Header */}
+            <div className="flex items-center h-full">
+              <BulkActions
+                selectedIds={Array.from(selection.selectedIds)}
+                actions={defaultBulkActions}
+                onActionComplete={handleBulkActionComplete}
+                hasSelection={selection.selectedIds.size > 0}
+                compact={true}
+              />
+            </div>
+          </div>
 
           {/* Document Display */}
           {loading ? (
@@ -596,6 +671,7 @@ export default function DataSourceManagement({ isOpen, onClose, onBack }: DataSo
                   selectedIds={selection.selectedIds}
                   onSelectDocument={handleSelectDocument}
                   onSelectAll={handleSelectAll}
+                  onPreviewDocument={handlePreviewDocument}
                 />
               )}
 
@@ -605,6 +681,7 @@ export default function DataSourceManagement({ isOpen, onClose, onBack }: DataSo
                   selectedIds={selection.selectedIds}
                   onSelectDocument={handleSelectDocument}
                   onSelectAll={handleSelectAll}
+                  onPreviewDocument={handlePreviewDocument}
                 />
               )}
 
@@ -614,6 +691,7 @@ export default function DataSourceManagement({ isOpen, onClose, onBack }: DataSo
                   selectedIds={selection.selectedIds}
                   onSelectDocument={handleSelectDocument}
                   onSelectAll={handleSelectAll}
+                  onPreviewDocument={handlePreviewDocument}
                 />
               )}
 
@@ -659,11 +737,10 @@ export default function DataSourceManagement({ isOpen, onClose, onBack }: DataSo
                           <button
                             key={pageNum}
                             onClick={() => setPagination({ ...pagination, currentPage: pageNum })}
-                            className={`px-3 py-1 text-sm border rounded-md ${
-                              pagination.currentPage === pageNum
-                                ? 'ui-bg-tertiary border-[var(--accent)] ui-text-primary'
-                                : 'ui-border-light hover:ui-bg-tertiary'
-                            }`}
+                            className={`px-3 py-1 text-sm border rounded-md ${pagination.currentPage === pageNum
+                              ? 'ui-bg-tertiary border-[var(--accent)] ui-text-primary'
+                              : 'ui-border-light hover:ui-bg-tertiary'
+                              }`}
                           >
                             {pageNum}
                           </button>
@@ -700,6 +777,12 @@ export default function DataSourceManagement({ isOpen, onClose, onBack }: DataSo
         onConfirm={handleConfirmClearIndex}
         onCancel={handleCancelClearIndex}
         type="danger"
+      />
+
+      <DocumentPreview
+        document={previewDocument}
+        isOpen={showPreview}
+        onClose={handleClosePreview}
       />
     </div>
   )

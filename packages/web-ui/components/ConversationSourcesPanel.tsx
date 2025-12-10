@@ -30,11 +30,13 @@ export default function ConversationSourcesPanel({ open, onClose, sources }: Con
   }
 
   return (
-    <div className="sources-panel-backdrop" role="presentation">
+    <div className="sources-panel-backdrop" role="presentation" onClick={onClose}>
       <aside
         className="sources-panel"
         role="complementary"
         aria-label="Conversation sources"
+        onClick={(e) => e.stopPropagation()}
+        style={{ cursor: 'default' }}
       >
         <header className="sources-panel__header">
           <div>

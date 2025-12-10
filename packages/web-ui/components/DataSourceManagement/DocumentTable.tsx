@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { ArrowUpDown, ArrowUp, ArrowDown, FileText, Globe, Upload, Database, ExternalLink, Eye, MoreHorizontal } from 'lucide-react'
+import { ArrowUpDown, ArrowUp, ArrowDown, FileText, Globe, Upload, Database, ExternalLink, Eye, MoreHorizontal, AlertTriangle, Trash2 } from 'lucide-react'
 import { IndexedDocument, SortOptions } from './types'
 
 interface DocumentTableProps {
@@ -14,6 +14,8 @@ interface DocumentTableProps {
   onPreviewDocument?: (document: IndexedDocument) => void
 }
 
+// Separate state for action menu (click) vs row hover
+
 export default function DocumentTable({
   documents,
   sort,
@@ -23,7 +25,7 @@ export default function DocumentTable({
   onSelectAll,
   onPreviewDocument
 }: DocumentTableProps) {
-  const [hoveredRow, setHoveredRow] = useState<string | null>(null)
+  const [actionMenuId, setActionMenuId] = useState<string | null>(null)
 
   const handleSort = (field: SortOptions['field']) => {
     if (sort.field === field) {
@@ -60,7 +62,41 @@ export default function DocumentTable({
     }
   }
 
-  const formatFileSize = (bytes: number) => {
+  const getSourceLabel = (sourceType: string) => {
+    switch (sourceType) {
+      case 'file_upload':
+        return 'File Upload'
+      case 'confluence':
+        return 'Confluence'
+      case 'url_ingestion':
+        return 'URL'
+      case 'web_scraping':
+        return 'Web Scrape'
+      case 'database':
+        return 'Database'
+      default:
+        return sourceType.replace('_', ' ')
+    }
+  }
+
+  const getSpaceInfo = (doc: IndexedDocument) => {
+    // For Confluence - show space name
+    if (doc.source_type === 'confluence' && (doc as any).space_name) {
+      return (doc as any).space_name
+    }
+    // For URLs - show domain
+    if ((doc as any).source_detail) {
+      return (doc as any).source_detail
+    }
+    // For files - show content type
+    if (doc.content_type) {
+      return doc.content_type
+    }
+    return '-'
+  }
+
+  const formatFileSize = (bytes: number | undefined | null) => {
+    if (bytes === undefined || bytes === null || isNaN(bytes) || bytes < 0) return '-'
     if (bytes === 0) return '0 B'
     const k = 1024
     const sizes = ['B', 'KB', 'MB', 'GB']
@@ -71,6 +107,23 @@ export default function DocumentTable({
   const formatDate = (dateString?: string) => {
     if (!dateString) return 'Unknown'
     return new Date(dateString).toLocaleDateString()
+  }
+
+  const isStaleDocument = (dateString?: string) => {
+    if (!dateString) return false
+    const docDate = new Date(dateString)
+    const thirtyDaysAgo = new Date()
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
+    return docDate < thirtyDaysAgo
+  }
+
+  const getDaysSinceUpdate = (dateString?: string) => {
+    if (!dateString) return null
+    const docDate = new Date(dateString)
+    const now = new Date()
+    const diffTime = Math.abs(now.getTime() - docDate.getTime())
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+    return diffDays
   }
 
   const getStatusColor = (status: string) => {
@@ -93,10 +146,10 @@ export default function DocumentTable({
 
   return (
     <div className="overflow-x-auto">
-      <table className="w-full table-fixed">
+      <table className="w-full min-w-[800px]">
         <thead>
           <tr className="border-b ui-border-light">
-            <th className="w-12 p-3">
+            <th className="w-10 p-3 text-center align-middle">
               <input
                 type="checkbox"
                 checked={allSelected}
@@ -107,7 +160,7 @@ export default function DocumentTable({
                 className="rounded"
               />
             </th>
-            <th className="text-left p-3 w-64">
+            <th className="text-left p-3">
               <button
                 onClick={() => handleSort('title')}
                 className="flex items-center gap-2 hover:ui-text-primary transition-colors"
@@ -126,22 +179,14 @@ export default function DocumentTable({
               </button>
             </th>
             <th className="text-left p-3 w-20">
-              <button
-                onClick={() => handleSort('file_size')}
-                className="flex items-center gap-2 hover:ui-text-primary transition-colors"
-              >
-                Size
-                {getSortIcon('file_size')}
-              </button>
+              <span className="flex items-center gap-2">
+                Chunks
+              </span>
             </th>
-            <th className="text-left p-3 w-20">
-              <button
-                onClick={() => handleSort('page_count')}
-                className="flex items-center gap-2 hover:ui-text-primary transition-colors"
-              >
-                Pages
-                {getSortIcon('page_count')}
-              </button>
+            <th className="text-left p-3 w-32">
+              <span className="flex items-center gap-2">
+                Space / Info
+              </span>
             </th>
             <th className="text-left p-3 w-24">
               <button
@@ -161,7 +206,7 @@ export default function DocumentTable({
                 {getSortIcon('last_modified')}
               </button>
             </th>
-            <th className="w-12 p-3">Actions</th>
+            <th className="w-20 p-3 text-center">Actions</th>
           </tr>
         </thead>
         <tbody>
@@ -172,10 +217,8 @@ export default function DocumentTable({
                 border-b ui-border-faint hover:ui-bg-tertiary transition-colors
                 ${selectedIds.has(doc.id) ? 'ui-bg-tertiary' : ''}
               `}
-              onMouseEnter={() => setHoveredRow(doc.id)}
-              onMouseLeave={() => setHoveredRow(null)}
             >
-              <td className="p-3">
+              <td className="p-3 text-center align-middle">
                 <input
                   type="checkbox"
                   checked={selectedIds.has(doc.id)}
@@ -183,9 +226,9 @@ export default function DocumentTable({
                   className="rounded"
                 />
               </td>
-              <td className="p-3">
+              <td className="p-3 align-middle">
                 <div className="flex items-center gap-3">
-                  <div className="p-2 ui-bg-secondary rounded-md flex-shrink-0">
+                  <div className="p-1.5 ui-bg-secondary rounded flex-shrink-0">
                     {getSourceIcon(doc.source_type)}
                   </div>
                   <div className="min-w-0 flex-1">
@@ -203,58 +246,105 @@ export default function DocumentTable({
               <td className="p-3">
                 <div className="flex items-center gap-2">
                   {getSourceIcon(doc.source_type)}
-                  <span className="text-sm ui-text-secondary capitalize">
-                    {doc.source_type.replace('_', ' ')}
+                  <span className="text-sm ui-text-secondary">
+                    {getSourceLabel(doc.source_type)}
                   </span>
                 </div>
               </td>
               <td className="p-3">
-                <span className="text-sm ui-text-secondary">
-                  {doc.file_size ? formatFileSize(doc.file_size) : '-'}
+                <span className="text-sm ui-text-secondary font-medium">
+                  {doc.chunk_count || '-'}
                 </span>
               </td>
               <td className="p-3">
-                <span className="text-sm ui-text-secondary">
-                  {doc.page_count || '-'}
+                <span className="text-sm ui-text-muted truncate max-w-[120px] block" title={getSpaceInfo(doc)}>
+                  {getSpaceInfo(doc)}
                 </span>
               </td>
               <td className="p-3">
                 <div className="flex items-center gap-2">
-                  <div className={`w-2 h-2 rounded-full ${
-                    doc.status === 'indexed' ? 'bg-[var(--success)]' :
+                  <div className={`w-2 h-2 rounded-full ${doc.status === 'indexed' ? 'bg-[var(--success)]' :
                     doc.status === 'error' ? 'bg-[var(--error)]' :
-                    doc.status === 'processing' ? 'bg-[var(--accent)] animate-pulse' :
-                    'bg-[var(--warning)]'
-                  }`} />
+                      doc.status === 'processing' ? 'bg-[var(--accent)] animate-pulse' :
+                        'bg-[var(--warning)]'
+                    }`} />
                   <span className={`text-sm capitalize ${getStatusColor(doc.status)}`}>
                     {doc.status}
                   </span>
+                  {doc.status === 'error' && doc.error_message && (
+                    <span className="text-xs ui-text-muted truncate max-w-[80px]" title={doc.error_message}>
+                      ({doc.error_message.slice(0, 20)}...)
+                    </span>
+                  )}
                 </div>
               </td>
               <td className="p-3">
-                <span className="text-sm ui-text-secondary">
-                  {formatDate(doc.last_modified)}
-                </span>
+                <div className="flex items-center gap-1">
+                  <span className="text-sm ui-text-secondary">
+                    {formatDate(doc.last_modified)}
+                  </span>
+                  {isStaleDocument(doc.last_modified) && (
+                    <span
+                      title={`Not updated in ${getDaysSinceUpdate(doc.last_modified)} days`}
+                      className="text-[var(--warning)]"
+                    >
+                      <AlertTriangle className="w-3 h-3" />
+                    </span>
+                  )}
+                </div>
               </td>
-              <td className="p-3">
+              <td className="p-3 align-middle">
                 <div className="flex items-center gap-1">
                   {onPreviewDocument && (
                     <button
                       onClick={() => onPreviewDocument(doc)}
-                      className="p-1 hover:ui-bg-secondary rounded transition-colors"
+                      className="p-1.5 hover:ui-bg-secondary rounded transition-colors"
                       title="Preview document"
                     >
                       <Eye className="w-4 h-4 ui-text-muted" />
                     </button>
                   )}
-                  {hoveredRow === doc.id && (
+                  <div className="relative">
                     <button
-                      className="p-1 hover:ui-bg-secondary rounded transition-colors"
+                      onClick={() => setActionMenuId(actionMenuId === doc.id ? null : doc.id)}
+                      className="p-1.5 hover:ui-bg-secondary rounded transition-colors"
                       title="More actions"
                     >
                       <MoreHorizontal className="w-4 h-4 ui-text-muted" />
                     </button>
-                  )}
+                    {actionMenuId === doc.id && (
+                      <>
+                        <div
+                          className="fixed inset-0 z-10"
+                          onClick={() => setActionMenuId(null)}
+                        />
+                        <div className="absolute right-0 top-full mt-1 w-40 ui-bg-secondary border ui-border-faint rounded-lg shadow-lg z-20">
+                          {onPreviewDocument && (
+                            <button
+                              onClick={() => {
+                                onPreviewDocument(doc)
+                                setActionMenuId(null)
+                              }}
+                              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:ui-bg-tertiary transition-colors rounded-t-lg"
+                            >
+                              <Eye className="w-4 h-4" />
+                              Preview
+                            </button>
+                          )}
+                          <button
+                            onClick={() => {
+                              onSelectDocument(doc.id)
+                              setActionMenuId(null)
+                            }}
+                            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:ui-bg-tertiary text-[var(--error)] transition-colors rounded-b-lg"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                            Select for Delete
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
                 </div>
               </td>
             </tr>

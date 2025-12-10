@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { Search, Filter, X, Calendar, FileText, Tag, ChevronDown, ChevronUp } from 'lucide-react'
+import { useState, useEffect, useRef } from 'react'
+import { Search, Filter, X, Calendar, FileText, Tag, ChevronDown, ChevronUp, Clock, Loader2 } from 'lucide-react'
 import { FilterOptions } from './types'
 
 interface FilterBarProps {
@@ -11,7 +11,12 @@ interface FilterBarProps {
   availableStatuses: string[]
   availableContentTypes: string[]
   availableTags: string[]
+  resultCount?: number
+  isSearching?: boolean
 }
+
+const RECENT_SEARCHES_KEY = 'cabin_recent_searches'
+const MAX_RECENT_SEARCHES = 5
 
 export default function FilterBar({
   filters,
@@ -19,19 +24,79 @@ export default function FilterBar({
   availableSourceTypes,
   availableStatuses,
   availableContentTypes,
-  availableTags
+  availableTags,
+  resultCount,
+  isSearching = false
 }: FilterBarProps) {
   const [localFilters, setLocalFilters] = useState<FilterOptions>(filters)
   const [showAdvanced, setShowAdvanced] = useState(false)
+  const [showRecentSearches, setShowRecentSearches] = useState(false)
+  const [recentSearches, setRecentSearches] = useState<string[]>([])
+  const debounceRef = useRef<NodeJS.Timeout | null>(null)
+  const searchInputRef = useRef<HTMLInputElement>(null)
+
+  // Load recent searches from localStorage
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(RECENT_SEARCHES_KEY)
+      if (saved) {
+        setRecentSearches(JSON.parse(saved))
+      }
+    } catch (e) {
+      console.error('Failed to load recent searches:', e)
+    }
+  }, [])
 
   useEffect(() => {
     setLocalFilters(filters)
   }, [filters])
 
+  const saveRecentSearch = (search: string) => {
+    if (!search.trim()) return
+    const updated = [search, ...recentSearches.filter(s => s !== search)].slice(0, MAX_RECENT_SEARCHES)
+    setRecentSearches(updated)
+    try {
+      localStorage.setItem(RECENT_SEARCHES_KEY, JSON.stringify(updated))
+    } catch (e) {
+      console.error('Failed to save recent searches:', e)
+    }
+  }
+
+  const handleSearchFocus = () => {
+    if (recentSearches.length > 0 && !localFilters.search) {
+      setShowRecentSearches(true)
+    }
+  }
+
+  const handleSearchBlur = () => {
+    setTimeout(() => setShowRecentSearches(false), 200)
+  }
+
+  const selectRecentSearch = (search: string) => {
+    const updated = { ...localFilters, search }
+    setLocalFilters(updated)
+    onFiltersChange(updated)
+    setShowRecentSearches(false)
+  }
+
   const updateFilters = (newFilters: Partial<FilterOptions>) => {
     const updated = { ...localFilters, ...newFilters }
     setLocalFilters(updated)
-    onFiltersChange(updated)
+
+    // Debounce search to avoid excessive updates
+    if ('search' in newFilters) {
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current)
+      }
+      debounceRef.current = setTimeout(() => {
+        onFiltersChange(updated)
+        if (newFilters.search) {
+          saveRecentSearch(newFilters.search)
+        }
+      }, 300)
+    } else {
+      onFiltersChange(updated)
+    }
   }
 
   const clearAllFilters = () => {
@@ -83,14 +148,27 @@ export default function FilterBar({
         {/* Search Input */}
         <div className="flex-1">
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 ui-text-muted" />
+            {isSearching ? (
+              <Loader2 className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 ui-text-muted animate-spin" />
+            ) : (
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 ui-text-muted" />
+            )}
             <input
-               type="text"
-               placeholder="Search documents by title, content, or metadata..."
-               value={localFilters.search}
-               onChange={(e) => updateFilters({ search: e.target.value })}
-               className="w-full !pl-12 pr-4 py-3 border ui-border-light rounded-lg ui-bg-secondary focus:outline-none focus:ring-2 focus:ring-[var(--accent)] focus:border-transparent btn-standard"
-             />
+              ref={searchInputRef}
+              type="text"
+              placeholder="Search documents by title, content, or metadata..."
+              value={localFilters.search}
+              onChange={(e) => updateFilters({ search: e.target.value })}
+              onFocus={handleSearchFocus}
+              onBlur={handleSearchBlur}
+              className="w-full !pl-12 pr-20 py-3 border ui-border-light rounded-lg ui-bg-secondary focus:outline-none focus:ring-2 focus:ring-[var(--accent)] focus:border-transparent btn-standard"
+            />
+            {/* Result count */}
+            {resultCount !== undefined && localFilters.search && (
+              <span className="absolute right-10 top-1/2 transform -translate-y-1/2 text-xs ui-text-muted">
+                {resultCount} result{resultCount !== 1 ? 's' : ''}
+              </span>
+            )}
             {localFilters.search && (
               <button
                 onClick={() => updateFilters({ search: '' })}
@@ -98,6 +176,25 @@ export default function FilterBar({
               >
                 <X className="w-4 h-4" />
               </button>
+            )}
+
+            {/* Recent Searches Dropdown */}
+            {showRecentSearches && recentSearches.length > 0 && (
+              <div className="absolute top-full left-0 right-0 mt-1 p-2 ui-bg-secondary border ui-border-light rounded-lg shadow-lg z-10">
+                <div className="flex items-center gap-2 px-2 py-1 text-xs ui-text-muted mb-1">
+                  <Clock className="w-3 h-3" />
+                  Recent Searches
+                </div>
+                {recentSearches.map((search, index) => (
+                  <button
+                    key={index}
+                    onClick={() => selectRecentSearch(search)}
+                    className="w-full text-left px-3 py-2 text-sm ui-text-secondary hover:ui-bg-tertiary rounded-md transition-colors"
+                  >
+                    {search}
+                  </button>
+                ))}
+              </div>
             )}
           </div>
         </div>

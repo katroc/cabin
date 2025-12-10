@@ -1,48 +1,14 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Loader2, Send, StopCircle, BookOpen, Copy, RefreshCw, Check, ArrowDown } from 'lucide-react'
-import SmartResponse from './SmartResponse'
+import { BookOpen, ArrowDown } from 'lucide-react'
 import ExportDropdown from './ExportDropdown'
-import PersonaSelector from './PersonaSelector'
-import { useUIPreferences, PersonaType, ChatMode } from './contexts/UIPreferencesProvider'
+import { useUIPreferences } from './contexts/UIPreferencesProvider'
 import ConversationSourcesPanel, { AggregatedSource } from './ConversationSourcesPanel'
-import { splitThinking, deriveAnswerFromThinking } from '../utils/thinking'
-
-interface Citation {
-  id: string
-  page_title: string
-  space_name?: string
-  source_url?: string
-  url?: string
-  quote?: string
-  page_section?: string
-  last_modified?: string
-  chunk_id?: string
-  page_version?: number
-}
-
-interface RenderedCitation {
-  index: number
-  chunk_id: string
-  title: string
-  url: string
-  quote: string
-  space?: string
-  page_version?: number
-  merged_from?: number
-  all_chunk_ids?: string[]
-}
-
-interface Message {
-  id: string
-  role: 'user' | 'assistant'
-  content: string
-  thinking?: string
-  citations?: Citation[]
-  rendered_citations?: RenderedCitation[]
-  timestamp: Date
-}
+import { deriveAnswerFromThinking } from '../utils/thinking'
+import { MessageBubble } from './chat'
+import ChatComposer from './chat/ChatComposer'
+import { useChatStream, Message, Citation, RenderedCitation } from '../app/hooks/useChatStream'
 
 interface Conversation {
   id: string
@@ -61,12 +27,6 @@ interface ChatInterfaceProps {
   onConversationTitleChange: (title: string) => void
 }
 
-const CHAT_ENDPOINT = 'http://localhost:8788/api/chat'
-const CHAT_STREAM_ENDPOINT = 'http://localhost:8788/api/chat/stream'
-const CHAT_DIRECT_ENDPOINT = 'http://localhost:8788/api/chat/direct'
-const CHAT_DIRECT_STREAM_ENDPOINT = 'http://localhost:8788/api/chat/direct/stream'
-
-
 export default function ChatInterface({
   conversation,
   onMessagesChange,
@@ -74,8 +34,6 @@ export default function ChatInterface({
   onConversationTitleChange
 }: ChatInterfaceProps) {
   const [input, setInput] = useState('')
-  const [isProcessing, setIsProcessing] = useState(false)
-  const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null)
   const [isSourcesPanelOpen, setIsSourcesPanelOpen] = useState(false)
   const [hoveredMessageId, setHoveredMessageId] = useState<string | null>(null)
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null)
@@ -85,12 +43,39 @@ export default function ChatInterface({
   const { persona, chatMode } = preferences
   const messagesEndRef = useRef<HTMLDivElement | null>(null)
   const messagesContainerRef = useRef<HTMLDivElement | null>(null)
-  const abortControllerRef = useRef<AbortController | null>(null)
   const lastAssistantIdRef = useRef<string | null>(null)
   const inputRef = useRef<HTMLTextAreaElement | null>(null)
 
   const messages = conversation?.messages ?? []
 
+  // Update message helper
+  const updateAssistantMessage = useCallback(
+    (assistantId: string, updater: (message: Message) => Message) => {
+      onMessagesChange(prevMessages =>
+        prevMessages.map(message => (message.id === assistantId ? updater(message) : message))
+      )
+    },
+    [onMessagesChange]
+  )
+
+  // Use the chat stream hook
+  const {
+    isProcessing,
+    streamingMessageId,
+    abortController,
+    streamResponse,
+    requestFullResponse,
+    stopGeneration,
+    setIsProcessing,
+    setStreamingMessageId,
+  } = useChatStream({
+    conversationId: conversation?.id,
+    chatMode,
+    persona,
+    onUpdateMessage: updateAssistantMessage,
+  })
+
+  // Aggregate sources from conversation
   const aggregatedSources = useMemo<AggregatedSource[]>(() => {
     if (!conversation) return []
     const map = new Map<string, AggregatedSource>()
@@ -145,6 +130,7 @@ export default function ChatInterface({
     )
   }, [conversation])
 
+  // Close sources panel if no sources
   useEffect(() => {
     if (isSourcesPanelOpen && aggregatedSources.length === 0) {
       setIsSourcesPanelOpen(false)
@@ -159,11 +145,8 @@ export default function ChatInterface({
     setIsProcessing(false)
     setStreamingMessageId(null)
     lastAssistantIdRef.current = null
-    abortControllerRef.current?.abort()
-    abortControllerRef.current = null
-    // Focus input when conversation changes
     inputRef.current?.focus()
-  }, [conversation?.id])
+  }, [conversation?.id, setIsProcessing, setStreamingMessageId])
 
   // Save draft to localStorage when input changes
   useEffect(() => {
@@ -176,25 +159,23 @@ export default function ChatInterface({
     }
   }, [input, conversation?.id])
 
-  // Smooth scroll anchoring during streaming
+  // Smooth scroll during streaming - always scroll unless user has scrolled up
   useEffect(() => {
     if (!conversation || !streamingMessageId) return
 
     const container = messagesContainerRef.current
     if (!container) return
 
-    // Keep scroll pinned to bottom during streaming
-    const scrollToBottom = () => {
-      if (isAutoScrolling) {
-        container.scrollTop = container.scrollHeight
-      }
-    }
+    // Force auto-scrolling when streaming starts
+    setIsAutoScrolling(true)
 
-    // Use RAF for smooth updates
     let rafId: number
     const scheduleScroll = () => {
       rafId = requestAnimationFrame(() => {
-        scrollToBottom()
+        // During streaming, keep scrolling to bottom if still auto-scrolling
+        if (isAutoScrolling && streamingMessageId) {
+          container.scrollTop = container.scrollHeight
+        }
         if (streamingMessageId) {
           scheduleScroll()
         }
@@ -202,15 +183,10 @@ export default function ChatInterface({
     }
 
     scheduleScroll()
-
-    return () => {
-      if (rafId) {
-        cancelAnimationFrame(rafId)
-      }
-    }
+    return () => { if (rafId) cancelAnimationFrame(rafId) }
   }, [streamingMessageId, isAutoScrolling, conversation])
 
-  // Scroll on new messages (non-streaming)
+  // Scroll on new messages
   useEffect(() => {
     if (!conversation || streamingMessageId) return
 
@@ -225,7 +201,7 @@ export default function ChatInterface({
     }
   }, [conversation?.messages, conversation?.id, streamingMessageId])
 
-  // Scroll detection to show/hide scroll button and manage auto-scroll
+  // Scroll detection for button
   useEffect(() => {
     const container = messagesContainerRef.current
     if (!container) return
@@ -233,14 +209,12 @@ export default function ChatInterface({
     const handleScroll = () => {
       const { scrollTop, scrollHeight, clientHeight } = container
       const isNearBottom = scrollHeight - scrollTop - clientHeight < 200
-
       setShowScrollButton(!isNearBottom && messages.length > 0)
       setIsAutoScrolling(isNearBottom)
     }
 
     container.addEventListener('scroll', handleScroll)
-    handleScroll() // Check initial state
-
+    handleScroll()
     return () => container.removeEventListener('scroll', handleScroll)
   }, [messages.length])
 
@@ -248,162 +222,7 @@ export default function ChatInterface({
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [])
 
-
-  const updateAssistantMessage = useCallback(
-    (assistantId: string, updater: (message: Message) => Message) => {
-      onMessagesChange(prevMessages =>
-        prevMessages.map(message => (message.id === assistantId ? updater(message) : message))
-      )
-    },
-    [onMessagesChange]
-  )
-
-  const streamResponse = useCallback(
-    async (prompt: string, assistantId: string): Promise<string> => {
-      const controller = new AbortController()
-      abortControllerRef.current = controller
-      setStreamingMessageId(assistantId)
-
-      const endpoint = chatMode === 'rag' ? CHAT_STREAM_ENDPOINT : CHAT_DIRECT_STREAM_ENDPOINT
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          message: prompt,
-          conversation_id: conversation?.id,
-          persona: persona
-        }),
-        signal: controller.signal
-      })
-
-      if (!response.ok || !response.body) {
-        setStreamingMessageId(null)
-        throw new Error('Streaming not available')
-      }
-
-      const reader = response.body.getReader()
-      const decoder = new TextDecoder()
-      let rawResponse = ''
-      let visibleResponse = ''
-      let thinkingContent = ''
-      let citations: any[] = []
-      let renderedCitations: any[] = []
-      let lastUpdate = 0
-
-      while (true) {
-        const { value, done } = await reader.read()
-        if (done) break
-
-        const chunk = decoder.decode(value, { stream: true })
-        let cleanChunk = chunk
-
-        if (chunk.includes('---METADATA---')) {
-          const metadataRegex = /---METADATA---(\{.*?\})---END---/g
-          let metadataMatch: RegExpExecArray | null
-          while ((metadataMatch = metadataRegex.exec(chunk)) !== null) {
-            try {
-              const metadata = JSON.parse(metadataMatch[1])
-              citations = metadata.citations || []
-              renderedCitations = metadata.rendered_citations || []
-              if (typeof metadata.thinking === 'string') {
-                thinkingContent = metadata.thinking
-              }
-              updateAssistantMessage(assistantId, message => ({
-                ...message,
-                citations,
-                rendered_citations: renderedCitations,
-                thinking: thinkingContent || message.thinking
-              }))
-            } catch (err) {
-              console.warn('Failed to parse streaming metadata:', err)
-            }
-          }
-          cleanChunk = chunk.replace(metadataRegex, '')
-        }
-
-        if (cleanChunk) {
-          rawResponse += cleanChunk
-          const split = splitThinking(rawResponse)
-          const answer = split.answer.trim()
-          const thinking = split.thinking.trim()
-
-          let nextVisible = answer
-          if (!nextVisible && thinking) {
-            nextVisible = deriveAnswerFromThinking(thinking, false)
-          }
-          visibleResponse = nextVisible || ''
-          if (thinking) {
-            thinkingContent = thinking
-          }
-        }
-
-        const now = Date.now()
-        if (now - lastUpdate > 50) {
-          updateAssistantMessage(assistantId, message => ({
-            ...message,
-            content: visibleResponse,
-            thinking: thinkingContent || message.thinking,
-            citations: message.citations?.length ? message.citations : citations,
-            rendered_citations: message.rendered_citations?.length
-              ? message.rendered_citations
-              : renderedCitations
-          }))
-          lastUpdate = now
-          await new Promise(resolve => setTimeout(resolve, 8))
-        }
-      }
-
-      updateAssistantMessage(assistantId, message => ({
-        ...message,
-        content: visibleResponse,
-        thinking: thinkingContent || message.thinking,
-        citations: message.citations?.length ? message.citations : citations,
-        rendered_citations: message.rendered_citations?.length
-          ? message.rendered_citations
-          : renderedCitations
-      }))
-
-      setStreamingMessageId(null)
-      abortControllerRef.current = null
-      return visibleResponse
-    },
-    [chatMode, persona, updateAssistantMessage]
-  )
-
-  const requestFullResponse = useCallback(async (prompt: string) => {
-    const controller = new AbortController()
-    // Don't overwrite the main abortControllerRef during streaming
-    const endpoint = chatMode === 'rag' ? CHAT_ENDPOINT : CHAT_DIRECT_ENDPOINT
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        message: prompt,
-        conversation_id: conversation?.id,
-        persona: persona
-      }),
-      signal: controller.signal
-    })
-
-    if (!response.ok) {
-      throw new Error('Network response was not ok')
-    }
-
-    return response.json()
-  }, [chatMode, persona])
-
-  const handleStopGeneration = useCallback(() => {
-    abortControllerRef.current?.abort()
-    abortControllerRef.current = null
-    setIsProcessing(false)
-    setStreamingMessageId(null)
-    lastAssistantIdRef.current = null
-  }, [])
-
+  // Send message handler
   const sendMessage = useCallback(async () => {
     if (!conversation) return
     const question = input.trim()
@@ -436,10 +255,6 @@ export default function ChatInterface({
     setInput('')
     setIsProcessing(true)
 
-    // Show verification animation for potential RAG requests (we'll hide it if it's not RAG)
-    if (chatMode === 'rag') {
-    }
-
     let streamedText = ''
     let streamingFailed = false
 
@@ -448,10 +263,8 @@ export default function ChatInterface({
     } catch (error) {
       streamingFailed = true
       setStreamingMessageId(null)
-      if ((error as Error).name === 'AbortError') {
-        return
-      }
-      console.warn('Streaming unavailable, falling back to standard response:', error)
+      if ((error as Error).name === 'AbortError') return
+      console.warn('Streaming unavailable, falling back:', error)
     }
 
     if (streamingFailed || !streamedText) {
@@ -463,9 +276,7 @@ export default function ChatInterface({
         if (!visible && thinking) {
           visible = deriveAnswerFromThinking(thinking)
         }
-        if (!visible) {
-          visible = 'No response received'
-        }
+        if (!visible) visible = 'No response received'
 
         updateAssistantMessage(assistantMessageId, message => ({
           ...message,
@@ -476,93 +287,41 @@ export default function ChatInterface({
           timestamp: new Date()
         }))
       } catch (error) {
-        console.error('Both streaming and regular endpoints failed:', error)
+        console.error('Both endpoints failed:', error)
         updateAssistantMessage(assistantMessageId, message => ({
           ...message,
           content: 'Sorry, I encountered an error processing your request.',
-          thinking: '',
-          citations: [],
-          rendered_citations: [],
           timestamp: new Date()
         }))
       }
     } else {
-      // Streaming succeeded and citations were already added during streaming
-      // Just add timestamp and clear verification animation
       updateAssistantMessage(assistantMessageId, message => ({
         ...message,
         timestamp: new Date()
       }))
-      }
+    }
 
-    // Cleanup
-    setIsProcessing(false);
-    setStreamingMessageId(null);
-    abortControllerRef.current = null;
-    lastAssistantIdRef.current = null;
-    // Refocus input after message is sent
-    setTimeout(() => inputRef.current?.focus(), 100);
+    setIsProcessing(false)
+    setStreamingMessageId(null)
+    lastAssistantIdRef.current = null
+    setTimeout(() => inputRef.current?.focus(), 100)
   }, [
-    conversation,
-    input,
-    isProcessing,
-    onConversationTitleChange,
-    onMessagesChange,
-    requestFullResponse,
-    streamResponse,
-    updateAssistantMessage
+    conversation, input, isProcessing, onConversationTitleChange, onMessagesChange,
+    requestFullResponse, streamResponse, updateAssistantMessage, setIsProcessing, setStreamingMessageId
   ])
 
-  const handleSubmit = async (event: React.FormEvent) => {
-    event.preventDefault()
-    await sendMessage()
-  }
-
-  const handleComposerKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (event.key === 'Enter' && !event.shiftKey) {
-      event.preventDefault()
-      void sendMessage()
-    } else if (event.key === 'Tab') {
-      event.preventDefault()
-      setChatMode(chatMode === 'rag' ? 'llm' : 'rag')
-    } else if (event.key === 'Escape') {
-      event.preventDefault()
-      setInput('')
-      // Clear draft from localStorage
-      if (conversation?.id) {
-        localStorage.removeItem(`draft-${conversation.id}`)
-      }
-    } else if (event.key === 'ArrowUp' && !input.trim() && messages.length > 0) {
-      // Arrow up with empty input - edit last user message
-      event.preventDefault()
-      const lastUserMessage = [...messages].reverse().find(m => m.role === 'user')
-      if (lastUserMessage) {
-        setInput(lastUserMessage.content)
-      }
-    }
-  }
-
-  const handleCopyMessage = useCallback((messageId: string, content: string) => {
-    navigator.clipboard.writeText(content)
-    setCopiedMessageId(messageId)
-    setTimeout(() => setCopiedMessageId(null), 2000)
-  }, [])
-
+  // Regenerate handler
   const handleRegenerateResponse = useCallback(async (messageId: string) => {
     if (!conversation || isProcessing) return
 
-    // Find the message and its index
     const messageIndex = messages.findIndex(msg => msg.id === messageId)
     if (messageIndex === -1 || messageIndex === 0) return
 
-    // Get the user message that prompted this response
     const userMessage = messages[messageIndex - 1]
     if (!userMessage || userMessage.role !== 'user') return
 
-    // Remove the assistant message and everything after it
     onMessagesChange(prev => prev.slice(0, messageIndex))
 
-    // Create a new assistant message
     const newAssistantId = `${Date.now()}-assistant`
     const newAssistantMessage: Message = {
       id: newAssistantId,
@@ -574,7 +333,6 @@ export default function ChatInterface({
 
     lastAssistantIdRef.current = newAssistantId
     onMessagesChange(prev => [...prev, newAssistantMessage])
-
     setIsProcessing(true)
 
     let streamedText = ''
@@ -585,10 +343,7 @@ export default function ChatInterface({
     } catch (error) {
       streamingFailed = true
       setStreamingMessageId(null)
-      if ((error as Error).name === 'AbortError') {
-        return
-      }
-      console.warn('Streaming unavailable, falling back to standard response:', error)
+      if ((error as Error).name === 'AbortError') return
     }
 
     if (streamingFailed || !streamedText) {
@@ -597,12 +352,8 @@ export default function ChatInterface({
         const rawAnswer = typeof fullResponse.response === 'string' ? fullResponse.response : ''
         const thinking = typeof fullResponse.thinking === 'string' ? fullResponse.thinking : ''
         let visible = rawAnswer.trim()
-        if (!visible && thinking) {
-          visible = deriveAnswerFromThinking(thinking)
-        }
-        if (!visible) {
-          visible = 'No response received'
-        }
+        if (!visible && thinking) visible = deriveAnswerFromThinking(thinking)
+        if (!visible) visible = 'No response received'
 
         updateAssistantMessage(newAssistantId, message => ({
           ...message,
@@ -613,13 +364,9 @@ export default function ChatInterface({
           timestamp: new Date()
         }))
       } catch (error) {
-        console.error('Regeneration failed:', error)
         updateAssistantMessage(newAssistantId, message => ({
           ...message,
           content: 'Sorry, I encountered an error regenerating the response.',
-          thinking: '',
-          citations: [],
-          rendered_citations: [],
           timestamp: new Date()
         }))
       }
@@ -632,30 +379,24 @@ export default function ChatInterface({
 
     setIsProcessing(false)
     setStreamingMessageId(null)
-    abortControllerRef.current = null
     lastAssistantIdRef.current = null
-  }, [conversation, isProcessing, messages, onMessagesChange, streamResponse, requestFullResponse, updateAssistantMessage])
+  }, [conversation, isProcessing, messages, onMessagesChange, streamResponse, requestFullResponse, updateAssistantMessage, setIsProcessing, setStreamingMessageId])
 
-  useEffect(() => {
-    return () => {
-      abortControllerRef.current?.abort()
-    }
+  const handleCopyMessage = useCallback((messageId: string, content: string) => {
+    navigator.clipboard.writeText(content)
+    setCopiedMessageId(messageId)
+    setTimeout(() => setCopiedMessageId(null), 2000)
   }, [])
 
-  const streamingPlaceholderVisible = useMemo(() => {
-    if (!isProcessing) return false
-    if (!lastAssistantIdRef.current) return false
-    const assistantMessage = messages.find(msg => msg.id === lastAssistantIdRef.current)
-    return !assistantMessage?.content
-  }, [isProcessing, messages])
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => { stopGeneration() }
+  }, [stopGeneration])
 
-  const placeholderState = useMemo(() => {
-    if (streamingPlaceholderVisible) return "streaming"
-    return null
-  }, [streamingPlaceholderVisible])
+  // Removed: streamingPlaceholderVisible - now using thinking bubble in SmartResponse instead
 
   const hasMessages = messages.length > 0
-  const canStop = isProcessing && Boolean(abortControllerRef.current)
+  const canStop = isProcessing && Boolean(abortController)
   const totalSourceMentions = useMemo(
     () => aggregatedSources.reduce((acc, source) => acc + source.usageCount, 0),
     [aggregatedSources]
@@ -666,9 +407,8 @@ export default function ChatInterface({
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col ui-bg-primary">
-      <div
-        className="sticky top-0 z-10 flex items-center justify-between border-b px-4 py-3 sm:px-6 ui-bg-primary/95 backdrop-blur border-[color:var(--border-faint)]"
-      >
+      {/* Header */}
+      <div className="sticky top-0 z-10 flex items-center justify-between border-b px-4 py-3 sm:px-6 ui-bg-primary/95 backdrop-blur border-[color:var(--border-faint)]">
         <div className="text-xs sm:text-sm ui-text-secondary">
           {aggregatedSources.length === 0
             ? 'No sources cited yet'
@@ -691,6 +431,7 @@ export default function ChatInterface({
         </div>
       </div>
 
+      {/* Messages */}
       <div ref={messagesContainerRef} className="flex-1 overflow-y-auto px-4 pb-10 pt-6 sm:px-10 min-h-0 relative">
         <div className="mx-auto flex w-full max-w-[min(65vw,62rem)] flex-col gap-5">
           {!hasMessages && (
@@ -704,111 +445,27 @@ export default function ChatInterface({
             </div>
           )}
 
-          {messages.map((message, index) => {
-            const isUser = message.role === 'user'
-            const isHovered = hoveredMessageId === message.id
-            const isCopied = copiedMessageId === message.id
-            const canRegenerate = !isUser && !isProcessing && index > 0
+          {messages.map((message, index) => (
+            <MessageBubble
+              key={message.id}
+              message={message}
+              previousMessage={messages[index - 1]}
+              isHovered={hoveredMessageId === message.id}
+              isCopied={copiedMessageId === message.id}
+              isStreaming={streamingMessageId === message.id}
+              canRegenerate={message.role !== 'user' && !isProcessing && index > 0}
+              onMouseEnter={() => setHoveredMessageId(message.id)}
+              onMouseLeave={() => setHoveredMessageId(null)}
+              onCopy={handleCopyMessage}
+              onRegenerate={handleRegenerateResponse}
+            />
+          ))}
 
-            return (
-              <div
-                key={message.id}
-                className={`flex ${isUser ? 'justify-end' : 'justify-start'} group`}
-                onMouseEnter={() => setHoveredMessageId(message.id)}
-                onMouseLeave={() => setHoveredMessageId(null)}
-              >
-                <div className={isUser ? 'max-w-xl space-y-2' : 'w-full space-y-2'}>
-                  <div className={isUser ? "px-4 py-3 border rounded-lg ui-border-light ui-bg-secondary" : "px-4 py-3 rounded-lg ui-bg-tertiary/30 border border-transparent"}>
-                    {isUser ? (
-                      <p className="whitespace-pre-wrap text-base leading-relaxed ui-text-primary">
-                        {message.content}
-                      </p>
-                    ) : (
-                      <SmartResponse
-                        answer={message.content}
-                        query={messages[index - 1]?.content || ''}
-                        citations={message.citations || []}
-                        renderedCitations={message.rendered_citations || []}
-                        thinking={message.thinking || ''}
-                        isVerifyingSources={false}
-                        isStreaming={streamingMessageId === message.id}
-                      />
-                    )}
-                  </div>
-                  <div
-                    className={`flex items-center gap-2 text-xs ui-text-muted relative ${isUser ? 'justify-end' : 'justify-start'}`}
-                  >
-                    <span>{isUser ? 'You' : 'Cabin Assistant'}</span>
-                    <span>•</span>
-                    <span>
-                      {(() => {
-                        const now = new Date()
-                        const msgDate = new Date(message.timestamp)
-                        const isToday = now.toDateString() === msgDate.toDateString()
-                        const isYesterday = new Date(now.setDate(now.getDate() - 1)).toDateString() === msgDate.toDateString()
-
-                        if (isToday) {
-                          return msgDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                        } else if (isYesterday) {
-                          return `Yesterday ${msgDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
-                        } else {
-                          return msgDate.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' + msgDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                        }
-                      })()}
-                    </span>
-
-                    {/* Message Actions */}
-                    {(isHovered || isCopied) && (
-                      <div className={`absolute ${isUser ? 'left-0' : 'right-0'} flex items-center gap-1`}>
-                        <button
-                          onClick={() => handleCopyMessage(message.id, message.content)}
-                          className="message-action-button"
-                          aria-label="Copy message"
-                          title="Copy message"
-                        >
-                          {isCopied ? (
-                            <Check size={14} />
-                          ) : (
-                            <Copy size={14} />
-                          )}
-                        </button>
-                        {canRegenerate && (
-                          <button
-                            onClick={() => handleRegenerateResponse(message.id)}
-                            className="message-action-button"
-                            aria-label="Regenerate response"
-                            title="Regenerate response"
-                          >
-                            <RefreshCw size={14} />
-                          </button>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            )
-          })}
-
-          {placeholderState && (
-            <div className="flex justify-start">
-              <div className="w-full">
-                <div className="rounded-xl border px-4 py-5 ui-bg-secondary ui-border-faint">
-                  <div className="text-center">
-                    <Loader2 className="mx-auto animate-spin text-[var(--accent)]" />
-                    <p className="mt-3 text-sm ui-text-secondary">
-                      Generating response...
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
+          {/* Removed: Generating response placeholder - now using thinking bubble in SmartResponse */}
 
           <div ref={messagesEndRef} />
         </div>
 
-        {/* Scroll to bottom button */}
         {showScrollButton && (
           <button
             onClick={scrollToBottom}
@@ -820,107 +477,21 @@ export default function ChatInterface({
         )}
       </div>
 
-      <footer
-        className="px-4 pb-4 sm:pl-10 sm:pr-[calc(2.5rem+8px)] md:pl-10 md:pr-[calc(2.5rem+8px)] pt-0 bg-transparent"
-        style={{
-          paddingBottom: 'max(1rem, calc(1rem + env(safe-area-inset-bottom, 0)))'
-        }}
-      >
-        <form onSubmit={handleSubmit} className="mx-auto w-full max-w-[min(65vw,62rem)]">
-          <div
-            className="w-full rounded-2xl border px-4 py-2.5 sm:px-5 ui-bg-secondary ui-border-light ui-shadow-elevated"
-          >
-            <textarea
-              ref={inputRef}
-              rows={1}
-              value={input}
-              onChange={(event) => {
-                setInput(event.target.value)
-                // Auto-resize textarea
-                const target = event.target
-                target.style.height = 'auto'
-                target.style.height = `${Math.min(target.scrollHeight, 200)}px`
-              }}
-              onKeyDown={handleComposerKeyDown}
-              placeholder={chatMode === 'rag' ? "Ask about your documentation..." : "Chat with AI..."}
-              className="w-full resize-none bg-transparent text-base leading-relaxed focus:outline-none ui-text-primary max-h-[200px] overflow-y-auto"
-              disabled={isProcessing && !canStop}
-              autoFocus
-              style={{ minHeight: '40px' }}
-            />
-            <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
-              <div className="flex items-center gap-3 text-xs ui-text-muted">
-                <span>Press Enter to send · Shift + Enter for a new line</span>
-                {input.length > 0 && (
-                  <span className={input.length > 4000 ? 'text-orange-500' : ''}>
-                    {input.length} chars
-                  </span>
-                )}
-              </div>
-              <div className="flex items-center gap-3">
-                {/* Persona Selector */}
-                <PersonaSelector value={persona} onChange={setPersona} />
-                {canStop && (
-                  <button
-                    type="button"
-                    onClick={handleStopGeneration}
-                    className="flex items-center gap-1 rounded-full border px-3 py-1.5 text-xs font-medium transition ui-bg-secondary ui-border-light ui-text-secondary"
-                  >
-                    <StopCircle size={14} />
-                    Stop
-                  </button>
-                )}
-
-                {/* RAG/LLM Toggle */}
-                <div
-                  className="relative flex items-center bg-[var(--bg-tertiary)] rounded-full border ui-border-light p-0.5 cursor-pointer"
-                  onClick={() => setChatMode(chatMode === 'rag' ? 'llm' : 'rag')}
-                >
-                  {/* Sliding background indicator */}
-                  <div
-                    className={`absolute top-0.5 bottom-0.5 rounded-full transition-all duration-200 ease-in-out ${
-                      chatMode === 'rag'
-                        ? 'left-0.5 right-1/2 bg-[var(--accent)]'
-                        : 'left-1/2 right-0.5 bg-orange-500'
-                    }`}
-                  />
-
-                  {/* Toggle options */}
-                  <div
-                    className={`relative z-10 px-2.5 py-1 text-xs font-medium rounded-full transition-colors duration-200 ${
-                      chatMode === 'rag'
-                        ? 'text-white'
-                        : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-                    }`}
-                  >
-                    RAG
-                  </div>
-                  <div
-                    className={`relative z-10 px-2.5 py-1 text-xs font-medium rounded-full transition-colors duration-200 ${
-                      chatMode === 'llm'
-                        ? 'text-white'
-                        : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-                    }`}
-                  >
-                    LLM
-                  </div>
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={!input.trim()}
-                  className={`flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium transition-all duration-200 disabled:opacity-50 text-white ui-shadow-elevated ${
-                    chatMode === 'rag' ? 'bg-[var(--accent)] hover:bg-[var(--accent-hover)] border-[var(--accent)]' : 'bg-orange-500 hover:bg-orange-600 border-orange-500'
-                  }`}
-                >
-                  <Send size={16} />
-                  Send
-                </button>
-              </div>
-            </div>
-          </div>
-        </form>
-      </footer>
+      {/* Composer */}
+      <ChatComposer
+        ref={inputRef}
+        input={input}
+        chatMode={chatMode}
+        persona={persona}
+        isProcessing={isProcessing}
+        canStop={canStop}
+        conversationId={conversation?.id}
+        onInputChange={setInput}
+        onSubmit={sendMessage}
+        onStop={stopGeneration}
+        onChatModeChange={setChatMode}
+        onPersonaChange={setPersona}
+      />
 
       <ConversationSourcesPanel
         open={isSourcesPanelOpen}

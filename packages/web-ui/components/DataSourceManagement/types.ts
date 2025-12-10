@@ -82,7 +82,7 @@ export interface BulkAction {
   id: string
   label: string
   icon: React.ComponentType<{ className?: string }>
-  action: (selectedIds: string[]) => Promise<void>
+  action: (selectedIds: string[], addToast?: (message: string, type: 'success' | 'error' | 'info' | 'warning', duration?: number) => void) => Promise<void>
   requiresConfirmation?: boolean
   confirmationMessage?: string
 }

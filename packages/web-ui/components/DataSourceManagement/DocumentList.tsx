@@ -36,7 +36,38 @@ export default function DocumentList({
     }
   }
 
-  const formatFileSize = (bytes: number) => {
+  const getSourceLabel = (sourceType: string) => {
+    switch (sourceType) {
+      case 'file_upload':
+        return 'File Upload'
+      case 'confluence':
+        return 'Confluence'
+      case 'url_ingestion':
+        return 'URL'
+      case 'web_scraping':
+        return 'Web Scrape'
+      case 'database':
+        return 'Database'
+      default:
+        return sourceType.replace('_', ' ')
+    }
+  }
+
+  const getSpaceInfo = (doc: IndexedDocument) => {
+    if (doc.source_type === 'confluence' && (doc as any).space_name) {
+      return (doc as any).space_name
+    }
+    if ((doc as any).source_detail) {
+      return (doc as any).source_detail
+    }
+    if (doc.content_type) {
+      return doc.content_type
+    }
+    return null
+  }
+
+  const formatFileSize = (bytes: number | undefined | null) => {
+    if (bytes === undefined || bytes === null || isNaN(bytes) || bytes < 0) return '-'
     if (bytes === 0) return '0 B'
     const k = 1024
     const sizes = ['B', 'KB', 'MB', 'GB']
@@ -126,19 +157,16 @@ export default function DocumentList({
                 <div className="flex items-center gap-4 text-xs ui-text-muted">
                   <span className="flex items-center gap-1">
                     {getSourceIcon(doc.source_type)}
-                    <span className="capitalize">{doc.source_type.replace('_', ' ')}</span>
+                    <span>{getSourceLabel(doc.source_type)}</span>
                   </span>
-                  {doc.file_size && (
-                    <span>{formatFileSize(doc.file_size)}</span>
+                  {doc.chunk_count && (
+                    <span>{doc.chunk_count} chunks</span>
                   )}
-                  {doc.page_count && (
-                    <span>{doc.page_count} pages</span>
+                  {getSpaceInfo(doc) && (
+                    <span className="truncate max-w-[120px]">{getSpaceInfo(doc)}</span>
                   )}
                   {doc.last_modified && (
                     <span>Modified {formatDate(doc.last_modified)}</span>
-                  )}
-                  {doc.content_type && (
-                    <span>{doc.content_type}</span>
                   )}
                 </div>
               </div>
@@ -146,12 +174,11 @@ export default function DocumentList({
               <div className="flex items-center gap-2">
                 {/* Status */}
                 <div className="flex items-center gap-2">
-                  <div className={`w-2 h-2 rounded-full ${
-                    doc.status === 'indexed' ? 'bg-[var(--success)]' :
+                  <div className={`w-2 h-2 rounded-full ${doc.status === 'indexed' ? 'bg-[var(--success)]' :
                     doc.status === 'error' ? 'bg-[var(--error)]' :
-                    doc.status === 'processing' ? 'bg-[var(--accent)] animate-pulse' :
-                    'bg-[var(--warning)]'
-                  }`} />
+                      doc.status === 'processing' ? 'bg-[var(--accent)] animate-pulse' :
+                        'bg-[var(--warning)]'
+                    }`} />
                   <span className={`text-xs capitalize ${getStatusColor(doc.status)}`}>
                     {doc.status}
                   </span>

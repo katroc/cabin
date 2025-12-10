@@ -159,7 +159,7 @@ export default function FileUploadIndexing({ isOpen, onClose, onBack }: FileUplo
       const result = await response.json()
 
       if (result.success) {
-        setUploadId(result.upload_id)
+        setUploadId(result.upload_path)
         setUploadedFiles(prev => prev.map(f => ({ ...f, status: 'uploaded' as const, progress: 100 })))
       } else {
         throw new Error(result.message || 'Upload failed')
@@ -237,14 +237,14 @@ export default function FileUploadIndexing({ isOpen, onClose, onBack }: FileUplo
         setJobs(prev => prev.map(job =>
           job.id === jobId
             ? {
-                ...job,
-                status: progress.status,
-                progress: progress.total_items > 0 ? (progress.processed_items / progress.total_items) * 100 : 0,
-                processedFiles: progress.processed_items,
-                totalFiles: progress.total_items,
-                error: progress.error_message,
-                completedAt: progress.completed_at ? new Date(progress.completed_at) : undefined
-              }
+              ...job,
+              status: progress.status,
+              progress: progress.total_items > 0 ? (progress.processed_items / progress.total_items) * 100 : 0,
+              processedFiles: progress.processed_items,
+              totalFiles: progress.total_items,
+              error: progress.error_message,
+              completedAt: progress.completed_at ? new Date(progress.completed_at) : undefined
+            }
             : job
         ))
 
@@ -456,8 +456,8 @@ export default function FileUploadIndexing({ isOpen, onClose, onBack }: FileUplo
                           </h5>
                           <p className="text-xs ui-text-muted">
                             {job.status === 'completed' ? 'Completed successfully' :
-                             job.status === 'failed' ? 'Processing failed' :
-                             job.status === 'running' ? 'Processing documents...' : 'Pending'}
+                              job.status === 'failed' ? 'Processing failed' :
+                                job.status === 'running' ? 'Processing documents...' : 'Pending'}
                           </p>
                         </div>
                       </div>
@@ -465,12 +465,12 @@ export default function FileUploadIndexing({ isOpen, onClose, onBack }: FileUplo
                         px-2 py-1 text-xs font-medium rounded-[var(--radius-sm)]
                         ${job.status === 'completed' ? 'text-[var(--success)] ui-bg-tertiary' :
                           job.status === 'failed' ? 'text-[var(--error)] ui-bg-tertiary' :
-                          job.status === 'running' ? 'text-[var(--accent)] ui-bg-tertiary' :
-                          'ui-text-muted ui-bg-tertiary'}
+                            job.status === 'running' ? 'text-[var(--accent)] ui-bg-tertiary' :
+                              'ui-text-muted ui-bg-tertiary'}
                       `}>
                         {job.status === 'completed' ? 'Done' :
-                         job.status === 'failed' ? 'Failed' :
-                         job.status === 'running' ? 'Processing' : 'Waiting'}
+                          job.status === 'failed' ? 'Failed' :
+                            job.status === 'running' ? 'Processing' : 'Waiting'}
                       </span>
                     </div>
 

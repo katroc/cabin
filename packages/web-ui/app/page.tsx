@@ -37,31 +37,9 @@ interface Conversation {
   messages: Message[]
 }
 
-interface SettingsData {
-  llmBaseUrl: string
-  llmModel: string
-  embeddingBaseUrl: string
-  embeddingModel: string
-  temperature: number
-  chromaHost: string
-  chromaPort: number
-  finalPassages: number
-  cosineFloor: number
-  minKeywordOverlap: number
-  useReranker: boolean
-  allowRerankerFallback: boolean
-  useRm3: boolean
-  rerankerUrl: string
-  rerankerPort: number
-  logLevel: string
-  maxMemoryMessages: number
-  maxTokens: number
-  streamingMaxTokens: number
-  rephrasingMaxTokens: number
-}
+
 
 const STORAGE_KEY = 'cabin.conversations.v1'
-const SETTINGS_ENDPOINT = 'http://localhost:8788/api/settings'
 
 const createDefaultConversation = (): Conversation => ({
   id: Date.now().toString(),
@@ -101,72 +79,8 @@ export default function Home() {
   const [isPerformanceDashboardOpen, setIsPerformanceDashboardOpen] = useState(false)
   const [isHydrated, setIsHydrated] = useState(false)
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
-  const [settings, setSettings] = useState<SettingsData>({
-    llmBaseUrl: 'http://localhost:8000/v1',
-    llmModel: '',  // Auto-discovered
-    embeddingBaseUrl: 'http://localhost:8001/v1',
-    embeddingModel: '',  // Auto-discovered
-    temperature: 0.1,
-    chromaHost: 'localhost',
-    chromaPort: 8000,
-    finalPassages: 8,
-    cosineFloor: 0.18,
-    minKeywordOverlap: 2,
-    useReranker: true,
-    allowRerankerFallback: true,
-    useRm3: false,
-    rerankerUrl: 'http://localhost:8010/rerank',
-    rerankerPort: 8010,
-    logLevel: 'INFO',
-    maxMemoryMessages: 8,
-    maxTokens: 8000,
-    streamingMaxTokens: 8000,
-    rephrasingMaxTokens: 4000
-  })
 
-  useEffect(() => {
-    let cancelled = false
-    const fetchSettings = async () => {
-      try {
-        const response = await fetch(SETTINGS_ENDPOINT)
-        if (!response.ok) {
-          throw new Error(`Failed to fetch settings: ${response.status}`)
-        }
-        const data = await response.json()
-        if (cancelled) return
-        setSettings({
-          llmBaseUrl: data.llmBaseUrl || settings.llmBaseUrl,
-          llmModel: data.llmModel || settings.llmModel,
-          embeddingBaseUrl: data.embeddingBaseUrl || settings.embeddingBaseUrl,
-          embeddingModel: data.embeddingModel || settings.embeddingModel,
-          temperature: typeof data.temperature === 'number' ? data.temperature : settings.temperature,
-          chromaHost: data.chromaHost || settings.chromaHost,
-          chromaPort: typeof data.chromaPort === 'number' ? data.chromaPort : settings.chromaPort,
-          finalPassages: typeof data.finalPassages === 'number' ? data.finalPassages : settings.finalPassages,
-          cosineFloor: typeof data.cosineFloor === 'number' ? data.cosineFloor : settings.cosineFloor,
-          minKeywordOverlap: typeof data.minKeywordOverlap === 'number' ? data.minKeywordOverlap : settings.minKeywordOverlap,
-          useReranker: typeof data.useReranker === 'boolean' ? data.useReranker : settings.useReranker,
-          allowRerankerFallback: typeof data.allowRerankerFallback === 'boolean' ? data.allowRerankerFallback : settings.allowRerankerFallback,
-          useRm3: typeof data.useRm3 === 'boolean' ? data.useRm3 : settings.useRm3,
-          rerankerUrl: data.rerankerUrl || settings.rerankerUrl,
-          rerankerPort: typeof data.rerankerPort === 'number' ? data.rerankerPort : settings.rerankerPort,
-          logLevel: data.logLevel || settings.logLevel,
-          maxMemoryMessages: typeof data.maxMemoryMessages === 'number' ? data.maxMemoryMessages : settings.maxMemoryMessages,
-          maxTokens: typeof data.maxTokens === 'number' ? data.maxTokens : settings.maxTokens,
-          streamingMaxTokens: typeof data.streamingMaxTokens === 'number' ? data.streamingMaxTokens : settings.streamingMaxTokens,
-          rephrasingMaxTokens: typeof data.rephrasingMaxTokens === 'number' ? data.rephrasingMaxTokens : settings.rephrasingMaxTokens,
-        })
-      } catch (error) {
-        console.warn('Failed to load runtime settings:', error)
-      }
-    }
 
-    fetchSettings()
-    return () => {
-      cancelled = true
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -366,18 +280,6 @@ export default function Home() {
     []
   )
 
-  const handleSettingsSave = useCallback(async (nextSettings: SettingsData) => {
-    setSettings(nextSettings)
-    try {
-      await fetch(SETTINGS_ENDPOINT, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(nextSettings)
-      })
-    } catch (error) {
-      console.error('Failed to persist settings:', error)
-    }
-  }, [])
 
   return (
     <main className="h-[100dvh] grid grid-rows-[auto,1fr] ui-bg-primary overflow-hidden">
@@ -506,8 +408,6 @@ export default function Home() {
       <SettingsDrawer
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
-        settings={settings}
-        onSave={handleSettingsSave}
       />
 
       <DataSourceSelector

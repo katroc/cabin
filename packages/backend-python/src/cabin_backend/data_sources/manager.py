@@ -141,6 +141,32 @@ class DataSourceManager:
             logger.error(f"Failed to start indexing job: {e}")
             raise
 
+    async def start_file_indexing(
+        self,
+        upload_path: str,
+        indexing_config: Dict[str, Any]
+    ) -> str:
+        """Start indexing uploaded files."""
+        return await self.start_indexing(
+            source_type="file_upload",
+            connection_config={"additional_config": {"upload_path": upload_path}},
+            source_ids=[],  # Process all files in the directory
+            indexing_config=indexing_config
+        )
+
+    async def start_url_ingestion(
+        self,
+        urls: List[str],
+        indexing_config: Dict[str, Any]
+    ) -> str:
+        """Start indexing URLs."""
+        return await self.start_indexing(
+            source_type="url_ingestion",
+            connection_config={},
+            source_ids=urls,
+            indexing_config=indexing_config
+        )
+
     async def start_indexing_with_source(
         self,
         source: DataSource,
@@ -222,6 +248,15 @@ class DataSourceManager:
                         )
                         continue
 
+                    # Check for extraction warnings
+                    warnings = document.metadata.get("extraction_warnings", [])
+                    if warnings:
+                        logger.warning(f"Document {document.id} has extraction warnings: {warnings}")
+                    
+                    if not document.content or not document.content.strip():
+                        logger.warning(f"Document {document.id} has empty content. Skipping chunking.")
+                        continue
+
                     ingest_request = IngestRequest(
                         page_title=document.title,
                         text=document.content,
@@ -256,7 +291,10 @@ class DataSourceManager:
                                 score,
                             )
 
-                    self.vector_store.add_documents(child_chunks)
+                    added_count = self.vector_store.add_documents(child_chunks)
+                    
+                    if added_count == 0 and len(child_chunks) > 0:
+                        raise RuntimeError(f"Failed to add any chunks for document {document.id} to vector store")
                     elapsed = time.perf_counter() - start_time
 
                     stats["processed"] += 1

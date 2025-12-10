@@ -160,11 +160,11 @@ export default function PerformanceDashboard({ isOpen, onClose }: PerformanceDas
       // Fetch vLLM metrics
       try {
         const vllmMetricsResponse = await fetch(`http://localhost:8788/api/performance/vllm`)
-         if (vllmMetricsResponse.ok) {
-           const vllmData = await vllmMetricsResponse.json()
-           console.log('vLLM metrics received:', vllmData)
-           cacheVllmMetrics(vllmData.metrics)
-         }
+        if (vllmMetricsResponse.ok) {
+          const vllmData = await vllmMetricsResponse.json()
+          console.log('vLLM metrics received:', vllmData)
+          cacheVllmMetrics(vllmData.metrics)
+        }
       } catch (error) {
         console.warn('Error fetching vLLM metrics:', error)
       }
@@ -231,13 +231,13 @@ export default function PerformanceDashboard({ isOpen, onClose }: PerformanceDas
               <option value="24h">Last 24 Hours</option>
               <option value="7d">Last 7 Days</option>
             </select>
-             <button
-               onClick={() => fetchPerformanceData(true, true)}
-               className="btn-secondary"
-               title="Refresh data"
-             >
-               <RefreshCw className="w-4 h-4" />
-             </button>
+            <button
+              onClick={() => fetchPerformanceData(true, true)}
+              className="btn-secondary"
+              title="Refresh data"
+            >
+              <RefreshCw className="w-4 h-4" />
+            </button>
             <button onClick={onClose} className="btn-close">
               <X className="w-4 h-4" />
             </button>
@@ -294,7 +294,7 @@ export default function PerformanceDashboard({ isOpen, onClose }: PerformanceDas
                     <h3 className="text-sm font-medium ui-text-secondary">RAG Usage</h3>
                   </div>
                   <div className="text-2xl font-bold ui-text-primary">
-                    {summary ? `${summary.rag_request_percentage.toFixed(0)}%` : 'N/A'}
+                    {summary?.rag_request_percentage != null ? `${summary.rag_request_percentage.toFixed(0)}%` : 'N/A'}
                   </div>
                   <div className="text-xs ui-text-muted mt-1">
                     {summary ? 'of requests use RAG' : 'No data'}
@@ -324,10 +324,10 @@ export default function PerformanceDashboard({ isOpen, onClose }: PerformanceDas
                   <BarChart className="w-5 h-5" style={{ color: 'var(--accent)' }} />
                   Component Performance Breakdown
                 </h3>
-                {summary && Object.keys(summary.avg_component_durations).length > 0 ? (
+                {summary?.avg_component_durations && Object.keys(summary.avg_component_durations).length > 0 ? (
                   <div className="space-y-3">
                     {Object.entries(summary.avg_component_durations)
-                      .sort(([,a], [,b]) => b - a)
+                      .sort(([, a], [, b]) => b - a)
                       .map(([component, duration]) => {
                         const percentage = (duration / summary.avg_total_duration_ms) * 100
                         return (
@@ -376,63 +376,63 @@ export default function PerformanceDashboard({ isOpen, onClose }: PerformanceDas
                               backgroundColor: metrics.metrics_available ? 'var(--success)' : 'var(--warning)'
                             }} />
                             <h4 className="font-medium ui-text-primary capitalize">{serviceName}</h4>
-                             {metrics.metrics_available ? (
-                               <span className="text-xs px-2 py-1 rounded-full" style={{
-                                 backgroundColor: 'color-mix(in oklab, var(--success) 20%, var(--surface))',
-                                 color: 'var(--success)',
-                                 border: '1px solid color-mix(in oklab, var(--success) 40%, transparent)'
-                               }}>Active</span>
-                             ) : (
-                               <span className="text-xs px-2 py-1 rounded-full" style={{
-                                 backgroundColor: 'color-mix(in oklab, var(--warning) 20%, var(--surface))',
-                                 color: 'var(--warning)',
-                                 border: '1px solid color-mix(in oklab, var(--warning) 40%, transparent)'
-                               }}>Model Loaded</span>
-                             )}
+                            {metrics.metrics_available ? (
+                              <span className="text-xs px-2 py-1 rounded-full" style={{
+                                backgroundColor: 'color-mix(in oklab, var(--success) 20%, var(--surface))',
+                                color: 'var(--success)',
+                                border: '1px solid color-mix(in oklab, var(--success) 40%, transparent)'
+                              }}>Active</span>
+                            ) : (
+                              <span className="text-xs px-2 py-1 rounded-full" style={{
+                                backgroundColor: 'color-mix(in oklab, var(--warning) 20%, var(--surface))',
+                                color: 'var(--warning)',
+                                border: '1px solid color-mix(in oklab, var(--warning) 40%, transparent)'
+                              }}>Model Loaded</span>
+                            )}
                           </div>
 
                           {/* Model Information */}
                           <div className="space-y-2 text-sm mb-3">
-                             {metrics.model_name && metrics.model_name !== serviceName ? (
-                               <div>
-                                 <span className="text-xs ui-text-muted">Model:</span>
-                                 <div className="mt-1 p-3 rounded-lg border text-sm font-medium ui-shadow-floating transition-all duration-200 hover:ui-shadow-elevated" style={{
-                                   background: 'linear-gradient(135deg, color-mix(in oklab, var(--accent) 8%, var(--bg-tertiary)) 0%, color-mix(in oklab, var(--accent) 12%, var(--bg-secondary)) 100%)',
-                                   borderColor: 'color-mix(in oklab, var(--accent) 25%, var(--border-light))',
-                                   color: 'var(--text-primary)'
-                                 }}>
-                                   {metrics.model_name}
-                                 </div>
-                               </div>
-                             ) : (
-                               <div>
-                                 <span className="text-xs ui-text-muted">Model:</span>
-                                 <div className="mt-1 p-3 rounded-lg border text-sm ui-text-muted ui-shadow-floating" style={{
-                                   backgroundColor: 'var(--bg-tertiary)',
-                                   borderColor: 'var(--border-faint)'
-                                 }}>
-                                   No model information
-                                 </div>
-                               </div>
-                             )}
-                             {metrics.timestamp && (
-                               <div>
-                                 <span className="text-xs ui-text-muted">Last Updated:</span>
-                                 <div className="mt-1 p-2 rounded-md border text-xs ui-text-secondary" style={{
-                                   backgroundColor: 'color-mix(in oklab, var(--bg-tertiary) 80%, transparent)',
-                                   borderColor: 'color-mix(in oklab, var(--border-light) 60%, transparent)'
-                                 }}>
-                                   {new Date(metrics.timestamp).toLocaleString()}
-                                 </div>
-                               </div>
-                             )}
+                            {metrics.model_name && metrics.model_name !== serviceName ? (
+                              <div>
+                                <span className="text-xs ui-text-muted">Model:</span>
+                                <div className="mt-1 p-3 rounded-lg border text-sm font-medium ui-shadow-floating transition-all duration-200 hover:ui-shadow-elevated" style={{
+                                  background: 'linear-gradient(135deg, color-mix(in oklab, var(--accent) 8%, var(--bg-tertiary)) 0%, color-mix(in oklab, var(--accent) 12%, var(--bg-secondary)) 100%)',
+                                  borderColor: 'color-mix(in oklab, var(--accent) 25%, var(--border-light))',
+                                  color: 'var(--text-primary)'
+                                }}>
+                                  {metrics.model_name}
+                                </div>
+                              </div>
+                            ) : (
+                              <div>
+                                <span className="text-xs ui-text-muted">Model:</span>
+                                <div className="mt-1 p-3 rounded-lg border text-sm ui-text-muted ui-shadow-floating" style={{
+                                  backgroundColor: 'var(--bg-tertiary)',
+                                  borderColor: 'var(--border-faint)'
+                                }}>
+                                  No model information
+                                </div>
+                              </div>
+                            )}
+                            {metrics.timestamp && (
+                              <div>
+                                <span className="text-xs ui-text-muted">Last Updated:</span>
+                                <div className="mt-1 p-2 rounded-md border text-xs ui-text-secondary" style={{
+                                  backgroundColor: 'color-mix(in oklab, var(--bg-tertiary) 80%, transparent)',
+                                  borderColor: 'color-mix(in oklab, var(--border-light) 60%, transparent)'
+                                }}>
+                                  {new Date(metrics.timestamp).toLocaleString()}
+                                </div>
+                              </div>
+                            )}
                           </div>
 
-                           {/* Performance Metrics (only show if available) */}
-                           {metrics.metrics_available && (
-                             <div className="space-y-2 text-sm border-t pt-3" style={{
-                               borderTopColor: 'color-mix(in oklab, var(--border-light) 40%, transparent)'
-                             }}>
+                          {/* Performance Metrics (only show if available) */}
+                          {metrics.metrics_available && (
+                            <div className="space-y-2 text-sm border-t pt-3" style={{
+                              borderTopColor: 'color-mix(in oklab, var(--border-light) 40%, transparent)'
+                            }}>
                               <div className="flex justify-between">
                                 <span className="ui-text-muted">Requests:</span>
                                 <span className="ui-text-primary">{(metrics.num_requests_running || 0) + (metrics.num_requests_waiting || 0)}</span>
@@ -465,8 +465,8 @@ export default function PerformanceDashboard({ isOpen, onClose }: PerformanceDas
                 )}
               </div>
 
-               {/* Recent Requests */}
-               {recentMetrics.length > 0 && (
+              {/* Recent Requests */}
+              {recentMetrics.length > 0 && (
                 <div className="ui-bg-tertiary p-6 rounded-lg border ui-border-faint">
                   <h3 className="text-lg font-semibold ui-text-primary mb-4 flex items-center gap-2">
                     <TrendingUp className="w-5 h-5" style={{ color: 'var(--accent)' }} />
@@ -493,17 +493,17 @@ export default function PerformanceDashboard({ isOpen, onClose }: PerformanceDas
                               {metric.total_duration_ms.toFixed(0)}ms
                             </td>
                             <td className="py-2">
-                                <span className="px-2 py-1 rounded text-xs" style={{
-                                  backgroundColor: metric.used_rag
-                                    ? 'color-mix(in oklab, var(--success) 20%, var(--surface))'
-                                    : 'color-mix(in oklab, var(--accent) 20%, var(--surface))',
-                                  color: metric.used_rag ? 'var(--success)' : 'var(--accent)',
-                                  border: `1px solid ${metric.used_rag
-                                    ? 'color-mix(in oklab, var(--success) 40%, transparent)'
-                                    : 'color-mix(in oklab, var(--accent) 40%, transparent)'}`
-                                }}>
-                                  {metric.used_rag ? 'RAG' : 'Direct'}
-                                </span>
+                              <span className="px-2 py-1 rounded text-xs" style={{
+                                backgroundColor: metric.used_rag
+                                  ? 'color-mix(in oklab, var(--success) 20%, var(--surface))'
+                                  : 'color-mix(in oklab, var(--accent) 20%, var(--surface))',
+                                color: metric.used_rag ? 'var(--success)' : 'var(--accent)',
+                                border: `1px solid ${metric.used_rag
+                                  ? 'color-mix(in oklab, var(--success) 40%, transparent)'
+                                  : 'color-mix(in oklab, var(--accent) 40%, transparent)'}`
+                              }}>
+                                {metric.used_rag ? 'RAG' : 'Direct'}
+                              </span>
                             </td>
                             <td className="py-2 ui-text-muted">
                               {metric.component_timings?.length || 0}
